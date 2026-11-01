@@ -45,23 +45,23 @@ function ButtonClass:Draw(viewPort, noTooltip)
 	local mOver = self:IsMouseOver()
 	local locked = self:GetProperty("locked")
 	if not enabled then
-		SetDrawColor(0.33, 0.33, 0.33)
+		SetUIColor("borderDisable")
 	elseif mOver or locked then
-		SetDrawColor(1, 1, 1)
+		SetUIColor("borderHover")
 	else
-		SetDrawColor(0.5, 0.5, 0.5)
+		SetUIColor("border")
 	end
-	DrawImage(nil, x, y, width, height)
+	DrawRoundRect(x, y, width, height)
 	if not enabled then
-		SetDrawColor(0, 0, 0)
+		SetUIColor("fillDisable")
 	elseif self.clicked and mOver then
-		SetDrawColor(0.5, 0.5, 0.5)
+		SetUIColor("fillPressed")
 	elseif mOver or locked then
-		SetDrawColor(0.33, 0.33, 0.33)
+		SetUIColor("fillHover")
 	else
-		SetDrawColor(0, 0, 0)
+		SetUIColor("fill")
 	end
-	DrawImage(nil, x + 1, y + 1, width - 2, height - 2)
+	DrawRoundRect(x + 1, y + 1, width - 2, height - 2)
 	if self.image then
 		if enabled then
 			SetDrawColor(1, 1, 1)
@@ -71,7 +71,7 @@ function ButtonClass:Draw(viewPort, noTooltip)
 		DrawImage(self.image, x + 2, y + 2, width - 4, height - 4)
 		if self.clicked and mOver then
 			SetDrawColor(1, 1, 1, 0.5)
-			DrawImage(nil, x + 1, y + 1, width - 2, height - 2)
+			DrawRoundRect(x + 1, y + 1, width - 2, height - 2)
 		end
 	end
 	if enabled then

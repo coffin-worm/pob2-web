@@ -256,46 +256,46 @@ function DropDownClass:Draw(viewPort, noTooltip)
 	scrollBar:SetContentDimension(lineHeight * self:GetDropCount(), self.dropHeight)
 	local dropY = self.dropUp and y - dropExtra or y + height
 	if not enabled then
-		SetDrawColor(0.33, 0.33, 0.33)
+		SetUIColor("borderDisable")
 	elseif mOver or self.dropped then
-		SetDrawColor(1, 1, 1)
+		SetUIColor("borderHover")
 	elseif self.borderFunc then
 		local r, g, b = self.borderFunc()
 		SetDrawColor(r, g, b)
 	else
 		SetDrawColor(0.5, 0.5, 0.5)
 	end
-	DrawImage(nil, x, y, width, height)
+	DrawRoundRect(x, y, width, height)
 	if self.dropped then
 		SetDrawLayer(nil, 5)
-		DrawImage(nil, x, dropY, self.droppedWidth, dropExtra)
+		DrawRoundRect(x, dropY, self.droppedWidth, dropExtra)
 		SetDrawLayer(nil, 0)
 	end
 	if not enabled or self.dropped then
-		SetDrawColor(0, 0, 0)
+		SetUIColor("fill")
 	elseif mOver then
-		SetDrawColor(0.33, 0.33, 0.33)
+		SetUIColor("fillHover")
 	else
-		SetDrawColor(0, 0, 0)
+		SetUIColor("fill")
 	end
-	DrawImage(nil, x + 1, y + 1, width - 2, height - 2)
+	DrawRoundRect(x + 1, y + 1, width - 2, height - 2)
 	if not enabled then
-		SetDrawColor(0.33, 0.33, 0.33)
+		SetUIColor("borderDisable")
 	elseif mOver or self.dropped then
-		SetDrawColor(1, 1, 1)
+		SetUIColor("borderActive")
 	else
-		SetDrawColor(0.5, 0.5, 0.5)
+		SetUIColor("borderHover")
 	end
 	main:DrawArrow(x + width - height/2, y + height/2, height/2, height/2, "DOWN")
 	if self.dropped then
 		SetDrawLayer(nil, 5)
-		SetDrawColor(0, 0, 0)
-		DrawImage(nil, x + 1, dropY + 1, self.droppedWidth - 2, dropExtra - 2)
+		SetUIColor("fill")
+		DrawRoundRect(x + 1, dropY + 1, self.droppedWidth - 2, dropExtra - 2)
 		SetDrawLayer(nil, 0)
 	end
 	if self.otherDragSource then
 		SetDrawColor(0, 1, 0, 0.25)
-		DrawImage(nil, x, y, width, height)
+		DrawRoundRect(x, y, width, height)
 	end
 
 	-- draw dropdown bar

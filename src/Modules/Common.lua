@@ -1146,3 +1146,63 @@ function applyDDSCoords(asset, coords, sheetWidth, sheetHeight)
 	end
 	return asset
 end
+
+-- Control chrome: one table drives every hand-drawn control's colors and
+-- corner radius. Lives here rather than in Data/Global.lua because the data
+-- exporter loads Common but not Global, and it draws controls too.
+uiStyle = {
+	radius         = 4,
+	border         = { 0.28, 0.28, 0.31 },
+	borderHover    = { 0.46, 0.46, 0.51 },
+	borderActive   = { 0.60, 0.60, 0.66 },
+	borderDisable  = { 0.16, 0.16, 0.17 },
+	fill           = { 0.09, 0.09, 0.10 },
+	fillHover      = { 0.15, 0.15, 0.17 },
+	fillPressed    = { 0.05, 0.05, 0.06 },
+	fillDisable    = { 0.05, 0.05, 0.05 },
+	fillSunken     = { 0.06, 0.06, 0.07 },
+	fillField      = { 0.07, 0.07, 0.08 },
+	fillFieldFocus = { 0.11, 0.11, 0.13 },
+}
+
+function SetUIColor(key)
+	local c = uiStyle[key]
+	SetDrawColor(c[1], c[2], c[3])
+end
+
+do
+	local cornerImage
+	local cornerState = 0 -- 0 = untried, 1 = loaded, 2 = unavailable
+
+	local function getCornerImage()
+		if cornerState == 0 then
+			cornerImage = NewImageHandle()
+			cornerImage:Load("Assets/roundrect.png", "CLAMP")
+			cornerState = cornerImage:IsValid() and 1 or 2
+		end
+		if cornerState == 1 then
+			return cornerImage
+		end
+	end
+
+	-- Rounded equivalent of DrawImage(nil, x, y, width, height). Four corner
+	-- quads sampled from the quadrants of a disc texture, plus three solid
+	-- rects for the middle. Falls back to a square rect when the radius does
+	-- not fit or the texture is missing.
+	function DrawRoundRect(x, y, width, height, radius)
+		radius = m_min(radius or uiStyle.radius or 0, m_floor(width / 2), m_floor(height / 2))
+		local img = radius >= 1 and getCornerImage()
+		if not img then
+			DrawImage(nil, x, y, width, height)
+			return
+		end
+		local r = radius
+		DrawImage(img, x, y, r, r, 0, 0, 0.5, 0.5)
+		DrawImage(img, x + width - r, y, r, r, 0.5, 0, 1, 0.5)
+		DrawImage(img, x, y + height - r, r, r, 0, 0.5, 0.5, 1)
+		DrawImage(img, x + width - r, y + height - r, r, r, 0.5, 0.5, 1, 1)
+		DrawImage(nil, x + r, y, width - r * 2, height)
+		DrawImage(nil, x, y + r, r, height - r * 2)
+		DrawImage(nil, x + width - r, y + r, r, height - r * 2)
+	end
+end

@@ -89,15 +89,15 @@ function SliderClass:Draw(viewPort)
 	end
 	local mOver, mOverComp = self:IsMouseOver()
 	if not enabled then
-		SetDrawColor(0.33, 0.33, 0.33)
+		SetUIColor("borderDisable")
 	elseif self.dragging or mOver then
-		SetDrawColor(1, 1, 1)
+		SetUIColor("borderHover")
 	else
-		SetDrawColor(0.5, 0.5, 0.5)
+		SetUIColor("border")
 	end
-	DrawImage(nil, x, y, width, height)
-	SetDrawColor(0, 0, 0)
-	DrawImage(nil, x + 1, y + 1, width - 2, height - 2)
+	DrawRoundRect(x, y, width, height)
+	SetUIColor("fillSunken")
+	DrawRoundRect(x + 1, y + 1, width - 2, height - 2)
 	if enabled then
 		if self.divCount then
 			SetDrawColor(0.33, 0.33, 0.33)
@@ -106,9 +106,9 @@ function SliderClass:Draw(viewPort)
 			end
 		end
 		if self.dragging or mOverComp == "KNOB" then
-			SetDrawColor(1, 1, 1)
+			SetUIColor("borderActive")
 		else
-			SetDrawColor(0.5, 0.5, 0.5)
+			SetUIColor("borderHover")
 		end
 		local knobX = self:GetKnobXForVal()
 		if self.divCount then
@@ -116,7 +116,7 @@ function SliderClass:Draw(viewPort)
 			main:DrawArrow(x + 1 + knobX + self.knobSize/2, y + height/2 - arrowHeight/2, self.knobSize, arrowHeight, "UP")
 			main:DrawArrow(x + 1 + knobX + self.knobSize/2, y + height/2 + arrowHeight/2, self.knobSize, arrowHeight, "DOWN")
 		else
-			DrawImage(nil, x + 2 + knobX, y + 2, self.knobSize - 2, self.knobSize - 2)
+			DrawRoundRect(x + 2 + knobX, y + 2, self.knobSize - 2, self.knobSize - 2)
 		end
 	end
 	if enabled and (mOver or self.dragging) then

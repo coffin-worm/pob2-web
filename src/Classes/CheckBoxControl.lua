@@ -43,28 +43,28 @@ function CheckBoxClass:Draw(viewPort, noTooltip)
 	local enabled = self:IsEnabled()
 	local mOver = self:IsMouseOver()
 	if not enabled then
-		SetDrawColor(0.33, 0.33, 0.33)
+		SetUIColor("borderDisable")
 	elseif mOver then
-		SetDrawColor(1, 1, 1)
+		SetUIColor("borderHover")
 	elseif self.borderFunc then
 		local r, g, b = self.borderFunc()
 		SetDrawColor(r, g, b)
 	elseif self.checkImage and self.state then
-		SetDrawColor(0.75, 0.75, 0.75)
+		SetUIColor("borderActive")
 	else
-		SetDrawColor(0.5, 0.5, 0.5)
+		SetUIColor("border")
 	end
-	DrawImage(nil, x, y, size, size)
+	DrawRoundRect(x, y, size, size)
 	if not enabled then
-		SetDrawColor(0, 0, 0)
+		SetUIColor("fillDisable")
 	elseif self.clicked and mOver then
-		SetDrawColor(0.5, 0.5, 0.5)
+		SetUIColor("fillPressed")
 	elseif mOver then
-		SetDrawColor(0.33, 0.33, 0.33)
+		SetUIColor("fillHover")
 	else
-		SetDrawColor(0, 0, 0)
+		SetUIColor("fill")
 	end
-	DrawImage(nil, x + 1, y + 1, size - 2, size - 2)
+	DrawRoundRect(x + 1, y + 1, size - 2, size - 2)
 	if self.checkImage then
 		if self.state then
 			if not enabled then
