@@ -179,18 +179,57 @@ function buildMode:Init(dbFileName, buildName, buildXML, convertBuild, importLin
 		return - (23 + self.controls.pointDisplay:GetSize() + self.controls.levelScalingButton:GetSize() + self.controls.characterLevel:GetSize())
 	end
 	self.controls.pointDisplay = new("Control"):Control({ "LEFT", self.anchorTopBarRight, "RIGHT" }, { function() return getPointDisplayX() end, 0, 0, 20 })
+	-- Segmented stat readout. Each segment is { label, value, over }.
+	local STAT_PAD, STAT_GAP = 9, 8
+	local STAT_LABEL, STAT_VALUE = 11, 14
+
+	local function statSegWidth(seg)
+		return DrawStringWidth(STAT_LABEL, "VAR BOLD", seg.label) + 6
+		     + DrawStringWidth(STAT_VALUE, "VAR", seg.value)
+	end
+
 	self.controls.pointDisplay.width = function(control)
-		return DrawStringWidth(16, "FIXED", control.str) + 8
+		local segs = control.segs
+		if not segs or #segs == 0 then
+			return 180
+		end
+		local w = STAT_PAD * 2
+		for i, seg in ipairs(segs) do
+			w = w + statSegWidth(seg)
+			if i < #segs then
+				w = w + STAT_GAP * 2 + 1
+			end
+		end
+		return w
 	end
 	self.controls.pointDisplay.Draw = function(control)
 		local x, y = control:GetPos()
 		local width, height = control:GetSize()
-		SetDrawColor(1, 1, 1)
-		DrawImage(nil, x, y, width, height)
-		SetDrawColor(0, 0, 0)
-		DrawImage(nil, x + 1, y + 1, width - 2, height - 2)
-		SetDrawColor(1, 1, 1)
-		DrawString(x + 4, y + 2, "LEFT", 16, "FIXED", control.str)
+		SetUIColor("border")
+		DrawRoundRect(x, y, width, height)
+		SetUIColor("fill")
+		DrawRoundRect(x + 1, y + 1, width - 2, height - 2)
+		local valueTop = y + (height - STAT_VALUE) / 2 - 1
+		local labelTop = valueTop + m_floor((STAT_VALUE - STAT_LABEL) * 0.8 + 0.5)
+		local cx = x + STAT_PAD
+		for i, seg in ipairs(control.segs or {}) do
+			SetDrawColor(0.62, 0.62, 0.67)
+			DrawString(cx, labelTop, "LEFT", STAT_LABEL, "VAR BOLD", seg.label)
+			cx = cx + DrawStringWidth(STAT_LABEL, "VAR BOLD", seg.label) + 6
+			if seg.over then
+				SetDrawColor(0.88, 0.33, 0.33)
+			else
+				SetDrawColor(0.93, 0.93, 0.95)
+			end
+			DrawString(cx, valueTop, "LEFT", STAT_VALUE, "VAR", seg.value)
+			cx = cx + DrawStringWidth(STAT_VALUE, "VAR", seg.value)
+			if i < #control.segs then
+				cx = cx + STAT_GAP
+				SetUIColor("border")
+				DrawImage(nil, cx, y + 5, 1, height - 10)
+				cx = cx + 1 + STAT_GAP
+			end
+		end
 		if control:IsMouseInBounds() then
 			SetDrawLayer(nil, 10)
 			miscTooltip:Clear()
@@ -1084,17 +1123,17 @@ function buildMode:EstimatePlayerProgress()
 
 		self.Act = act == self.maxActs and "Endgame" or "Act " .. act
 
-		self.controls.pointDisplay.str = string.format(
-			"%s%3d / %3d %s%2d / %2d %s%2d / %2d   %s%d / %d",
-			normalPassives > usedMax and colorCodes.NEGATIVE or "^7",
-			normalPassives, usedMax,
-			colorCodes.NEGATIVE,
-			weaponSet1Used, maxWeaponSets + extraWeaponSets,
-			colorCodes.POSITIVE,
-			weaponSet2Used, maxWeaponSets + extraWeaponSets,
-			AscUsed > ascMax and colorCodes.NEGATIVE or "^7",
-			AscUsed, ascMax
-		)
+		local weaponMax = maxWeaponSets + extraWeaponSets
+		self.controls.pointDisplay.segs = {
+			{ label = "Passives", value = normalPassives .. "/" .. usedMax,
+			  over = normalPassives > usedMax },
+			{ label = "Set I", value = weaponSet1Used .. "/" .. weaponMax,
+			  over = weaponSet1Used > weaponMax },
+			{ label = "Set II", value = weaponSet2Used .. "/" .. weaponMax,
+			  over = weaponSet2Used > weaponMax },
+			{ label = "Asc", value = AscUsed .. "/" .. ascMax,
+			  over = AscUsed > ascMax },
+		}
 		self.controls.pointDisplay.req = string.format(
 			"Required Level: %d\nEstimated Progress:\nAct: %s\nExtra Skillpoints: %d%s",
 			level, self.Act, extra, labSuggest
