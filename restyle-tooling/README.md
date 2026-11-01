@@ -138,9 +138,16 @@ Anything that could not be matched is printed by name; patch those by hand.
 
 ## Verification status
 
-Structure checked: `if`/`do`/`function` and `end` counts move together in
-every modified file. The generated PNG is a valid 64×64 8-bit RGBA file.
-Call sites counted: 17 `DrawRoundRect`, 59 `SetUIColor`.
+**Spec suite: 903 successes / 0 failures / 0 errors**, run against the
+patched tree under LuaJIT via the repo's own harness:
 
-The app has **not** been launched, and no Lua interpreter is available
-locally to syntax-check. Run it before trusting it.
+```bash
+docker compose run --rm busted-tests
+```
+
+That covers the Lua loading cleanly and the calc engine being untouched. It
+does not look at a single pixel — the specs stub the renderer — so the
+visual result still needs a human eye.
+
+Also launched and exercised: clean exit, code 0, no error prompt. The
+generated textures parse as valid 8-bit RGBA PNGs (64×64 each).
