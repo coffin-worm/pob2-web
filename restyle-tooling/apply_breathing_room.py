@@ -179,6 +179,24 @@ t = rep(t,
     '\t\treturn buildNameConditional() and 72 or 50\n',
     "anchorSideBar y")
 
+# The header's own chrome is painted separately from the viewport: a 28px
+# background, a 4px light edge at y=28, and a centre divider. Moving the
+# viewport without these leaves the buttons overhanging the painted edge.
+# BAR splits as (BAR - EDGE) background + EDGE edge.
+EDGE = 4
+t = rep(t,
+    "\tDrawImage(nil, 0, 0, main.screenW, 28)\n",
+    "\tDrawImage(nil, 0, 0, main.screenW, %d)\n" % (BAR - EDGE),
+    "header background")
+t = rep(t,
+    "\tDrawImage(nil, 0, 28, main.screenW, 4)\n",
+    "\tDrawImage(nil, 0, %d, main.screenW, %d)\n" % (BAR - EDGE, EDGE),
+    "header edge")
+t = rep(t,
+    "\tDrawImage(nil, main.screenW/2 - 2, 0, 4, 28)\n",
+    "\tDrawImage(nil, main.screenW/2 - 2, 0, 4, %d)\n" % (BAR - EDGE),
+    "header divider")
+
 # Side-bar tab rows: 20px buttons on a 26px pitch is 6px of air between rows.
 # Same treatment as the top bar -- 24px buttons on a 32px pitch -- so the two
 # regions share one rhythm instead of each having its own.

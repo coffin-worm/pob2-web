@@ -1495,10 +1495,10 @@ function buildMode:OnFrame(inputEvents)
 
 	-- Draw top bar background
 	SetDrawColor(0.2, 0.2, 0.2)
-	DrawImage(nil, 0, 0, main.screenW, 28)
+	DrawImage(nil, 0, 0, main.screenW, 42)
 	SetDrawColor(0.85, 0.85, 0.85)
-	DrawImage(nil, 0, 28, main.screenW, 4)
-	DrawImage(nil, main.screenW/2 - 2, 0, 4, 28)
+	DrawImage(nil, 0, 42, main.screenW, 4)
+	DrawImage(nil, main.screenW/2 - 2, 0, 4, 42)
 
 	-- Draw side bar background
 	SetDrawColor(0.1, 0.1, 0.1)
