@@ -68,17 +68,21 @@ local escapeColors = {
 
 local curColor = { 1, 1, 1, 1 }
 
+-- Returns r, g, b and the escape's LENGTH IN CHARACTERS: `^7` is 2,
+-- `^xRRGGBB` is 8. Getting these off by one eats the first character of
+-- every string, while StripEscapes (used for measurement) stays correct --
+-- so the layout looks right and only the glyphs are wrong.
 local function parseEscape(str)
 	local c = str:match("^%^(%d)")
 	if c then
 		local e = escapeColors[c]
-		return e[1], e[2], e[3], 3
+		return e[1], e[2], e[3], 2
 	end
 	local hex = str:match("^%^[xX](%x%x%x%x%x%x)")
 	if hex then
 		return tonumber(hex:sub(1, 2), 16) / 255,
 		       tonumber(hex:sub(3, 4), 16) / 255,
-		       tonumber(hex:sub(5, 6), 16) / 255, 9
+		       tonumber(hex:sub(5, 6), 16) / 255, 8
 	end
 end
 
@@ -100,15 +104,20 @@ local fontData = {}
 -- face. LOVE rasterises TrueType at any size, so point the same font names
 -- at real system faces. PoB measures its own layout with DrawStringWidth,
 -- so swapping metrics reflows rather than overlapping.
+-- PoB's `VAR` is Liberation Sans (see runtime/SimpleGraphic/Fonts). Arial is
+-- metric-compatible with it, so advance widths match and PoB's own layout
+-- lands where it was designed to. Swapping in a face with different metrics
+-- -- Segoe UI, say -- looks more modern but pushes right-aligned labels off
+-- the left edge of the side panel, because they anchor at a fixed x.
 local WINF = "C:/Windows/Fonts/"
 local fontFiles = {
-	["VAR"] = WINF .. "segoeui.ttf",
-	["VAR BOLD"] = WINF .. "segoeuib.ttf",
+	["VAR"] = WINF .. "arial.ttf",
+	["VAR BOLD"] = WINF .. "arialbd.ttf",
 	["FIXED"] = WINF .. "consola.ttf",
-	["FONTIN"] = WINF .. "segoeui.ttf",
-	["FONTIN ITALIC"] = WINF .. "segoeuii.ttf",
-	["FONTIN SC"] = WINF .. "segoeui.ttf",
-	["FONTIN SC ITALIC"] = WINF .. "segoeuii.ttf",
+	["FONTIN"] = WINF .. "arial.ttf",
+	["FONTIN ITALIC"] = WINF .. "ariali.ttf",
+	["FONTIN SC"] = WINF .. "arial.ttf",
+	["FONTIN SC ITALIC"] = WINF .. "ariali.ttf",
 }
 
 local function getFontData(name)
@@ -132,15 +141,24 @@ local function getFont(name, height)
 	local key = name .. ":" .. height
 	local f = fontCache[key]
 	if not f then
-		local ok, res = false, nil
 		local fd = getFontData(name) or getFontData("VAR")
-		if fd then
-			ok, res = pcall(love.graphics.newFont, fd, height)
+		local function make(px)
+			local ok, res
+			if fd then ok, res = pcall(love.graphics.newFont, fd, px) end
+			if not ok then ok, res = pcall(love.graphics.newFont, px) end
+			return ok and res or nil
 		end
-		if not ok then
-			ok, res = pcall(love.graphics.newFont, height)
+		f = make(height)
+		-- PoB's `height` is the pixel height of the bitmap atlas it used to
+		-- get. LOVE sizes a font by em, so asking for N gives a line height
+		-- noticeably taller than N -- every string comes out oversized, and
+		-- right-aligned labels anchored at a fixed x run off the panel edge.
+		-- Re-ask at a corrected size so getHeight() lands on what PoB expects.
+		if f and f:getHeight() > height then
+			local adj = math.max(6, math.floor(height * height / f:getHeight() + 0.5))
+			f = make(adj) or f
 		end
-		f = ok and res or love.graphics.getFont()
+		f = f or love.graphics.getFont()
 		fontCache[key] = f
 	end
 	return f
@@ -262,6 +280,47 @@ end
 
 ------------------------------------------------------------ image handles
 
+-- The passive tree ships as .dds.zst: Zstandard-compressed DDS holding BC1
+-- and BC7 block-compressed textures. LOVE can upload those (newCompressedData
+-- handles DDS/BC7) but cannot decompress zstd -- love.data only does
+-- zlib/gzip/deflate/lz4. PoB's own runtime ships zstd.dll, and LOVE is
+-- LuaJIT, so reach it through the FFI rather than vendoring a decoder.
+local zstd
+local zstdTried = false
+
+local function zstdDecompress(bytes)
+	if not zstdTried then
+		zstdTried = true
+		local ok = pcall(function()
+			local ffi = require("ffi")
+			ffi.cdef [[
+				size_t ZSTD_decompress(void* dst, size_t dstCapacity,
+				                       const void* src, size_t compressedSize);
+				unsigned long long ZSTD_getFrameContentSize(const void* src, size_t srcSize);
+				unsigned ZSTD_isError(size_t code);
+			]]
+			zstd = { lib = ffi.load(POB_RUNTIME .. "zstd.dll"), ffi = ffi }
+		end)
+		if not ok then
+			zstd = nil
+			log("[shim] zstd.dll unavailable; .dds.zst textures will not load")
+		end
+	end
+	if not zstd then return nil end
+	local ffi = zstd.ffi
+	local srcLen = #bytes
+	local outLen = zstd.lib.ZSTD_getFrameContentSize(bytes, srcLen)
+	outLen = tonumber(outLen)
+	-- ZSTD_CONTENTSIZE_UNKNOWN / _ERROR come back as huge sentinels.
+	if not outLen or outLen <= 0 or outLen > 512 * 1024 * 1024 then
+		return nil
+	end
+	local buf = ffi.new("uint8_t[?]", outLen)
+	local got = zstd.lib.ZSTD_decompress(buf, outLen, bytes, srcLen)
+	if zstd.lib.ZSTD_isError(got) ~= 0 then return nil end
+	return ffi.string(buf, tonumber(got))
+end
+
 local imageHandle = {}
 imageHandle.__index = imageHandle
 
@@ -275,8 +334,25 @@ function imageHandle:Load(fileName, ...)
 	end
 	local data = fh:read("*a")
 	fh:close()
+
+	local name = fileName
+	if name:match("%.zst$") then
+		local raw = zstdDecompress(data)
+		if not raw then
+			log("[shim] zstd decode failed: %s", path)
+			self.valid = false
+			return
+		end
+		data = raw
+		name = name:gsub("%.zst$", "")
+	end
+	local compressed = name:match("%.dds$") ~= nil
+
 	local ok, img = pcall(function()
-		local fd = love.filesystem.newFileData(data, fileName)
+		local fd = love.filesystem.newFileData(data, name)
+		if compressed then
+			return love.graphics.newImage(love.image.newCompressedData(fd))
+		end
 		return love.graphics.newImage(love.image.newImageData(fd))
 	end)
 	if ok then
@@ -351,7 +427,11 @@ end
 function SetBlendMode(mode) blendMode = mode or "ALPHA" end
 function SetClearColor(r, g, b, a) love.graphics.setBackgroundColor(r, g, b, a or 1) end
 
+-- A nil handle is the deliberate solid-rect primitive PoB uses for all its
+-- chrome. A handle that exists but has no texture is a failed load, and must
+-- draw nothing -- otherwise every missing asset paints an opaque white block.
 function DrawImage(handle, left, top, width, height, a1, a2, a3, a4)
+	if handle and not handle.tex then return end
 	local tex = handle and handle.tex
 	if not tex then
 		local c = nextCmd("rect")
@@ -369,6 +449,7 @@ end
 
 function DrawImageQuad(handle, x1, y1, x2, y2, x3, y3, x4, y4,
                        s1, t1, s2, t2, s3, t3, s4, t4)
+	if handle and not handle.tex then return end
 	local tex = handle and handle.tex
 	if not tex or type(s1) ~= "number" then
 		local c = nextCmd("poly")
@@ -478,7 +559,28 @@ function SetWindowTitle(t) love.window.setTitle(t or "Path of Building") end
 function GetCursorPos() return love.mouse.getPosition() end
 function SetCursorPos(x, y) love.mouse.setPosition(x, y) end
 function ShowCursor(s) love.mouse.setVisible(s and true or false) end
-function TakeScreenshot() warnOnce("TakeScreenshot") end
+local SHOT_PATH = "C:/dev/pob-love/shot.png"
+local shotPending = false
+
+function TakeScreenshot()
+	shotPending = true
+end
+
+-- Called at the end of love.draw, where captureScreenshot is legal.
+local function servicePendingShot()
+	if not shotPending then return end
+	shotPending = false
+	love.graphics.captureScreenshot(function(imgData)
+		local ok, err = pcall(function()
+			local png = imgData:encode("png")
+			local f = io.open(SHOT_PATH, "wb")
+			if not f then error("cannot open " .. SHOT_PATH) end
+			f:write(png:getString())
+			f:close()
+		end)
+		log(ok and ("[screenshot] " .. SHOT_PATH) or ("[screenshot FAILED] " .. tostring(err)))
+	end)
+end
 function SetForeground() end
 function SetProfiling() end
 function Restart() warnOnce("Restart") end
@@ -654,6 +756,13 @@ function love.load()
 	love.graphics.setBackgroundColor(0, 0, 0)
 	love.keyboard.setKeyRepeat(true)
 
+	local fmts = {}
+	for name, supported in pairs(love.graphics.getImageFormats()) do
+		if supported then fmts[#fmts + 1] = name end
+	end
+	table.sort(fmts)
+	log("[gpu] image formats: %s", table.concat(fmts, " "))
+
 	local ok, err = pcall(function()
 		local chunk, lerr = loadfile(POB_SRC .. "Launch.lua")
 		if not chunk then error(tostring(lerr)) end
@@ -671,6 +780,10 @@ end
 -- global created at Modules/Main.lua:50, which doesn't exist until PoB has
 -- run a frame of its own.
 local autoBuildDone = os.getenv("POBLOVE_AUTOBUILD") == "0"
+-- Frame counter and a one-shot capture trigger, so a headless run can leave
+-- a PNG behind to look at without anyone touching the window.
+frameNo = 0
+shotAtFrame = nil
 
 -- PoB reports load failures by setting launch.promptMsg and drawing its own
 -- error panel, with nothing on the console. Surface it.
@@ -692,6 +805,7 @@ local function tryAutoBuild()
 		_G.main:SetMode("BUILD", false, "Unnamed build")
 	end)
 	log(ok and "[autobuild OK]" or ("[autobuild FAILED] " .. tostring(err)))
+	shotAtFrame = frameNo + 180 -- ~3s at 60fps, enough for async tree art
 end
 
 function love.draw()
@@ -705,6 +819,12 @@ function love.draw()
 	local ok, err = pcall(runCallback, "OnFrame")
 	tryAutoBuild()
 	flush()
+	frameNo = frameNo + 1
+	if shotAtFrame and frameNo >= shotAtFrame then
+		shotAtFrame = nil
+		TakeScreenshot()
+	end
+	servicePendingShot()
 	if not ok then
 		warnOnce("OnFrame: " .. tostring(err))
 		love.graphics.setScissor()

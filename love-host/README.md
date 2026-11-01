@@ -108,14 +108,24 @@ doesn't show up until you render something dense.
 
 ## The payoff, wired up
 
-`fontFiles` maps PoB's font names onto real system TrueType — Segoe UI for
-`VAR`, Segoe UI Bold for `VAR BOLD`, Consolas for `FIXED` — rasterised at
-whatever pixel height the call site asks for. SimpleGraphic could only
-serve 16 pre-baked sizes per face.
+`fontFiles` maps PoB's font names onto real system TrueType, rasterised at
+whatever pixel height the call site asks for. SimpleGraphic could only serve
+16 pre-baked sizes per face.
 
-This works *because* PoB measures its own layout with `DrawStringWidth`:
-change the metrics and the UI reflows around them instead of overlapping.
-Point `fontFiles` at any TTF to change the whole application's typography.
+Two things this exercise taught, both visible only once you screenshot it:
+
+**Size is not the number PoB passes.** PoB's `height` is the pixel height of
+the bitmap atlas it used to get; LOVE sizes a font by em, so `newFont(16)`
+yields a line height well over 16. Everything comes out oversized, and
+right-aligned labels — which anchor at a fixed x — slide off the left edge of
+the side panel. `getFont` now measures and re-asks at a corrected size.
+
+**Metrics are load-bearing.** The default is Arial, because PoB's `VAR` is
+Liberation Sans and Arial is metric-compatible with it, so PoB's own layout
+lands where it was designed to. A face with different metrics (Segoe UI, say)
+looks more modern and reflows *most* things correctly — PoB measures with
+`DrawStringWidth` — but fixed-anchor right-aligned text still overruns. Point
+`fontFiles` wherever you like; just look at the result before believing it.
 
 Still available and unexploited: shaders (real blur, glow, gradients),
 canvases (render-to-texture, cheap full-screen effects), and `love.math`
@@ -128,7 +138,29 @@ tweening for animation. None of those exist in SimpleGraphic at all.
   is the natural mapping and nothing here blocks it — it's just not done.
   Anything that fetches from the network is therefore inert.
 - **`NewArtHandle`, `LoadArtRectangle`, `LoadArtArcBand`, `Texture.*`.**
-  Used for sprite-sheet slicing; falls back to whole-image draws.
+  Sprite-sheet slicing. Checked: the only callers are under
+  `Export/Scripts/ScriptResources/`, i.e. the GGPK data exporter, not the
+  UI — so these stubs cost the application nothing. Same for the `"ASYNC"`
+  image-load flag, which appears in the API definition and nowhere else.
+
+- **DDS texture arrays — this is what keeps the passive tree from drawing.**
+  Tree art ships as `.dds.zst` under `src/TreeData/`. The zstd layer is
+  solved: `zstd.dll` from PoB's own runtime, reached through LuaJIT's FFI,
+  since `love.data.decompress` does zlib/gzip/deflate/lz4 and not zstd.
+  What remains is the container. Each file is a **DX10-header DDS texture
+  array** — `skills_64_64_BC1` carries `arraySize=175`,
+  `group-background_216_216_BC7` carries 6, `oils_108_108_RGBA` carries 13 —
+  and LOVE's `newCompressedData` parses single 2D textures only, so it
+  rejects all of them with "Unsupported format".
+
+  The formats themselves are fine: this GPU reports `BC7`, `DXT1`, `BC4/5/6h`
+  and `rgba8` as supported, so nothing is missing at the hardware level.
+  Closing it means parsing the DDS header in Lua, walking the per-slice mip
+  chain, and synthesising a single-slice DDS in memory for each one — plus
+  honouring the `stackIdx` argument on `DrawImage`/`DrawImageQuad`, which
+  exists precisely to select an array slice and which this shim currently
+  ignores. That is the next substantial piece of work, and it is the
+  difference between a running shell and a usable Path of Building.
 - **DPI scale override.** `GetVirtualScreenSize` honours the percentage but
   the draw transform doesn't scale with it yet, so changing the setting
   will mis-size the layout.
