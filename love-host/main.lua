@@ -150,48 +150,114 @@ end
 
 -- SimpleGraphic sorts draws by layer; LOVE is immediate-mode. Record every
 -- op with its layer and emission order, then replay sorted at end of frame.
-local cmds = {}
+--
+-- Everything here is pooled. The first version allocated a closure, a colour
+-- table and a fresh Quad or Mesh per draw call; the passive tree issues
+-- thousands per frame, and the resulting GC churn took the process to 1.4 GB
+-- and "Not Responding". Commands are now plain reused tables dispatched by a
+-- type tag, Quads are cached by their texture-coordinate tuple, and Meshes
+-- come from a pool.
+local cmdPool = {}
+local active = {}
 local nCmds = 0
 local curLayer, curSubLayer = 0, 0
-local seq = 0
 local viewportStack = nil
 local blendMode = "ALPHA"
 
-local function push(fn)
+local function nextCmd(kind)
 	nCmds = nCmds + 1
-	seq = seq + 1
-	cmds[nCmds] = {
-		layer = curLayer or 0,
-		sub = curSubLayer or 0,
-		seq = seq,
-		fn = fn,
-		vp = viewportStack,
-		blend = blendMode,
-	}
+	local c = cmdPool[nCmds]
+	if not c then
+		c = {}
+		cmdPool[nCmds] = c
+	end
+	c.kind = kind
+	c.layer = curLayer or 0
+	c.sub = curSubLayer or 0
+	c.seq = nCmds
+	c.vp = viewportStack
+	c.blend = blendMode
+	c.r, c.g, c.b, c.a = curColor[1], curColor[2], curColor[3], curColor[4]
+	active[nCmds] = c
+	return c
+end
+
+local quadCache = {}
+
+local function cachedQuad(tex, l, t, r, b)
+	local w, h = tex:getWidth(), tex:getHeight()
+	local key = w .. ":" .. h .. ":" .. l .. ":" .. t .. ":" .. r .. ":" .. b
+	local q = quadCache[key]
+	if not q then
+		q = love.graphics.newQuad(l * w, t * h, (r - l) * w, (b - t) * h, w, h)
+		quadCache[key] = q
+	end
+	return q
+end
+
+local meshPool = {}
+
+local function pooledMesh(i)
+	local m = meshPool[i]
+	if not m then
+		m = love.graphics.newMesh(4, "fan", "stream")
+		meshPool[i] = m
+	end
+	return m
+end
+
+local drawText -- forward declaration; defined with the font helpers below
+
+local function cmpCmd(a, b)
+	if a.layer ~= b.layer then return a.layer < b.layer end
+	if a.sub ~= b.sub then return a.sub < b.sub end
+	return a.seq < b.seq
 end
 
 local function flush()
-	table.sort(cmds, function(a, b)
-		if a.layer ~= b.layer then return a.layer < b.layer end
-		if a.sub ~= b.sub then return a.sub < b.sub end
-		return a.seq < b.seq
-	end)
+	for i = nCmds + 1, #active do
+		active[i] = nil
+	end
+	table.sort(active, cmpCmd)
+	local lastBlend = nil
 	for i = 1, nCmds do
-		local c = cmds[i]
+		local c = active[i]
 		if c.vp then
 			love.graphics.setScissor(c.vp[1], c.vp[2], c.vp[3], c.vp[4])
 		else
 			love.graphics.setScissor()
 		end
-		love.graphics.setBlendMode(c.blend == "ADDITIVE" and "add" or "alpha",
-			c.blend == "PREALPHA" and "premultiplied" or "alphamultiply")
-		c.fn()
-		cmds[i] = nil
+		if c.blend ~= lastBlend then
+			love.graphics.setBlendMode(c.blend == "ADDITIVE" and "add" or "alpha",
+				c.blend == "PREALPHA" and "premultiplied" or "alphamultiply")
+			lastBlend = c.blend
+		end
+		love.graphics.setColor(c.r, c.g, c.b, c.a)
+		local k = c.kind
+		if k == "rect" then
+			love.graphics.rectangle("fill", c.x, c.y, c.w, c.h)
+		elseif k == "img" then
+			local q = cachedQuad(c.tex, c.tcL, c.tcT, c.tcR, c.tcB)
+			local _, _, qw, qh = q:getViewport()
+			love.graphics.draw(c.tex, q, c.x, c.y, 0,
+				qw ~= 0 and c.w / qw or 0, qh ~= 0 and c.h / qh or 0)
+		elseif k == "poly" then
+			love.graphics.polygon("fill", c.x1, c.y1, c.x2, c.y2, c.x3, c.y3, c.x4, c.y4)
+		elseif k == "mesh" then
+			local m = pooledMesh(i)
+			m:setVertex(1, c.x1, c.y1, c.s1, c.t1, 1, 1, 1, 1)
+			m:setVertex(2, c.x2, c.y2, c.s2, c.t2, 1, 1, 1, 1)
+			m:setVertex(3, c.x3, c.y3, c.s3, c.t3, 1, 1, 1, 1)
+			m:setVertex(4, c.x4, c.y4, c.s4, c.t4, 1, 1, 1, 1)
+			m:setTexture(c.tex)
+			love.graphics.draw(m)
+		elseif k == "text" then
+			drawText(c)
+		end
 	end
 	love.graphics.setScissor()
 	love.graphics.setBlendMode("alpha")
 	nCmds = 0
-	seq = 0
 end
 
 ------------------------------------------------------------ image handles
@@ -285,100 +351,92 @@ end
 function SetBlendMode(mode) blendMode = mode or "ALPHA" end
 function SetClearColor(r, g, b, a) love.graphics.setBackgroundColor(r, g, b, a or 1) end
 
-local function quadFor(tex, l, t, r, b)
-	local w, h = tex:getWidth(), tex:getHeight()
-	return love.graphics.newQuad(l * w, t * h, (r - l) * w, (b - t) * h, w, h)
-end
-
 function DrawImage(handle, left, top, width, height, a1, a2, a3, a4)
-	local col = { curColor[1], curColor[2], curColor[3], curColor[4] }
 	local tex = handle and handle.tex
 	if not tex then
-		push(function()
-			love.graphics.setColor(col)
-			love.graphics.rectangle("fill", left, top, width, height)
-		end)
+		local c = nextCmd("rect")
+		c.x, c.y, c.w, c.h = left, top, width, height
 		return
 	end
-	local tcL, tcT, tcR, tcB = a1, a2, a3, a4
-	if type(tcL) ~= "number" or type(tcB) ~= "number" then
-		tcL, tcT, tcR, tcB = 0, 0, 1, 1
+	local c = nextCmd("img")
+	c.tex, c.x, c.y, c.w, c.h = tex, left, top, width, height
+	if type(a1) == "number" and type(a4) == "number" then
+		c.tcL, c.tcT, c.tcR, c.tcB = a1, a2, a3, a4
+	else
+		c.tcL, c.tcT, c.tcR, c.tcB = 0, 0, 1, 1
 	end
-	push(function()
-		love.graphics.setColor(col)
-		local q = quadFor(tex, tcL, tcT, tcR, tcB)
-		local _, _, qw, qh = q:getViewport()
-		love.graphics.draw(tex, q, left, top, 0,
-			qw ~= 0 and width / qw or 0, qh ~= 0 and height / qh or 0)
-	end)
 end
 
 function DrawImageQuad(handle, x1, y1, x2, y2, x3, y3, x4, y4,
                        s1, t1, s2, t2, s3, t3, s4, t4)
-	local col = { curColor[1], curColor[2], curColor[3], curColor[4] }
 	local tex = handle and handle.tex
 	if not tex or type(s1) ~= "number" then
-		push(function()
-			love.graphics.setColor(col)
-			love.graphics.polygon("fill", x1, y1, x2, y2, x3, y3, x4, y4)
-		end)
+		local c = nextCmd("poly")
+		c.x1, c.y1, c.x2, c.y2 = x1, y1, x2, y2
+		c.x3, c.y3, c.x4, c.y4 = x3, y3, x4, y4
 		return
 	end
-	push(function()
-		love.graphics.setColor(col)
-		local mesh = love.graphics.newMesh({
-			{ x1, y1, s1, t1, 1, 1, 1, 1 },
-			{ x2, y2, s2, t2, 1, 1, 1, 1 },
-			{ x3, y3, s3, t3, 1, 1, 1, 1 },
-			{ x4, y4, s4, t4, 1, 1, 1, 1 },
-		}, "fan", "stream")
-		mesh:setTexture(tex)
-		love.graphics.draw(mesh)
-	end)
+	local c = nextCmd("mesh")
+	c.tex = tex
+	c.x1, c.y1, c.x2, c.y2 = x1, y1, x2, y2
+	c.x3, c.y3, c.x4, c.y4 = x3, y3, x4, y4
+	c.s1, c.t1, c.s2, c.t2 = s1, t1, s2, t2
+	c.s3, c.t3, c.s4, c.t4 = s3, t3, s4, t4
 end
 
--- Renders PoB's inline ^7 / ^xRRGGBB colour escapes as coloured runs.
-local function drawSegments(x, y, font, text, col)
-	local segs, r, g, b = {}, col[1], col[2], col[3]
-	local i, buf = 1, {}
+-- Renders PoB's inline ^7 / ^xRRGGBB colour escapes as coloured runs. Only
+-- splits when an escape is actually present; most strings have none, and the
+-- fast path keeps text off the allocation treadmill too.
+drawText = function(c)
+	local text, font = c.text, c.font
+	if not text:find("^", 1, true) then
+		love.graphics.print(text, font, c.x, c.y)
+		return
+	end
+	local r, g, b, a = c.r, c.g, c.b, c.a
+	local cx, i, start = c.x, 1, 1
 	while i <= #text do
-		local esc = text:sub(i)
-		local er, eg, eb, len = parseEscape(esc)
-		if er then
-			if #buf > 0 then
-				segs[#segs + 1] = { table.concat(buf), r, g, b }
-				buf = {}
+		if text:byte(i) == 94 then -- '^'
+			local er, eg, eb, len = parseEscape(text:sub(i))
+			if er then
+				if i > start then
+					local seg = text:sub(start, i - 1)
+					love.graphics.setColor(r, g, b, a)
+					love.graphics.print(seg, font, cx, c.y)
+					cx = cx + font:getWidth(seg)
+				end
+				r, g, b = er, eg, eb
+				i = i + len
+				start = i
+			else
+				i = i + 1
 			end
-			r, g, b = er, eg, eb
-			i = i + len
 		else
-			buf[#buf + 1] = text:sub(i, i)
 			i = i + 1
 		end
 	end
-	if #buf > 0 then segs[#segs + 1] = { table.concat(buf), r, g, b } end
-	local cx = x
-	for _, s in ipairs(segs) do
-		love.graphics.setColor(s[2], s[3], s[4], col[4])
-		love.graphics.print(s[1], font, cx, y)
-		cx = cx + font:getWidth(s[1])
+	if start <= #text then
+		local seg = text:sub(start)
+		love.graphics.setColor(r, g, b, a)
+		love.graphics.print(seg, font, cx, c.y)
 	end
-	return cx - x
 end
 
 function DrawString(left, top, align, height, fontName, text)
 	if text == nil then return end
 	text = tostring(text)
-	local col = { curColor[1], curColor[2], curColor[3], curColor[4] }
 	local font = getFont(fontName, height)
-	local plain = StripEscapes(text)
-	local w = font:getWidth(plain)
 	local x = left
-	if align == "CENTER" then x = left - w / 2
-	elseif align == "RIGHT" then x = left - w
-	elseif align == "CENTER_X" then x = left - w / 2
-	elseif align == "RIGHT_X" then x = left - w end
-	push(function() drawSegments(x, top, font, text, col) end)
+	if align and align ~= "LEFT" then
+		local w = font:getWidth(StripEscapes(text))
+		if align == "CENTER" or align == "CENTER_X" then
+			x = left - w / 2
+		elseif align == "RIGHT" or align == "RIGHT_X" then
+			x = left - w
+		end
+	end
+	local c = nextCmd("text")
+	c.text, c.font, c.x, c.y = text, font, x, top
 end
 
 function DrawStringWidth(height, fontName, text)
@@ -643,7 +701,7 @@ function love.draw()
 			20, 20, love.graphics.getWidth() - 40)
 		return
 	end
-	curLayer, curSubLayer, seq = 0, 0, 0
+	curLayer, curSubLayer = 0, 0
 	local ok, err = pcall(runCallback, "OnFrame")
 	tryAutoBuild()
 	flush()

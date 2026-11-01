@@ -144,7 +144,7 @@ local function buildSkills(skillSet)
 				-- inactive skill sets don't have a display skill list so we need to make one
 				activeGem = activeSkillGems(group)[activeIdx]
 			end
-			if not activeGem then continue end
+			if not activeGem then goto continue end
 			local activeId = (activeGem.gemData and activeGem.gemData.gameId)
 			if activeId then
 				local entry = { id = activeId }
@@ -173,6 +173,7 @@ local function buildSkills(skillSet)
 				ConPrintf("[PoE2Export] skipping active gem with no id in group '%s'", tostring(group.label or "?"))
 			end
 		end
+		::continue::
 	end
 	return out
 end

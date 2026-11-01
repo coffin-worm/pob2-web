@@ -42,16 +42,30 @@ uses two of them:
 |---|---|---|
 | Compound assignment | `count += 1`, `url ..= "/x"` | `count = count + (1)` |
 | Safe navigation | `gem.gemData?.gameId` | `(gem.gemData and gem.gemData.gameId)` |
+| Bare `continue` | `if not gem then continue end` | `goto continue` + `::continue::` |
+| Lambda shorthand | `\|_, key\| -> t[key]` | `function(_, key) return t[key] end` |
 
-Neither is valid Lua 5.1, so stock LuaJIT refuses to parse the file at all.
-PoB died first at `Modules/Main.lua:340` with `'=' expected near '+'`, then
-at `Modules/ModParser.lua:6164` with `unexpected symbol near '?'` — both
-before any rendering question could be asked.
+None are valid Lua 5.1, so stock LuaJIT refuses to parse the file at all.
+Each surfaced only once the previous was fixed, one parse error at a time:
+`Modules/Main.lua:340` (`'=' expected near '+'`), then `ModParser.lua:6164`
+(`unexpected symbol near '?'`), then `Tooltip.lua:237`, then
+`BuildExportPoE2.lua:147` (`'=' expected near 'end'`), then
+`CalcOffence.lua:5191` (`unexpected symbol near '|'`) — all before any
+rendering question could be asked.
 
-23 sites across 13 files. `restyle-tooling/apply_lua51_compat.py` rewrites
+That serial discovery is the honest shape of this work: you cannot
+enumerate the dialect up front, because the parser stops at the first
+offence. Budget for more.
+
+29 sites across 15 files. `restyle-tooling/apply_lua51_compat.py` rewrites
 each to the explicit form, which the patched runtime accepts just as
 happily — so the native build is unaffected and the fork now parses under
-any Lua 5.1 host. It's idempotent, so re-run it after an upstream pull.
+any Lua 5.1 host. It's idempotent; re-run it after an upstream pull.
+
+The `continue` pass locates its sites by scanning rather than by line
+number, because inserting a `::continue::` label shifts every line below
+it. A hardcoded list drifts on the second run — which is exactly how an
+earlier version of the script produced `goto goto continue`.
 
 The rewrite parenthesises every right-hand side, because
 `y += cond and 24 or 0` naively becomes `y = y + cond and 24 or 0`, which
@@ -78,6 +92,19 @@ calls. LÖVE can't chdir, so `io.open`, `io.lines`, `os.remove` and
 **Colour escapes.** PoB embeds `^7` and `^xRRGGBB` inside strings, so
 `DrawString` splits text into coloured runs and advances the pen per
 segment, rather than printing it as one string.
+
+**Allocation.** The first working version allocated a closure, a colour
+table and a fresh `Quad` or `Mesh` on every draw call. That is fine for a
+menu and fatal for the passive tree, which issues thousands per frame: the
+process climbed to 1.4 GB and went *Not Responding* while still rendering
+correctly. Commands are now pooled plain tables dispatched by a type tag,
+`Quad`s are cached by their texture-coordinate tuple, `Mesh`es come from a
+pool, blend state only changes when it actually differs, and `DrawString`
+takes a fast path when a string contains no escape at all.
+
+Worth internalising: the correctness work was the easy half. An
+immediate-mode shim over a retained-mode API invites exactly this, and it
+doesn't show up until you render something dense.
 
 ## The payoff, wired up
 

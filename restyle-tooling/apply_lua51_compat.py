@@ -115,6 +115,12 @@ EDITS = [
     ("Modules/ModParser.lua",
      "local skillType = SkillType?.[skillTypeMap[skillTypeMaybe]]",
      "local skillType = (SkillType and SkillType[skillTypeMap[skillTypeMaybe]])"),
+
+    # Fourth extension: Rust-style lambda shorthand, `|args| -> expr`.
+    # One site in the whole tree.
+    ("Modules/CalcOffence.lua",
+     "{ __index = |_, key| -> skillCfg.skillCond[key] or cfg.skillCond[key] }",
+     "{ __index = function(_, key) return skillCfg.skillCond[key] or cfg.skillCond[key] end }"),
 ]
 
 by_file = {}
@@ -158,6 +164,83 @@ for root, dirs, files in os.walk(ROOT):
                 left.append("%s:%d: %s" % (os.path.relpath(p, ROOT), i, stripped))
                 break
 
+# ---------------------------------------------------------------------------
+# Third extension: bare `continue`. Lua 5.1 has no such keyword, and 5.2's
+# goto is the standard spelling -- which this codebase already uses in 50-odd
+# other places, so the rewrite matches local convention rather than inventing
+# one. Each site becomes `goto continue`, with a `::continue::` label added at
+# the end of the enclosing loop body.
+#
+# A label at the very end of a block sits outside the scope of locals declared
+# in that block, so jumping forward past `local activeId` to it is legal.
+CONTINUE_FILES = ["Classes/Item.lua", "Modules/BuildExportPoE2.lua"]
+
+
+def indent_of(line):
+    return line[:len(line) - len(line.lstrip())]
+
+
+def is_bare_continue(line):
+    s = line.strip()
+    if "goto continue" in s or "::continue::" in s:
+        return False
+    return s == "continue" or s == "continue end" or s.endswith(" continue end")
+
+
+def rewrite_one(lines):
+    """Rewrite the first bare `continue`. Returns False when none are left.
+
+    Sites are located by scanning, not by line number: inserting a label
+    shifts every line below it, so a hardcoded list silently drifts on the
+    second run -- which is how an earlier version produced `goto goto
+    continue`.
+    """
+    i = next((k for k, l in enumerate(lines) if is_bare_continue(l)), None)
+    if i is None:
+        return False
+    own = indent_of(lines[i])
+    loop = None
+    for j in range(i - 1, -1, -1):
+        s, ind = lines[j].strip(), indent_of(lines[j])
+        if (s.startswith("for ") or s.startswith("while ")) and len(ind) < len(own):
+            loop = j
+            break
+    if loop is None:
+        raise RuntimeError("no enclosing loop above line %d" % (i + 1))
+    loop_ind = indent_of(lines[loop])
+    end = next((j for j in range(loop + 1, len(lines))
+                if lines[j].strip() == "end" and indent_of(lines[j]) == loop_ind), None)
+    if end is None:
+        raise RuntimeError("no loop end below line %d" % (loop + 1))
+    lines[i] = lines[i].replace("continue", "goto continue")
+    if lines[end - 1].strip() != "::continue::":
+        lines.insert(end, loop_ind + "\t::continue::")
+    return True
+
+
+for rel in CONTINUE_FILES:
+    p = os.path.join(ROOT, rel.replace("/", os.sep))
+    lines = read(p).split("\n")
+    try:
+        n = 0
+        while rewrite_one(lines):
+            n += 1
+            if n > 50:
+                raise RuntimeError("runaway rewrite")
+        write(p, "\n".join(lines))
+    except RuntimeError as e:
+        fails.append("%s: %s" % (rel, e))
+
+bare = []
+for root, dirs, files in os.walk(ROOT):
+    for fn in files:
+        if not fn.endswith(".lua") or fn.startswith("_"):
+            continue
+        p = os.path.join(root, fn)
+        for i, line in enumerate(read(p).split("\n"), 1):
+            if is_bare_continue(line):
+                bare.append("%s:%d: %s" % (os.path.relpath(p, ROOT), i, line.strip()))
+
 nav = []
 for root, dirs, files in os.walk(ROOT):
     for fn in files:
@@ -176,4 +259,7 @@ for l in left:
     print("  ! " + l)
 print("remaining safe-navigation sites: %d" % len(nav))
 for l in nav:
+    print("  ! " + l)
+print("remaining bare-continue sites: %d" % len(bare))
+for l in bare:
     print("  ! " + l)
