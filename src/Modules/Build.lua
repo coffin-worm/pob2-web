@@ -106,21 +106,21 @@ function buildMode:Init(dbFileName, buildName, buildXML, convertBuild, importLin
 	local miscTooltip = new("Tooltip"):Tooltip()
 
 	-- Controls: top bar, left side
-	self.anchorTopBarLeft = new("Control"):Control(nil, { 4, 4, 0, 20 })
-	self.controls.back = new("ButtonControl"):ButtonControl({ "LEFT", self.anchorTopBarLeft, "RIGHT" }, { 0, 0, 60, 20 }, "<< Back", function()
+	self.anchorTopBarLeft = new("Control"):Control(nil, { 4, 11, 0, 24 })
+	self.controls.back = new("ButtonControl"):ButtonControl({ "LEFT", self.anchorTopBarLeft, "RIGHT" }, { 0, 0, 60,24 }, "<< Back", function()
 		if self.unsaved then
 			self:OpenSavePopup("LIST")
 		else
 			self:CloseBuild()
 		end
 	end)
-	self.controls.save = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.back, "RIGHT" }, { 8, 0, 50, 20 }, "Save", function()
+	self.controls.save = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.back, "RIGHT" }, { 8, 0, 50,24 }, "Save", function()
 		self:SaveDBFile()
 	end)
 	self.controls.save.enabled = function()
 		return not self.dbFileName or self.unsaved
 	end
-	self.controls.saveAs = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.save, "RIGHT" }, { 8, 0, 70, 20 }, "Save As", function()
+	self.controls.saveAs = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.save, "RIGHT" }, { 8, 0, 70,24 }, "Save As", function()
 		self:OpenSaveAsPopup()
 	end)
 	self.controls.saveAs.enabled = function()
@@ -131,7 +131,7 @@ function buildMode:Init(dbFileName, buildName, buildXML, convertBuild, importLin
 	local function buildNameConditional()
 		return self.anchorTopBarRight:GetPos() < 900
 	end
-	self.controls.buildName = new("Control"):Control({ "LEFT", self.controls.saveAs, "RIGHT" }, { 4, 36, 0, 20 })
+	self.controls.buildName = new("Control"):Control({ "LEFT", self.controls.saveAs, "RIGHT" }, { 4, 36, 0, 24 })
 	self.controls.buildName.width = function(control)
 		local limit = buildNameConditional() and 203 or
 			(self.anchorTopBarRight:GetPos() - 98 - 58
@@ -173,12 +173,12 @@ function buildMode:Init(dbFileName, buildName, buildXML, convertBuild, importLin
 	end
 
 	-- Controls: top bar, right side
-	self.anchorTopBarRight = new("Control"):Control(nil, { function() return main.screenW / 2 + self.controls.characterLevel.width + 10 end, 4, 0, 20 })
+	self.anchorTopBarRight = new("Control"):Control(nil, { function() return main.screenW / 2 + self.controls.characterLevel.width + 10 end, 11, 0, 24 })
 
 	local function getPointDisplayX() -- I had it hardcoded to -323 before switching to the control sizing
 		return - (23 + self.controls.pointDisplay:GetSize() + self.controls.levelScalingButton:GetSize() + self.controls.characterLevel:GetSize())
 	end
-	self.controls.pointDisplay = new("Control"):Control({ "LEFT", self.anchorTopBarRight, "RIGHT" }, { function() return getPointDisplayX() end, 0, 0, 20 })
+	self.controls.pointDisplay = new("Control"):Control({ "LEFT", self.anchorTopBarRight, "RIGHT" }, { function() return getPointDisplayX() end, 0, 0, 24 })
 	-- Segmented stat readout. Each segment is { label, value, over }.
 	local STAT_PAD, STAT_GAP = 9, 8
 	local STAT_LABEL, STAT_VALUE = 11, 14
@@ -238,14 +238,14 @@ function buildMode:Init(dbFileName, buildName, buildXML, convertBuild, importLin
 			SetDrawLayer(nil, 0)
 		end
 	end
-	self.controls.levelScalingButton = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.pointDisplay, "RIGHT" }, { 8, 0, 50, 20 }, self.characterLevelAutoMode and "Auto" or "Manual", function()
+	self.controls.levelScalingButton = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.pointDisplay, "RIGHT" }, { 8, 0, 50,24 }, self.characterLevelAutoMode and "Auto" or "Manual", function()
 		self.characterLevelAutoMode = not self.characterLevelAutoMode
 		self.controls.levelScalingButton.label = self.characterLevelAutoMode and "Auto" or "Manual"
 		self.configTab:BuildModList()
 		self.modFlag = true
 		self.buildFlag = true
 	end)
-	self.controls.characterLevel = new("EditControl"):EditControl({ "LEFT", self.controls.levelScalingButton, "RIGHT" }, { 10, 0, 106, 20 }, "", "Level", "%D", 3, function(buf)
+	self.controls.characterLevel = new("EditControl"):EditControl({ "LEFT", self.controls.levelScalingButton, "RIGHT" }, { 10, 0, 106,24 }, "", "Level", "%D", 3, function(buf)
 		self.characterLevel = m_min(m_max(tonumber(buf) or 1, 1), 100)
 		self.configTab:BuildModList()
 		self.modFlag = true
@@ -282,7 +282,7 @@ function buildMode:Init(dbFileName, buildName, buildXML, convertBuild, importLin
 			end
 		end
 	end
-	self.controls.classDrop = new("DropDownControl"):DropDownControl({ "LEFT", self.controls.characterLevel, "RIGHT" }, { 8, 0, 90, 20 }, nil, function(index, value)
+	self.controls.classDrop = new("DropDownControl"):DropDownControl({ "LEFT", self.controls.characterLevel, "RIGHT" }, { 8, 0, 90,24 }, nil, function(index, value)
 		if value.classId ~= self.spec.curClassId then
 			if self.spec:CountAllocNodes() == 0 or self.spec:IsClassConnected(value.classId) then
 				self.spec:SelectClass(value.classId)
@@ -309,13 +309,13 @@ function buildMode:Init(dbFileName, buildName, buildXML, convertBuild, importLin
 			end
 		end
 	end)
-	self.controls.ascendDrop = new("DropDownControl"):DropDownControl({ "LEFT", self.controls.classDrop, "RIGHT" }, { 8, 0, 120, 20 }, nil, function(index, value)
+	self.controls.ascendDrop = new("DropDownControl"):DropDownControl({ "LEFT", self.controls.classDrop, "RIGHT" }, { 8, 0, 120,24 }, nil, function(index, value)
 		self.spec:SelectAscendClass(value.ascendClassId)
 		self.spec:AddUndoState()
 		self.spec:SetWindowTitleWithBuildClass()
 		self.buildFlag = true
 	end)
-	self.controls.buildLoadouts = new("DropDownControl"):DropDownControl({ "LEFT", self.controls.ascendDrop, "RIGHT" }, { 8, 0, 190, 20 }, {}, function(index, value)
+	self.controls.buildLoadouts = new("DropDownControl"):DropDownControl({ "LEFT", self.controls.ascendDrop, "RIGHT" }, { 8, 0, 190,24 }, {}, function(index, value)
 		if value == "^7^7Loadouts:" or value == "^7^7-----" then
 			self.controls.buildLoadouts:SetSel(1)
 			return
@@ -358,49 +358,49 @@ function buildMode:Init(dbFileName, buildName, buildXML, convertBuild, importLin
 	-- Controls: Side bar
 	self.anchorSideBar = new("Control"):Control(nil, { 4, 60, 0, 0 })
 	self.anchorSideBar.y = function()
-		return buildNameConditional() and 60 or 36
+		return buildNameConditional() and 72 or 50
 	end
 
-	self.controls.modeImport = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.anchorSideBar, "TOPLEFT" }, { 0, 0, 134, 20 }, "Import/Export Build", function()
+	self.controls.modeImport = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.anchorSideBar, "TOPLEFT" }, { 0, 0, 134,24 }, "Import/Export Build", function()
 		self.viewMode = "IMPORT"
 		self.importTab:RefreshAuthStatus()
 	end)
 	self.controls.modeImport.locked = function() return self.viewMode == "IMPORT" end
-	self.controls.modeNotes = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.modeImport, "RIGHT" }, { 4, 0, 58, 20 }, "Notes", function()
+	self.controls.modeNotes = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.modeImport, "RIGHT" }, { 4, 0, 58,24 }, "Notes", function()
 		self.viewMode = "NOTES"
 	end)
 	self.controls.modeNotes.locked = function() return self.viewMode == "NOTES" end
-	self.controls.modeConfig = new("ButtonControl"):ButtonControl({ "TOPRIGHT", self.anchorSideBar, "TOPLEFT" }, { 300, 0, 100, 20 }, "Configuration", function()
+	self.controls.modeConfig = new("ButtonControl"):ButtonControl({ "TOPRIGHT", self.anchorSideBar, "TOPLEFT" }, { 300, 0, 100,24 }, "Configuration", function()
 		self.viewMode = "CONFIG"
 	end)
 	self.controls.modeConfig.locked = function() return self.viewMode == "CONFIG" end
-	self.controls.modeTree = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.anchorSideBar, "TOPLEFT" }, { 0, 26, 72, 20 }, "Tree", function()
+	self.controls.modeTree = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.anchorSideBar, "TOPLEFT" }, { 0, 32, 72,24 }, "Tree", function()
 		self.viewMode = "TREE"
 	end)
 	self.controls.modeTree.locked = function() return self.viewMode == "TREE" end
-	self.controls.modeSkills = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.modeTree, "RIGHT" }, { 4, 0, 72, 20 }, "Skills", function()
+	self.controls.modeSkills = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.modeTree, "RIGHT" }, { 4, 0, 72,24 }, "Skills", function()
 		self.viewMode = "SKILLS"
 	end)
 	self.controls.modeSkills.locked = function() return self.viewMode == "SKILLS" end
-	self.controls.modeItems = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.modeSkills, "RIGHT" }, { 4, 0, 72, 20 }, "Items", function()
+	self.controls.modeItems = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.modeSkills, "RIGHT" }, { 4, 0, 72,24 }, "Items", function()
 		self.viewMode = "ITEMS"
 	end)
 	self.controls.modeItems.locked = function() return self.viewMode == "ITEMS" end
-	self.controls.modeCalcs = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.modeItems, "RIGHT" }, { 4, 0, 72, 20 }, "Calcs", function()
+	self.controls.modeCalcs = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.modeItems, "RIGHT" }, { 4, 0, 72,24 }, "Calcs", function()
 		self.viewMode = "CALCS"
 	end)
 	self.controls.modeCalcs.locked = function() return self.viewMode == "CALCS" end
-	self.controls.modeParty = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.anchorSideBar, "TOPLEFT" }, { 0, 52, 72, 20 }, "Party", function()
+	self.controls.modeParty = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.anchorSideBar, "TOPLEFT" }, { 0, 64, 72,24 }, "Party", function()
 		self.viewMode = "PARTY"
 	end)
 	self.controls.modeParty.locked = function() return self.viewMode == "PARTY" end
-	self.controls.modeCompare = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.modeParty, "RIGHT" }, { 4, 0, 72, 20 }, "Compare", function()
+	self.controls.modeCompare = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.modeParty, "RIGHT" }, { 4, 0, 72,24 }, "Compare", function()
 		self.viewMode = "COMPARE"
 	end)
 	self.controls.modeCompare.locked = function() return self.viewMode == "COMPARE" end
 	-- Skills
-	self.controls.mainSkillLabel = new("LabelControl"):LabelControl({ "TOPLEFT", self.anchorSideBar, "TOPLEFT" }, { 0, 80, 300, 16 }, "^7Main Skill:")
-	self.controls.mainSocketGroup = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.mainSkillLabel, "BOTTOMLEFT" }, { 0, 2, 300, 18 }, nil, function(index, value)
+	self.controls.mainSkillLabel = new("LabelControl"):LabelControl({ "TOPLEFT", self.anchorSideBar, "TOPLEFT" }, { 0, 96, 300, 16 }, "^7Main Skill:")
+	self.controls.mainSocketGroup = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.mainSkillLabel, "BOTTOMLEFT" }, { 0, 4, 300, 22 }, nil, function(index, value)
 		self.mainSocketGroup = index
 		self.modFlag = true
 		self.buildFlag = true
@@ -412,7 +412,7 @@ function buildMode:Init(dbFileName, buildName, buildXML, convertBuild, importLin
 			self.skillsTab:AddSocketGroupTooltip(tooltip, socketGroup)
 		end
 	end
-	self.controls.mainSkill = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.mainSocketGroup, "BOTTOMLEFT" }, { 0, 2, 300, 18 }, nil, function(index, value)
+	self.controls.mainSkill = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.mainSocketGroup, "BOTTOMLEFT" }, { 0, 4, 300, 22 }, nil, function(index, value)
 		local mainSocketGroup = self.skillsTab.socketGroupList[self.mainSocketGroup]
 		mainSocketGroup.mainActiveSkill = index
 		self.modFlag = true
@@ -1458,9 +1458,9 @@ function buildMode:OnFrame(inputEvents)
 	local sideBarWidth = 312
 	local tabViewPort = {
 		x = sideBarWidth,
-		y = 32,
+		y = 46,
 		width = main.screenW - sideBarWidth,
-		height = main.screenH - 32
+		height = main.screenH - 46
 	}
 	if self.viewMode == "IMPORT" then
 		self.importTab:Draw(tabViewPort, inputEvents)
@@ -1502,9 +1502,9 @@ function buildMode:OnFrame(inputEvents)
 
 	-- Draw side bar background
 	SetDrawColor(0.1, 0.1, 0.1)
-	DrawImage(nil, 0, 32, sideBarWidth - 4, main.screenH - 32)
+	DrawImage(nil, 0, 46, sideBarWidth - 4, main.screenH - 46)
 	SetDrawColor(0.85, 0.85, 0.85)
-	DrawImage(nil, sideBarWidth - 4, 32, 4, main.screenH - 32)
+	DrawImage(nil, sideBarWidth - 4, 46, 4, main.screenH - 46)
 
 
 	local hovered = self.controls.statBox and self.controls.statBox.hoveredLine

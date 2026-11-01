@@ -44,10 +44,17 @@ function ButtonClass:Draw(viewPort, noTooltip)
 	local enabled = self:IsEnabled()
 	local mOver = self:IsMouseOver()
 	local locked = self:GetProperty("locked")
+	-- nil = plain action button, false = unselected group member,
+	-- true = the selected one. See restyle-tooling/apply_hierarchy.py.
+	local inGroup = locked ~= nil
 	if not enabled then
 		SetUIColor("borderDisable")
-	elseif mOver or locked then
+	elseif locked then
+		SetUIColor("borderActive")
+	elseif mOver then
 		SetUIColor("borderHover")
+	elseif inGroup then
+		SetUIColor("borderQuiet")
 	else
 		SetUIColor("border")
 	end
@@ -56,8 +63,12 @@ function ButtonClass:Draw(viewPort, noTooltip)
 		SetUIColor("fillDisable")
 	elseif self.clicked and mOver then
 		SetUIColor("fillPressed")
-	elseif mOver or locked then
+	elseif locked then
+		SetUIColor("fillSelected")
+	elseif mOver then
 		SetUIColor("fillHover")
+	elseif inGroup then
+		SetUIColor("fillQuiet")
 	else
 		SetUIColor("fill")
 	end
@@ -74,10 +85,14 @@ function ButtonClass:Draw(viewPort, noTooltip)
 			DrawRoundRect(x + 1, y + 1, width - 2, height - 2)
 		end
 	end
-	if enabled then
-		SetDrawColor(1, 1, 1)
+	if not enabled then
+		SetUIColor("textDisable")
+	elseif locked or mOver then
+		SetUIColor("textStrong")
+	elseif inGroup then
+		SetUIColor("textMuted")
 	else
-		SetDrawColor(0.33, 0.33, 0.33)
+		SetUIColor("text")
 	end
 	local label = self:GetProperty("label")
 	if label == "+" then
@@ -90,7 +105,8 @@ function ButtonClass:Draw(viewPort, noTooltip)
 		DrawImageQuad(nil, x + width * 0.7, y + height * 0.2, x + width * 0.8, y + height * 0.3, x + width * 0.3, y + height * 0.8, x + width * 0.2, y + height * 0.7)
 	else
 		local overSize = self.overSizeText or 0
-		DrawString(x + width / 2, y + 2 - overSize, "CENTER_X", height - 4 + overSize * 2, "VAR", label)
+		local labelSize = ControlFontSize(height) + overSize * 2
+		DrawString(x + width / 2, y + (height - labelSize) / 2, "CENTER_X", labelSize, "VAR", label)
 	end
 	if mOver then
 		if not noTooltip or self.forceTooltip then

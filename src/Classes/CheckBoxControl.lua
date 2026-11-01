@@ -98,9 +98,11 @@ function CheckBoxClass:Draw(viewPort, noTooltip)
 	local label = self:GetProperty("label")
 	if label then
 		if self.labelRight then
-			DrawString(x + size + 5, y + 2, "LEFT", size - 4, "VAR", label)
+			local labelSize = ControlFontSize(size)
+			DrawString(x + size + 5, y + (size - labelSize) / 2, "LEFT", labelSize, "VAR", label)
 		else
-			DrawString(x - 5, y + 2, "RIGHT_X", size - 4, "VAR", label)
+			local labelSize = ControlFontSize(size)
+			DrawString(x - 5, y + (size - labelSize) / 2, "RIGHT_X", labelSize, "VAR", label)
 		end
 	end
 	if mOver and not noTooltip then

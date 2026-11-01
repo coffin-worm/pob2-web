@@ -1152,6 +1152,7 @@ end
 -- exporter loads Common but not Global, and it draws controls too.
 uiStyle = {
 	radius         = 4,
+	fontSize       = 16,
 	shadowSpread   = 14,
 	shadowAlpha    = 0.55,
 	shadowOffsetY  = 3,
@@ -1166,6 +1167,15 @@ uiStyle = {
 	fillSunken     = { 0.06, 0.06, 0.07 },
 	fillField      = { 0.07, 0.07, 0.08 },
 	fillFieldFocus = { 0.11, 0.11, 0.13 },
+	-- Selection group: the chosen member lifts, its siblings recede.
+	fillSelected   = { 0.24, 0.24, 0.28 },
+	fillQuiet      = { 0.055, 0.055, 0.065 },
+	borderQuiet    = { 0.17, 0.17, 0.19 },
+	-- Label colours, so text carries hierarchy alongside the surface.
+	text           = { 0.92, 0.92, 0.94 },
+	textStrong     = { 1.00, 1.00, 1.00 },
+	textMuted      = { 0.60, 0.60, 0.65 },
+	textDisable    = { 0.35, 0.35, 0.37 },
 }
 
 function SetUIColor(key)
@@ -1254,4 +1264,17 @@ do
 		DrawImage(img, sx + sw - s, sy + s, s, sh - s * 2, 0.5, 0.5 - e, 1, 0.5 + e)
 		DrawImage(nil, sx + s, sy + s, sw - s * 2, sh - s * 2)
 	end
+end
+
+-- Control label size, capped. PoB derives text size from control height
+-- (ButtonControl used height - 4, and friends), so growing a control grows
+-- its text and the layout just zooms. Clamping to uiStyle.fontSize is what
+-- turns extra height into whitespace instead of magnification.
+function ControlFontSize(height, inset)
+	local size = height - (inset or 4)
+	local cap = uiStyle.fontSize or 16
+	if size > cap then
+		return cap
+	end
+	return size
 end

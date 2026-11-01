@@ -331,16 +331,18 @@ function DropDownClass:Draw(viewPort, noTooltip)
 			selLabel = selItem
 		end
 	end
+	local selSize = ControlFontSize(height)
+	local selTop = (lineHeight - selSize) / 2
 	SetViewport(x + 2, y + 2, width - height, lineHeight)
-	DrawString(0, 0, "LEFT", lineHeight, "VAR", selLabel or "")
+	DrawString(0, selTop, "LEFT", selSize, "VAR", selLabel or "")
 	if selStrikethrough then
-		drawStrikethrough(selLabel, 0, lineHeight)
+		drawStrikethrough(selLabel, selTop, selSize)
 		local textColor = enabled and 1 or 0.66
 		SetDrawColor(textColor, textColor, textColor)
 	end
 	if selDetail ~= nil then
-		local dx = DrawStringWidth(lineHeight, "VAR", selDetail)
-		DrawString(width - dx - 22, 0, "LEFT", lineHeight, "VAR", selDetail)
+		local dx = DrawStringWidth(selSize, "VAR", selDetail)
+		DrawString(width - dx - 22, selTop, "LEFT", selSize, "VAR", selDetail)
 	end
 	SetViewport()
 
