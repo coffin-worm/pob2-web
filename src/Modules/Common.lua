@@ -1152,6 +1152,9 @@ end
 -- exporter loads Common but not Global, and it draws controls too.
 uiStyle = {
 	radius         = 4,
+	shadowSpread   = 14,
+	shadowAlpha    = 0.55,
+	shadowOffsetY  = 3,
 	border         = { 0.28, 0.28, 0.31 },
 	borderHover    = { 0.46, 0.46, 0.51 },
 	borderActive   = { 0.60, 0.60, 0.66 },
@@ -1204,5 +1207,51 @@ do
 		DrawImage(nil, x + r, y, width - r * 2, height)
 		DrawImage(nil, x, y + r, r, height - r * 2)
 		DrawImage(nil, x + width - r, y + r, r, height - r * 2)
+	end
+end
+
+do
+	local shadowImage
+	local shadowState = 0 -- 0 = untried, 1 = loaded, 2 = unavailable
+
+	local function getShadowImage()
+		if shadowState == 0 then
+			shadowImage = NewImageHandle()
+			shadowImage:Load("Assets/roundshadow.png", "CLAMP")
+			shadowState = shadowImage:IsValid() and 1 or 2
+		end
+		if shadowState == 1 then
+			return shadowImage
+		end
+	end
+
+	-- Soft drop shadow behind a floating surface. Call immediately BEFORE
+	-- drawing the surface itself; the surface then covers the opaque middle.
+	-- Leaves the draw colour set to the shadow colour, so callers must set
+	-- their own colour afterwards.
+	function DrawShadow(x, y, width, height)
+		local s = uiStyle.shadowSpread or 0
+		local img = s >= 1 and getShadowImage()
+		if not img then
+			return
+		end
+		local sx = x - s
+		local sy = y - s + (uiStyle.shadowOffsetY or 0)
+		local sw = width + s * 2
+		local sh = height + s * 2
+		if sw < s * 2 or sh < s * 2 then
+			return
+		end
+		local e = 1 / 64 -- half-width of the stretched middle strip, in tex coords
+		SetDrawColor(0, 0, 0, uiStyle.shadowAlpha or 0.5)
+		DrawImage(img, sx, sy, s, s, 0, 0, 0.5, 0.5)
+		DrawImage(img, sx + sw - s, sy, s, s, 0.5, 0, 1, 0.5)
+		DrawImage(img, sx, sy + sh - s, s, s, 0, 0.5, 0.5, 1)
+		DrawImage(img, sx + sw - s, sy + sh - s, s, s, 0.5, 0.5, 1, 1)
+		DrawImage(img, sx + s, sy, sw - s * 2, s, 0.5 - e, 0, 0.5 + e, 0.5)
+		DrawImage(img, sx + s, sy + sh - s, sw - s * 2, s, 0.5 - e, 0.5, 0.5 + e, 1)
+		DrawImage(img, sx, sy + s, s, sh - s * 2, 0, 0.5 - e, 0.5, 0.5 + e)
+		DrawImage(img, sx + sw - s, sy + s, s, sh - s * 2, 0.5, 0.5 - e, 1, 0.5 + e)
+		DrawImage(nil, sx + s, sy + s, sw - s * 2, sh - s * 2)
 	end
 end

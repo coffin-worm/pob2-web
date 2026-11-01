@@ -268,6 +268,8 @@ function DropDownClass:Draw(viewPort, noTooltip)
 	DrawRoundRect(x, y, width, height)
 	if self.dropped then
 		SetDrawLayer(nil, 5)
+		DrawShadow(x, dropY, self.droppedWidth, dropExtra)
+		SetUIColor("borderHover")
 		DrawRoundRect(x, dropY, self.droppedWidth, dropExtra)
 		SetDrawLayer(nil, 0)
 	end
