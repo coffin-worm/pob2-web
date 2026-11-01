@@ -145,15 +145,15 @@ local function buildSkills(skillSet)
 				activeGem = activeSkillGems(group)[activeIdx]
 			end
 			if not activeGem then continue end
-			local activeId = activeGem.gemData?.gameId
+			local activeId = (activeGem.gemData and activeGem.gemData.gameId)
 			if activeId then
 				local entry = { id = activeId }
 				local activeText = gemAdditionalText(activeGem, false)
 				if activeText then entry.additional_text = activeText end
 				local supports = {}
 				for _, gem in ipairs(group.gemList) do
-					if gem ~= activeGem and gem.enabled ~= false and gem.gemData?.grantedEffect.support then
-						local supId = gem.gemData?.gameId
+					if gem ~= activeGem and gem.enabled ~= false and (gem.gemData and gem.gemData.grantedEffect.support) then
+						local supId = (gem.gemData and gem.gemData.gameId)
 						if supId then
 							local supText = gemAdditionalText(gem, true)
 							if supText then
@@ -272,9 +272,9 @@ function M.GetLoadouts(build)
 			t_insert(out, {
 				name = plainName,
 				fileName = displayName,
-				specIndex = loadout?.specId,
-				skillSetId = loadout?.skillSetId,
-				itemSetId = loadout?.itemSetId,
+				specIndex = (loadout and loadout.specId),
+				skillSetId = (loadout and loadout.skillSetId),
+				itemSetId = (loadout and loadout.itemSetId),
 			})
 		end
 	end

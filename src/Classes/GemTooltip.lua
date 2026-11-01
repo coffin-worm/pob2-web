@@ -102,7 +102,7 @@ local function addGrantedEffectInfo(tooltip, build, gemInstance, grantedEffect, 
 		end
 	end
 	-- gem quality by type
-	local isSupport = displayInstance.gemData?.gemType == "Support"
+	local isSupport = (displayInstance.gemData and displayInstance.gemData.gemType) == "Support"
 	if not levelRange and addReq and displayInstance.quality > 0 and not isSupport then
 		local totalGlobalQuality = 0
 		if displayInstance.gemPropertyInfo then

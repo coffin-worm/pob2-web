@@ -4,6 +4,8 @@ function love.conf(t)
 	t.window.width = 1480
 	t.window.height = 900
 	t.window.resizable = true
+	-- Open on the second monitor (1-based). Set to 1 for the primary.
+	t.window.display = 2
 	t.window.vsync = 1
 	t.console = false
 	t.modules.physics = false

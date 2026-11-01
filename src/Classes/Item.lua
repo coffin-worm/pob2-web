@@ -1419,7 +1419,7 @@ function ItemClass:ParseRaw(raw, rarity, highQuality)
 					local strippedModLine = getRuneLineParts(modLine.line)
 					if (disabledRuneLines[strippedModLine] or 0) > 0 then
 						modLine.disabled = true
-						disabledRuneLines[strippedModLine] -= 1
+						disabledRuneLines[strippedModLine] = disabledRuneLines[strippedModLine] - (1)
 					end
 				end
 			end

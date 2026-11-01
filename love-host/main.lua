@@ -580,12 +580,16 @@ function love.load()
 		package.path,
 	}, ";")
 
+	-- PoB's runtime ships its own C modules (lua-utf8 etc). They're LuaJIT
+	-- 5.1 ABI, same as LOVE's, so they can load directly.
+	package.cpath = POB_RUNTIME .. "?.dll;" .. package.cpath
+
 	local realRequire = require
 	_G.require = function(n)
 		if n == "lcurl.safe" or n == "lcurl" then return nil end
 		local ok, res = pcall(realRequire, n)
 		if ok then return res end
-		warnOnce("require(" .. n .. ")")
+		warnOnce("require(" .. n .. ") -> " .. tostring(res))
 		return nil
 	end
 
@@ -610,7 +614,20 @@ end
 -- run a frame of its own.
 local autoBuildDone = os.getenv("POBLOVE_AUTOBUILD") == "0"
 
+-- PoB reports load failures by setting launch.promptMsg and drawing its own
+-- error panel, with nothing on the console. Surface it.
+local promptLogged = false
+local function logPrompt()
+	if promptLogged or not mainObject then return end
+	local msg = mainObject.promptMsg
+	if msg and msg ~= "" then
+		promptLogged = true
+		log("[pob prompt] %s", tostring(msg))
+	end
+end
+
 local function tryAutoBuild()
+	logPrompt()
 	if autoBuildDone or not _G.main or not _G.main.SetMode then return end
 	autoBuildDone = true
 	local ok, err = pcall(function()

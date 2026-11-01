@@ -6161,7 +6161,7 @@ local specialModList = {
 			fissure = "CreatesFissure",
 			orb = "Orb",
 		}
-		local skillType = SkillType?.[skillTypeMap[skillTypeMaybe]]
+		local skillType = (SkillType and SkillType[skillTypeMap[skillTypeMaybe]])
 		if skillType then
 			return { mod("AdditionalCooldownUses", "BASE", num, { type = "SkillType", skillType = skillType }) }
 		else return nil end

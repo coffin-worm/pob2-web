@@ -1,7 +1,8 @@
 # PoB on LÖVE — host swap prototype
 
-Runs Path of Building 2's **unmodified Lua** inside [LÖVE 11.5](https://love2d.org)
-by reimplementing SimpleGraphic's host API on `love.graphics`.
+Runs Path of Building 2's application code inside [LÖVE 11.5](https://love2d.org)
+by reimplementing SimpleGraphic's host API on `love.graphics`. No tab, no
+control class and no calc code is touched — see the one caveat below.
 
 The bet: PoB's UI ceiling isn't its own code, it's the renderer underneath.
 SimpleGraphic is a textured-quad blitter with bitmap font atlases — no
@@ -30,6 +31,36 @@ fifteen of them are graphics:
 | Resources | `NewImageHandle` + its `:Load/:IsValid/:ImageSize` methods |
 
 The rest is files, clipboard, time, console and subscripts.
+
+## The caveat: PoB's LuaJIT is patched
+
+The one thing that genuinely blocked the swap wasn't graphics at all.
+SimpleGraphic bundles a **LuaJIT with syntax extensions**, and PoB's source
+uses two of them:
+
+| Extension | Example | Lua 5.1 equivalent |
+|---|---|---|
+| Compound assignment | `count += 1`, `url ..= "/x"` | `count = count + (1)` |
+| Safe navigation | `gem.gemData?.gameId` | `(gem.gemData and gem.gemData.gameId)` |
+
+Neither is valid Lua 5.1, so stock LuaJIT refuses to parse the file at all.
+PoB died first at `Modules/Main.lua:340` with `'=' expected near '+'`, then
+at `Modules/ModParser.lua:6164` with `unexpected symbol near '?'` — both
+before any rendering question could be asked.
+
+23 sites across 13 files. `restyle-tooling/apply_lua51_compat.py` rewrites
+each to the explicit form, which the patched runtime accepts just as
+happily — so the native build is unaffected and the fork now parses under
+any Lua 5.1 host. It's idempotent, so re-run it after an upstream pull.
+
+The rewrite parenthesises every right-hand side, because
+`y += cond and 24 or 0` naively becomes `y = y + cond and 24 or 0`, which
+parses as `(y + cond) and 24 or 0`. Two real sites in `ItemsTab.lua` hit
+exactly that trap.
+
+Worth knowing independently of this prototype: it means PoB's source cannot
+be run by a stock Lua, which quietly constrains tooling, embedding and any
+future host.
 
 ## The three things that needed real work
 

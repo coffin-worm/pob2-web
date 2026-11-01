@@ -57,7 +57,7 @@ local function addRuneforgingImplicits(item, bases)
 		local craftImplicits = { }
 		local implicitIndex = 0
 		for line in (baseData.implicit or ""):gmatch("[^\n]+") do
-			implicitIndex += 1
+			implicitIndex = implicitIndex + (1)
 			craftImplicits[line] = true
 			-- Add only new base implicits; keep existing unique overrides intact.
 			if not originalBaseImplicits[line] and not existingItemImplicits[line] then
