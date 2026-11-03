@@ -1,4 +1,4 @@
-import type { BridgeSnapshot, StatsSnapshot } from './types';
+import type { BridgeSnapshot, CalcsSnapshot, StatsSnapshot } from './types';
 
 /**
  * The transport to the Lua engine.
@@ -44,6 +44,9 @@ export const bridge = {
 
   /** The stat sidebar: an order of magnitude more data, so its own route. */
   stats: () => request<StatsSnapshot>('/stats'),
+
+  /** The Calcs tab. Fetched when outputRevision moves, not on a timer. */
+  calcs: () => request<CalcsSnapshot>('/calcs'),
 
   /** Ask the engine to run one of api.lua's commands. */
   act: (action: string, value?: unknown) =>

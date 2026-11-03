@@ -155,6 +155,17 @@ routes["GET /stats"] = function()
 	return 200, stats
 end
 
+--- The Calcs tab. Much the most expensive route: it runs CheckFlag over a
+--- thousand rows and formats every one that survives, so the UI fetches it
+--- on demand rather than on the 1s poll the other two use.
+routes["GET /calcs"] = function()
+	local started = os.clock()
+	local calcs = api.calcs(currentBuild())
+	calcs.engineError = engineError()
+	calcs.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, calcs
+end
+
 routes["POST /action"] = function(payload)
 	if type(payload) ~= "table" or not payload.action then
 		return 400, { error = "expected { action = ..., value = ... }" }
@@ -243,7 +254,7 @@ function love.load()
 	end
 	server = srv
 	log("listening on http://127.0.0.1:%d", server.port)
-	log("  GET /health   GET /state   GET /stats   GET /paths")
+	log("  GET /health   GET /state   GET /stats   GET /calcs   GET /paths")
 	log("  POST /action  POST /build/new  POST /build/open")
 end
 

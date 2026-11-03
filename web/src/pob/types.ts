@@ -38,6 +38,11 @@ export interface NamedOption {
 
 export interface HeaderState {
   buildName: string;
+  /**
+   * buildMode.outputRevision — bumped on every recalculation. The Calcs view
+   * refetches when this moves instead of polling.
+   */
+  outputRevision?: number;
   /** Mirrors buildMode.unsaved: any modFlag across the tabs. */
   unsaved: boolean;
   /** Null until the build has been saved once; gates "Save" vs "Save As". */
@@ -147,6 +152,62 @@ export interface StatLine {
   size: StatSize;
   note?: boolean;
 }
+
+/**
+ * One row of a Calcs section.
+ *
+ * Unlike the sidebar's label/value pairs, these are matrix rows: a damage
+ * section has a column per damage type, so `values` is 1..6 long and a row
+ * whose label is empty is the column header for the rows beneath it.
+ */
+export interface CalcRow {
+  label: string;
+  /**
+   * One entry per column slot, including empty ones. PoB's rows carry empty
+   * placeholders so a row with no "All Types" figure still lines up under
+   * the header, so these must be rendered by position, not compacted.
+   */
+  values: string[];
+  /** Present only when at least one cell carries a meaningful colour. */
+  tones?: StatTone[];
+}
+
+export interface CalcSubSection {
+  label: string;
+  /** A summary shown beside the sub-section's title, e.g. "241.4 DPS". */
+  extra?: string | null;
+  rows: CalcRow[];
+}
+
+export interface CalcSection {
+  id: string;
+  /** PoB's own column grouping: 1 offence and wide, 2 and 3 defensive. */
+  group: number;
+  /** How many of PoB's columns it asks for. Damage matrices want three. */
+  width: number;
+  tone: StatTone;
+  subSections: CalcSubSection[];
+}
+
+/** The Calcs tab's own skill selection, separate from the sidebar's. */
+export interface CalcSelector {
+  socketGroupId: number;
+  socketGroups: NamedOption[];
+  skillId: number;
+  skills: NamedOption[];
+}
+
+export type CalcsSnapshot =
+  | { ready: false; engineError?: string | null }
+  | {
+      ready: true;
+      sections: CalcSection[];
+      rowCount: number;
+      /** Milliseconds the engine spent building this payload. */
+      buildMs: number;
+      selector: CalcSelector | null;
+      engineError?: string | null;
+    };
 
 export type StatsSnapshot =
   | { ready: false; engineError?: string | null }

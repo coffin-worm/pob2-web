@@ -1,8 +1,8 @@
 # PoB web UI — header prototype
 
 A prototype of Path of Building's UI as a web app, intended to run in
-WebView2 against the existing Lua calc engine. Two screens so far: the top
-bar and the stat sidebar, both driven by the real engine.
+WebView2 against the existing Lua calc engine. Three screens so far: the top
+bar, the stat sidebar and the Calcs tab, all driven by the real engine.
 
 ```bash
 npm install
@@ -123,6 +123,56 @@ quiet enough to scan, and a palette of its own. PoB's colour codes are
 classified into names (`fire`, `warning`, `positive`, `source`) by the
 bridge, so the meaning survives while the 2010-era hex does not.
 
+## The Calcs tab, and a prediction that was wrong
+
+This file used to say the Calcs tab "was the original argument for this
+stack" and would need virtualisation. It measured out otherwise, and the
+measurement is the only reason to know:
+
+| | |
+|---|---|
+| Rows defined in `CalcSections.lua` | 1081 |
+| Rows the selected skill actually shows | **210** |
+| Payload | 13 kB |
+| Engine time to build it | **2–3 ms** |
+
+210 rows is not a virtualisation problem, and neither is the 1081-row
+ceiling. TanStack Virtual would have been a dependency bought on a guess.
+It is still the right answer if a screen ever needs it; this one does not,
+and saying so is worth more than having been right.
+
+What the Calcs tab *does* have that the sidebar did not is **shape**. Most
+sections are label/value pairs, but the damage sections are matrices —
+damage types across, modifiers down — and PoB asks for three of its columns
+for those and one for everything else. That is carried through: wide
+sections get a grid of their own above the board, narrow ones flow in a
+multi-column layout.
+
+One bug of mine, and a good illustration of why reading PoB's structures
+beats interpreting them. Its rows carry empty column placeholders:
+
+```lua
+{ label = "Added Min",
+    { },                        -- no "All Types" figure for this row
+    { format = "{0:mod:1,2}",   -- Physical
+```
+
+`UpdateSize` gives every slot an x offset whether or not it has a format,
+so the empties hold the column open. I was skipping them, which shifted
+every value one column left and silently misaligned the matrix against its
+own header — five values under six headings, each one plausible. Empty
+slots are now kept as empty strings.
+
+The Calcs tab also has **its own skill selector**, which is not the
+sidebar's. PoB keeps `input.skill_number` separate from
+`build.mainSocketGroup` deliberately: the sidebar always reports Effective
+DPS for the main skill, while this tab details whichever skill you point it
+at. With Entangle as the main skill and Bonestorm selected here, the
+sidebar reads 189.5 DPS and the Calcs tab reads 241.4, and both are right.
+
+Because it is the expensive route, it is not polled. `buildMode.outputRevision`
+moves on every recalculation, and the app refetches on that.
+
 ## The bridge
 
 I had this wrong. The earlier note here said there is no standalone LuaJIT
@@ -201,8 +251,8 @@ merely empty.
 - **Two screens of perhaps a dozen.** The passive tree, items, skills and
   the calculation breakdown are all unbuilt, and the tree is the one that
   will not resemble either of these — a canvas with 1500 nodes, not a list.
-- **Nothing is virtualised yet.** 39 stat rows do not need it. The Calcs
-  tab, which was the original argument for this stack, will.
+- **Nothing is virtualised, and on this evidence nothing needs to be.** See
+  below — this was the opposite of what this file predicted.
 - **Dialogs are not drawn.** The UI reports that the engine is waiting on
   one and can dismiss it, but cannot answer it — so a class change that
   would reset an allocated tree currently cannot be confirmed from here.

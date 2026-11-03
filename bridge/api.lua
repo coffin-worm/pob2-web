@@ -141,6 +141,10 @@ function api.snapshot(build)
 		ready = true,
 		buildName = build.buildName or "",
 		unsaved = build.unsaved and true or false,
+		-- Incremented by buildMode:OnFrame on every recalculation. The Calcs
+		-- tab is expensive enough that it is fetched when this moves rather
+		-- than on a timer.
+		outputRevision = build.outputRevision or 0,
 		dbFileName = build.dbFileName or nil,
 
 		characterLevel = build.characterLevel or 1,
@@ -219,6 +223,154 @@ function api.stats(build)
 		socketGroups = socketGroups,
 		skillId = skillId,
 		skills = skills,
+	}
+end
+
+------------------------------------------------------------ the calcs tab
+
+--- The Calcs tab: 30 sections, 1081 defined rows, of which the active skill
+--- decides a few hundred.
+---
+--- Visibility and formatting are both PoB's. A row is shown when
+--- CalcsTab:CheckFlag passes it against the active skill's flags, and its
+--- value comes from formatCalcStr (Modules/CalcFormat.lua) resolving a
+--- template like "{2:output:Speed}" against the actor.
+---
+--- UpdateSize is skipped deliberately. It is the layout pass -- positions,
+--- heights, collapse state -- and the only thing here that depends on it is
+--- the CheckFlag call it makes first, which this does directly. Collapse
+--- state is skipped for the same reason: which sections are folded is this
+--- UI's business, and hiding the rows here would stop it ever being able to
+--- show them.
+---
+--- UpdateSize also calls a section's updateFunc, and exactly one section has
+--- one: SkillSelect, which is hand-built in CalcsTab.lua rather than coming
+--- from CalcSections.lua, carries controls instead of values, and uses its
+--- updateFunc to refresh those controls' lists. So it is run, and that
+--- section is surfaced as a selector rather than as rows of data.
+---
+--- Note that this selector is the Calcs tab's own (`input.skill_number`) and
+--- is deliberately not the sidebar's main socket group. PoB keeps them
+--- apart: the sidebar always reports Effective DPS for the main skill, while
+--- this tab details whichever skill you point it at.
+function api.calcs(build)
+	local tab = build and build.calcsTab
+	local env = tab and tab.calcsEnv
+	if not tab or not env or not tab.sectionList then
+		return { ready = false }
+	end
+
+	local actor = (tab.input and tab.input.showMinion and env.minion) or env.player
+	if not actor or not actor.mainSkill then
+		return { ready = false }
+	end
+
+	-- CompareTab wraps every one of these in pcall, which is reason enough.
+	local function format(template, colData)
+		if not template then return nil end
+		local ok, text = pcall(formatCalcStr, template, actor, colData)
+		return ok and strip(text) or nil
+	end
+
+	local sections, rowCount = asArray({}), 0
+	local selector = nil
+
+	for _, section in ipairs(tab.sectionList) do
+		if section.id == "SkillSelect" then
+			-- Its updateFunc is what repopulates the dropdown lists; without
+			-- it they hold whatever was there when the tab was built.
+			if section.updateFunc then
+				pcall(section.updateFunc, section)
+			end
+			local controls = section.controls or {}
+			local groups, groupId = dropdownOptions(controls.mainSocketGroup)
+			local skills, skillId = dropdownOptions(controls.mainSkill)
+			selector = {
+				socketGroupId = groupId,
+				socketGroups = groups,
+				skillId = skillId,
+				skills = skills,
+			}
+		elseif not section.isOverlay and tab:CheckFlag(section, actor) then
+			local subSections, sectionRows = asArray({}), 0
+
+			for _, subSec in ipairs(section.subSection or {}) do
+				local rows = asArray({})
+
+				for _, rowData in ipairs(subSec.data or {}) do
+					if tab:CheckFlag(rowData, actor) then
+						-- A column slot is kept even when it has nothing in
+						-- it. PoB's rows carry empty placeholders -- "Added
+						-- Min" starts with a bare {} because it has no "All
+						-- Types" figure -- and UpdateSize gives every slot an
+						-- x offset whether or not it has a format. Dropping
+						-- the empties instead of emptying them shifts the
+						-- whole row left and silently misaligns the matrix
+						-- against its own header.
+						local values, tones = asArray({}), asArray({})
+						local hasValue, hasTone = false, false
+						for _, colData in ipairs(rowData) do
+							local text, tone = "", "normal"
+							if colData.format and tab:CheckFlag(colData, actor) then
+								text = format(colData.format, colData) or ""
+								-- The damage-type colours live on the header
+								-- row's format strings.
+								tone = toneOf(colData.format)
+							end
+							values[#values + 1] = text
+							tones[#tones + 1] = tone
+							hasValue = hasValue or text ~= ""
+							hasTone = hasTone or tone ~= "normal"
+						end
+						-- A row whose every column formats to nothing is a
+						-- blank line in PoB. Dropping it is this bridge's one
+						-- presentation call, and it is not a game rule: the
+						-- row was already decided to apply, it just has
+						-- nothing to say.
+						if hasValue then
+							rows[#rows + 1] = {
+								label = strip(rowData.label),
+								values = values,
+								-- Only when it says something, to keep the
+								-- common row a plain list of strings.
+								tones = hasTone and tones or nil,
+							}
+							sectionRows = sectionRows + 1
+						end
+					end
+				end
+
+				if #rows > 0 then
+					subSections[#subSections + 1] = {
+						label = strip(subSec.label),
+						extra = format(subSec.data.extra),
+						rows = rows,
+					}
+				end
+			end
+
+			if sectionRows > 0 then
+				sections[#sections + 1] = {
+					id = section.id,
+					-- 1 is offence and the wide sections, 2 defence; PoB lays
+					-- the two groups out in separate column runs.
+					group = section.group or 1,
+					-- How many of PoB's 230px columns the section asks for.
+					-- The damage matrices want three; most want one.
+					width = section.widthCols or 1,
+					tone = toneOf(section.colour),
+					subSections = subSections,
+				}
+				rowCount = rowCount + sectionRows
+			end
+		end
+	end
+
+	return {
+		ready = true,
+		sections = sections,
+		rowCount = rowCount,
+		selector = selector,
 	}
 end
 
@@ -332,6 +484,41 @@ end
 
 commands.setSocketGroup = selectInDropdown("mainSocketGroup")
 commands.setMainSkill = selectInDropdown("mainSkill")
+
+--- The Calcs tab drives its own skill selection through input.skill_number,
+--- separately from the sidebar's main socket group. Its controls hang off
+--- the hand-built SkillSelect section rather than off buildMode.
+local function calcsSelectControl(build, name)
+	for _, section in ipairs(build.calcsTab and build.calcsTab.sectionList or {}) do
+		if section.id == "SkillSelect" then
+			-- These lists are only repopulated by the section's updateFunc,
+			-- which normally runs during layout. Without running it here, a
+			-- command issued before anything has fetched /calcs indexes an
+			-- empty list and fails.
+			if section.updateFunc then
+				pcall(section.updateFunc, section)
+			end
+			return section.controls and section.controls[name]
+		end
+	end
+	return nil
+end
+
+local function selectInCalcs(name)
+	return function(build, value)
+		local index = tonumber(value)
+		local drop = calcsSelectControl(build, name)
+		if not drop or not drop.list then return nil, "no calcs " .. name .. " control" end
+		local entry = drop.list[index]
+		if not entry then return nil, "no option " .. tostring(value) .. " in calcs " .. name end
+		drop.selIndex = index
+		if drop.selFunc then drop.selFunc(index, entry) end
+		return true
+	end
+end
+
+commands.setCalcsSocketGroup = selectInCalcs("mainSocketGroup")
+commands.setCalcsSkill = selectInCalcs("mainSkill")
 
 function commands.dismissPopup(build)
 	if main and main.popups and main.popups[1] and main.ClosePopup then
