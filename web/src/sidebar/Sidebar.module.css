@@ -1,0 +1,148 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  width: 320px;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-raised);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.section {
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.section:last-child {
+  border-bottom: none;
+}
+
+.sectionTitle {
+  margin: 0 0 var(--space-4);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* The selects are declared at a fixed width in the header, where they sit in
+ * a row. Here they are a column and should fill it. */
+.fields > * {
+  width: 100%;
+}
+
+/* ---------------------------------------------------------- the stat list */
+
+.stats {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+
+/* A two-column row with the value hard right. No leader dots and no rules:
+ * at this density the alignment alone carries the pairing, and 39 ruled rows
+ * would be a cage. */
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 22px;
+  padding: 1px 0;
+}
+
+.row:hover {
+  background: var(--bg-hover);
+  /* Bleed into the section padding so the hover reads as a full-width row. */
+  margin: 0 calc(var(--space-5) * -1);
+  padding-left: var(--space-5);
+  padding-right: var(--space-5);
+}
+
+.label {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+/* Tabular figures so a recalculating number does not shuffle the column. */
+.value {
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--num-tabular);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* The engine's own emphasis, carried through rather than reinterpreted. */
+.row[data-size='header'] {
+  margin-top: var(--space-5);
+  margin-bottom: var(--space-2);
+}
+
+.row[data-size='header'] .label {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.row[data-size='small'] .label,
+.row[data-size='small'] .value {
+  font-size: var(--text-xs);
+}
+
+/* A note belongs to the stat above it: indented, quiet, full width. */
+.note {
+  padding: 0 0 var(--space-2) var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+/* Tone applies to the value, not the label. The label column stays one
+ * colour so it can be scanned; the number is what the colour is about. */
+.value[data-tone='dim'] { color: var(--text-muted); }
+.value[data-tone='custom'] { color: var(--stat-custom); }
+.value[data-tone='source'] { color: var(--stat-source); }
+.value[data-tone='warning'] { color: var(--warning); }
+.value[data-tone='positive'] { color: var(--success); }
+.value[data-tone='negative'],
+.value[data-tone='unsupported'] { color: var(--danger); }
+.value[data-tone='fire'] { color: var(--dmg-fire); }
+.value[data-tone='cold'] { color: var(--dmg-cold); }
+.value[data-tone='lightning'] { color: var(--dmg-lightning); }
+.value[data-tone='chaos'] { color: var(--dmg-chaos); }
+
+/* ------------------------------------------------------------- the states */
+
+.empty {
+  padding: var(--space-5);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.warnings {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-sunken);
+  border-left: 2px solid var(--warning);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  list-style: none;
+}
+
+.warnings li + li {
+  margin-top: var(--space-2);
+}

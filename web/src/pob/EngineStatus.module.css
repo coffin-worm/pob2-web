@@ -27,12 +27,20 @@
   background: var(--success);
 }
 
-.dot[data-state='offline'] {
+.dot[data-state='offline'],
+.dot[data-state='error'] {
   background: var(--danger);
 }
 
 .dot[data-state='connecting'] {
   background: var(--warning);
+}
+
+.detail code {
+  display: inline-block;
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .title {

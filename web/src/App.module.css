@@ -5,6 +5,14 @@
   background: var(--bg-base);
 }
 
+/* min-height: 0 so the sidebar scrolls inside the column rather than
+ * stretching the page; a flex child's default min-height is its content. */
+.columns {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
 .body {
   flex: 1;
   padding: var(--space-7);

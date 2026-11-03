@@ -15,22 +15,29 @@ export function EngineStatus() {
   const ready = useBridgeStore((s) => s.ready);
   const error = useBridgeStore((s) => s.error);
   const popup = useBridgeStore((s) => s.popup);
+  const engineError = useBridgeStore((s) => s.engineError);
   const newBuild = useBridgeStore((s) => s.newBuild);
   const dismiss = useBridgeStore((s) => s.dismissPopup);
+  const dismissError = useBridgeStore((s) => s.dismissError);
 
   const title =
     connection === 'offline'
       ? 'Engine not reachable'
       : connection === 'connecting'
         ? 'Connecting to the engine…'
-        : ready
-          ? 'Live — the header above is the real build'
-          : 'Engine running, no build open';
+        : engineError
+          ? 'The build stopped calculating'
+          : ready
+            ? 'Live — this is the real build'
+            : 'Engine running, no build open';
 
   return (
     <div className={styles.panel}>
       <div className={styles.row}>
-        <span className={styles.dot} data-state={connection} />
+        <span
+          className={styles.dot}
+          data-state={connection === 'live' && engineError ? 'error' : connection}
+        />
         <span className={styles.title}>{title}</span>
       </div>
 
@@ -42,7 +49,24 @@ export function EngineStatus() {
         </p>
       )}
 
-      {connection === 'live' && !ready && (
+      {/* PoB records errors from its own frame handler instead of crashing,
+          so without this a build whose calculations have died is
+          indistinguishable from an empty one: a blank sidebar, no reason. */}
+      {engineError && (
+        <>
+          <p className={styles.detail}>
+            <code>{engineError}</code>
+          </p>
+          <div className={styles.actions}>
+            <Button onClick={() => void dismissError()}>Dismiss</Button>
+            <Button variant="primary" onClick={() => void newBuild()}>
+              New build
+            </Button>
+          </div>
+        </>
+      )}
+
+      {connection === 'live' && !ready && !engineError && (
         <div className={styles.actions}>
           <Button variant="primary" onClick={() => void newBuild()}>
             New build

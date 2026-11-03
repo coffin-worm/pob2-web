@@ -105,5 +105,58 @@ export type Connection = 'connecting' | 'live' | 'offline';
  * fields, so a caller cannot read a level that is not there.
  */
 export type BridgeSnapshot =
-  | { ready: false }
-  | (HeaderState & { ready: true; popup?: EnginePopup | null });
+  | { ready: false; engineError?: string | null }
+  | (HeaderState & {
+      ready: true;
+      popup?: EnginePopup | null;
+      engineError?: string | null;
+    });
+
+/**
+ * PoB's colours, classified.
+ *
+ * The engine marks stat lines with inline colour codes, and some of them
+ * carry meaning — a damage type, a warning, an over-cap value. The bridge
+ * turns those into names so this UI can give them its own palette instead of
+ * inheriting PoB's.
+ */
+export type StatTone =
+  | 'normal'
+  | 'dim'
+  | 'custom'
+  | 'warning'
+  | 'positive'
+  | 'negative'
+  | 'unsupported'
+  | 'source'
+  | 'offence'
+  | 'defence'
+  | 'fire'
+  | 'cold'
+  | 'lightning'
+  | 'chaos';
+
+/** PoB sets a row height per line; it is the engine's own emphasis. */
+export type StatSize = 'header' | 'normal' | 'small';
+
+export interface StatLine {
+  label: string;
+  /** Absent on section headers and on notes attached to the line above. */
+  value?: string;
+  tone: StatTone;
+  size: StatSize;
+  note?: boolean;
+}
+
+export type StatsSnapshot =
+  | { ready: false; engineError?: string | null }
+  | {
+      ready: true;
+      lines: StatLine[];
+      warnings: string[];
+      socketGroupId: number;
+      socketGroups: NamedOption[];
+      skillId: number;
+      skills: NamedOption[];
+      engineError?: string | null;
+    };

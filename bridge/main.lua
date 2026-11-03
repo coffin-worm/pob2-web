@@ -26,6 +26,8 @@ end
 
 local api, server
 local booted, bootErr = false, nil
+-- File-local, not a global: this shares a Lua state with the whole of PoB.
+local frameCount = 0
 
 ------------------------------------------------------------------- the boot
 
@@ -84,6 +86,19 @@ local function currentBuild()
 	return nil
 end
 
+--- PoB catches errors inside its own frame handler and records them instead
+--- of crashing, so a build whose calculations have died looks from outside
+--- exactly like one that is merely empty. Without this, the UI would show a
+--- blank sidebar and no reason for it.
+local function engineError()
+	local msg = __mainObject__ and __mainObject__.promptMsg
+	if not msg then return nil end
+	-- The message carries colour codes and the key hints for a dialog that
+	-- does not exist here; keep the first line, which is the actual error.
+	msg = tostring(msg):gsub("%^x%x%x%x%x%x%x", ""):gsub("%^%d", "")
+	return (msg:gsub("^%s*Error:%s*", ""):match("^%s*(.-)%s*$"))
+end
+
 --- PoB settles a change over frames: a command raises buildFlag, and the
 --- recalculation and the point display happen in the next OnFrame. Commands
 --- therefore tick before answering, so the state returned is the state after
@@ -99,17 +114,45 @@ end
 local routes = {}
 
 routes["GET /health"] = function()
+	local build = currentBuild()
 	return 200, {
 		ok = true,
 		booted = booted,
 		error = bootErr and tostring(bootErr) or nil,
-		buildOpen = currentBuild() ~= nil,
+		buildOpen = build ~= nil,
 		commands = api.commandNames(),
+
+		-- PoB catches errors inside its own frame handler and surfaces them as
+		-- a prompt rather than crashing, so a silently dead build looks
+		-- exactly like a working one from outside. These say which it is.
+		frames = frameCount,
+		promptMsg = __mainObject__ and __mainObject__.promptMsg or nil,
+		buildFlag = build and build.buildFlag or false,
+		statLines = build and build.controls.statBox and #build.controls.statBox.list or -1,
 	}
 end
 
 routes["GET /state"] = function()
-	return 200, api.snapshot(currentBuild())
+	local snapshot = api.snapshot(currentBuild())
+	snapshot.engineError = engineError()
+	return 200, snapshot
+end
+
+--- Clear a recorded engine error. PoB's own dialog offers Enter to dismiss,
+--- F4 for the build list and F5 to restart; this is the first of those. The
+--- build is usually still broken afterwards, so the UI offers a new build
+--- alongside it rather than implying this is a repair.
+routes["POST /engine/dismiss"] = function()
+	if __mainObject__ then __mainObject__.promptMsg = nil end
+	return 200, { ok = true }
+end
+
+--- The sidebar is its own route rather than part of /state: it is an order of
+--- magnitude more data, and the two are polled by different parts of the UI.
+routes["GET /stats"] = function()
+	local stats = api.stats(currentBuild())
+	stats.engineError = engineError()
+	return 200, stats
 end
 
 routes["POST /action"] = function(payload)
@@ -148,6 +191,12 @@ routes["POST /build/open"] = function(payload)
 	file:close()
 
 	local name = tostring(path):match("([^/\\]+)%.xml$") or "Imported build"
+	-- "~~temp~~" is reserved: Build.lua:345 deletes the file behind a build
+	-- with that name, and on this path dbFileName is false, so os.remove gets
+	-- a boolean and the build mode dies inside PoB's own error handler.
+	if name == "~~temp~~" then
+		name = "Imported build"
+	end
 	loadBuildFromXML(xml, name)
 	settle(3)
 	return 200, api.snapshot(currentBuild())
@@ -194,7 +243,7 @@ function love.load()
 	end
 	server = srv
 	log("listening on http://127.0.0.1:%d", server.port)
-	log("  GET /health   GET /state   GET /paths")
+	log("  GET /health   GET /state   GET /stats   GET /paths")
 	log("  POST /action  POST /build/new  POST /build/open")
 end
 
@@ -217,6 +266,7 @@ function love.run()
 		if booted then
 			-- A frame of PoB, then a chance to answer anyone waiting.
 			runCallback("OnFrame")
+			frameCount = frameCount + 1
 		end
 		if server then
 			server:poll()

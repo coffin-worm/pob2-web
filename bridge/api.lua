@@ -18,6 +18,43 @@ local function strip(s)
 	return (tostring(s or ""):gsub("%^x%x%x%x%x%x%x", ""):gsub("%^%d", ""))
 end
 
+-- Some of those colours mean something -- a warning, a damage type, an
+-- over-cap resistance -- so they are classified into names rather than
+-- dropped or passed through as hex. Passing the hex through would bake PoB's
+-- palette into a UI whose whole point is not to look like PoB; dropping it
+-- would lose the only thing marking a resistance as uncapped.
+local TONE = {
+	["^x5CF0BB"] = "custom",
+	["^xFF9922"] = "warning",
+	["^x33FF77"] = "positive",
+	["^xDD0022"] = "negative",
+	["^xF05050"] = "unsupported",
+	["^xB97123"] = "fire",
+	["^x3F6DB3"] = "cold",
+	["^xADAA47"] = "lightning",
+	["^xD02090"] = "chaos",
+	["^xE07030"] = "offence",
+	["^x8080E0"] = "defence",
+	["^x88FFFF"] = "source",
+	["^x7F7F7F"] = "dim",
+	["^xC8C8C8"] = "normal",
+	["^7"] = "normal",
+	["^8"] = "dim",
+}
+
+local function toneOf(s)
+	s = tostring(s or "")
+	local code = s:match("^(%^x%x%x%x%x%x%x)") or s:match("^(%^%d)")
+	return code and TONE[code] or "normal"
+end
+
+-- dkjson cannot tell an empty Lua table meant as a list from one meant as an
+-- object, and encodes both as {}. An empty warnings list arriving as {}
+-- instead of [] is enough to throw on .map() in the UI, so lists are tagged.
+local function asArray(t)
+	return setmetatable(t, { __jsontype = "array" })
+end
+
 -- The point display formats its own "used/max" strings and keeps the operands
 -- as locals, so parsing the string back is the only way to read them without
 -- duplicating the budget arithmetic. Parsing one of PoB's own strings is the
@@ -110,15 +147,78 @@ function api.snapshot(build)
 		levelAutoMode = build.characterLevelAutoMode and true or false,
 
 		classId = curClassId or 0,
-		classes = classes,
+		classes = asArray(classes),
 		ascendClassId = (spec and spec.curAscendClassId) or 0,
-		ascendancies = ascendancies,
+		ascendancies = asArray(ascendancies),
 
 		loadoutId = loadoutId,
-		loadouts = loadouts,
+		loadouts = asArray(loadouts),
 
 		points = points,
 		popup = popup,
+	}
+end
+
+--------------------------------------------------------------- the sidebar
+
+local SIZE = { [18] = "header", [16] = "normal", [14] = "small" }
+
+local function dropdownOptions(drop)
+	local options = asArray({})
+	for i, entry in ipairs(drop and drop.list or {}) do
+		options[#options + 1] = {
+			id = i,
+			name = strip(type(entry) == "table" and (entry.label or entry[1]) or entry),
+		}
+	end
+	return options, (drop and drop.selIndex) or 1
+end
+
+--- The stat sidebar, as PoB has already built it.
+---
+--- RefreshStatList does the filtering (skill flags, condFunc per stat) and
+--- the number formatting, and both are game rules. Rebuilding them here from
+--- displayStats would be a second set of rules to keep in step, so this reads
+--- controls.statBox.list and only classifies what it finds: a line with two
+--- columns is a stat, one centred column is a note on the stat above it, and
+--- the row height is PoB's own emphasis.
+function api.stats(build)
+	if not build or not build.controls then
+		return { ready = false }
+	end
+
+	local lines = asArray({})
+	for _, entry in ipairs(build.controls.statBox and build.controls.statBox.list or {}) do
+		local left, right = entry[1], entry[2]
+		-- The trailing colon is part of the drawn string, not the label.
+		local label = (strip(left):gsub(":%s*$", ""))
+		if label ~= "" or right then
+			lines[#lines + 1] = {
+				label = label,
+				value = right and strip(right) or nil,
+				tone = toneOf(left),
+				size = SIZE[entry.height] or "normal",
+				note = (right == nil and entry.align == "CENTER_X") or nil,
+			}
+		end
+	end
+
+	local warnings = asArray({})
+	for _, line in ipairs(build.controls.warnings and build.controls.warnings.lines or {}) do
+		warnings[#warnings + 1] = strip(line)
+	end
+
+	local socketGroups, socketGroupId = dropdownOptions(build.controls.mainSocketGroup)
+	local skills, skillId = dropdownOptions(build.controls.mainSkill)
+
+	return {
+		ready = true,
+		lines = lines,
+		warnings = warnings,
+		socketGroupId = socketGroupId,
+		socketGroups = socketGroups,
+		skillId = skillId,
+		skills = skills,
 	}
 end
 
@@ -213,6 +313,25 @@ end
 commands.save = click("save")
 commands.saveAs = click("saveAs")
 commands.back = click("back")
+
+--- Both main-skill dropdowns act on the index alone, and SetSel would remap
+--- it through the drop-list offset, so this mirrors what SetSel does for a
+--- plain list: set the index, then call the callback that raises the flags.
+local function selectInDropdown(name)
+	return function(build, value)
+		local index = tonumber(value)
+		local drop = build.controls[name]
+		if not drop or not drop.list then return nil, "no " .. name .. " control" end
+		local entry = drop.list[index]
+		if not entry then return nil, "no option " .. tostring(value) .. " in " .. name end
+		drop.selIndex = index
+		if drop.selFunc then drop.selFunc(index, entry) end
+		return true
+	end
+end
+
+commands.setSocketGroup = selectInDropdown("mainSocketGroup")
+commands.setMainSkill = selectInDropdown("mainSkill")
 
 function commands.dismissPopup(build)
 	if main and main.popups and main.popups[1] and main.ClosePopup then

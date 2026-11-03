@@ -91,6 +91,23 @@
   --warning: #d9a441;
   --success: #4caf7d;
 
+  /* Damage types. The game gives these fixed identities and players read
+   * them as a set, so this is one of the few places colour is allowed to
+   * carry the meaning on its own — the label still names the type.
+   *
+   * Chosen for this background rather than taken from PoB, whose palette is
+   * tuned for a black canvas and whose lightning yellow in particular is too
+   * close to its warning orange to separate at 12px. */
+  --dmg-fire: #f0734e;
+  --dmg-cold: #5aa9e6;
+  --dmg-lightning: #e3c550;
+  --dmg-chaos: #c569cf;
+
+  /* Teal reads as "derived from elsewhere" beside the four above: PoB uses
+   * it for values sourced from the tree rather than rolled on gear. */
+  --stat-source: #6cc5c5;
+  --stat-custom: #5ad6a8;
+
   /* -------------------------------------------------------------- effect */
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow: 0 4px 12px rgb(0 0 0 / 0.45);

@@ -48,25 +48,39 @@ interface BridgeStore extends HeaderState, HeaderActions {
   /** The engine is reachable but may have no build open. */
   ready: boolean;
   popup: EnginePopup | null;
+  /** A transport failure: the engine could not be reached. */
   error: string | null;
+  /**
+   * An error PoB recorded inside its own frame handler. The process is alive
+   * and answering; the build's calculations are not running.
+   */
+  engineError: string | null;
 
   refresh(): Promise<void>;
   newBuild(): Promise<void>;
   /** Close a modal the engine is blocked on, without answering it. */
   dismissPopup(): void;
+  /** Clear a recorded engine error. Does not repair the build. */
+  dismissError(): Promise<void>;
 }
 
 export const useBridgeStore = create<BridgeStore>((set) => {
   const apply = (snapshot: BridgeSnapshot) => {
     if (!snapshot.ready) {
-      set({ connection: 'live', ready: false, error: null });
+      set({
+        connection: 'live',
+        ready: false,
+        error: null,
+        engineError: snapshot.engineError ?? null,
+      });
       return;
     }
-    const { ready: _ready, popup, ...state } = snapshot;
+    const { ready: _ready, popup, engineError, ...state } = snapshot;
     set({
       ...state,
       ready: true,
       popup: popup ?? null,
+      engineError: engineError ?? null,
       connection: 'live',
       error: null,
     });
@@ -94,10 +108,16 @@ export const useBridgeStore = create<BridgeStore>((set) => {
     ready: false,
     popup: null,
     error: null,
+    engineError: null,
 
     refresh: () => run(() => bridge.state()),
     newBuild: () => run(() => bridge.newBuild()),
     dismissPopup: command('dismissPopup'),
+    dismissError: () =>
+      run(async () => {
+        await bridge.dismissError();
+        return bridge.state();
+      }),
 
     save: command('save'),
     saveAs: command('saveAs'),

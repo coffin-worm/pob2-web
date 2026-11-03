@@ -1,7 +1,8 @@
 # PoB web UI — header prototype
 
 A prototype of Path of Building's UI as a web app, intended to run in
-WebView2 against the existing Lua calc engine. This is the top bar only.
+WebView2 against the existing Lua calc engine. Two screens so far: the top
+bar and the stat sidebar, both driven by the real engine.
 
 ```bash
 npm install
@@ -95,6 +96,33 @@ rather than invented — `buildName`, `unsaved`, `characterLevel`,
 `buildMode` table in `src/Modules/Build.lua` — and that paid off: wiring the
 bridge needed no renaming on either side.
 
+## The sidebar, and what a second screen cost
+
+The stat sidebar was the second screen, chosen because it is dense
+structured output rather than another row of controls. It came to about 250
+lines: one store, one component, one stylesheet, and `api.stats` in Lua.
+
+It cost that little because of one decision. `RefreshStatList` has already
+done the filtering — which stats apply to *this* skill, via per-stat `flag`
+and `condFunc` entries in `BuildDisplayStats.lua` — and the number
+formatting. Both are game rules. So `api.stats` reads
+`controls.statBox.list` and only classifies what it finds: two columns is a
+stat, one centred column is a note on the line above, and the row height is
+PoB's own emphasis.
+
+The payoff is visible when you switch skills. Going from Entangle to
+Bonestorm on the same build, Hit DPS moves 189.5 → 241.4, and the *set of
+stats changes*: Channel Time and Hit Rate appear, AoE Radius disappears.
+Nothing in the web code knows what a channelled skill is. Had the filtering
+been reimplemented here, that would have been a feature to build and then a
+rule to keep in step with the game forever.
+
+What the UI does own is the part PoB's bitmap renderer could not: tabular
+figures that do not shuffle while a number recalculates, a label column
+quiet enough to scan, and a palette of its own. PoB's colour codes are
+classified into names (`fire`, `warning`, `positive`, `source`) by the
+bridge, so the meaning survives while the 2010-era hex does not.
+
 ## The bridge
 
 I had this wrong. The earlier note here said there is no standalone LuaJIT
@@ -149,14 +177,38 @@ to fetch `C:/dev/pob2/bridge` from a build site, named the build after the
 failure message, and skipped creating its own initial build. `main.lua`
 blanks `arg` before boot.
 
+**PoB records errors instead of crashing**, and that is the one that cost
+real time. Loading a test build produced a sidebar with zero stats and no
+other symptom: the process was alive, `/state` answered, the build reported
+as open, and every number was zero. PoB had caught an error inside its own
+frame handler and set `promptMsg`, where nothing was looking.
+
+The error itself was a latent bug in PoB, not in the bridge:
+
+```
+Modules/Build.lua:345: bad argument #1 to 'remove' (string expected, got boolean)
+```
+
+A build named `~~temp~~` has its file deleted on load, but on the headless
+path `dbFileName` is `false`, so `os.remove` gets a boolean. My test file
+happened to be the one filename that triggers it. `/build/open` now renames
+that case, but the fix that matters is that `promptMsg` travels with the
+state, so a build whose calculations have died says so instead of looking
+merely empty.
+
 ## Known gaps
 
-- **Only the header is wired.** The engine exposes exactly what the top bar
-  needs. Every other screen is unbuilt, and the second one is the honest
-  test of what the full UI costs.
+- **Two screens of perhaps a dozen.** The passive tree, items, skills and
+  the calculation breakdown are all unbuilt, and the tree is the one that
+  will not resemble either of these — a canvas with 1500 nodes, not a list.
+- **Nothing is virtualised yet.** 39 stat rows do not need it. The Calcs
+  tab, which was the original argument for this stack, will.
 - **Dialogs are not drawn.** The UI reports that the engine is waiting on
   one and can dismiss it, but cannot answer it — so a class change that
   would reset an allocated tree currently cannot be confirmed from here.
+- **No build list.** Builds are opened by absolute path through
+  `POST /build/open`; `GetUserPath` is stubbed headless, so `/paths` reports
+  nothing useful and there is no directory listing.
 - **Rename is in-memory.** `setBuildName` marks the build dirty; it does not
   rename the file, because in PoB the name *is* the file name and renaming
   happens inside Save As.

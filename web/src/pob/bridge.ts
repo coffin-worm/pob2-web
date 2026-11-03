@@ -1,4 +1,4 @@
-import type { BridgeSnapshot } from './types';
+import type { BridgeSnapshot, StatsSnapshot } from './types';
 
 /**
  * The transport to the Lua engine.
@@ -17,7 +17,7 @@ import type { BridgeSnapshot } from './types';
 const BASE =
   (import.meta.env.VITE_POB_BRIDGE as string | undefined) ?? 'http://127.0.0.1:49090';
 
-async function request(path: string, init?: RequestInit): Promise<BridgeSnapshot> {
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(BASE + path, {
     headers: { 'Content-Type': 'application/json' },
     ...init,
@@ -35,19 +35,32 @@ async function request(path: string, init?: RequestInit): Promise<BridgeSnapshot
     throw new Error(detail);
   }
 
-  return body as BridgeSnapshot;
+  return body as T;
 }
 
 export const bridge = {
   /** The current build, or `{ ready: false }` when none is open. */
-  state: () => request('/state'),
+  state: () => request<BridgeSnapshot>('/state'),
+
+  /** The stat sidebar: an order of magnitude more data, so its own route. */
+  stats: () => request<StatsSnapshot>('/stats'),
 
   /** Ask the engine to run one of api.lua's commands. */
   act: (action: string, value?: unknown) =>
-    request('/action', { method: 'POST', body: JSON.stringify({ action, value }) }),
+    request<BridgeSnapshot>('/action', {
+      method: 'POST',
+      body: JSON.stringify({ action, value }),
+    }),
 
-  newBuild: () => request('/build/new', { method: 'POST', body: '{}' }),
+  /** Clear a recorded engine error. Does not repair the build. */
+  dismissError: () =>
+    request<{ ok: boolean }>('/engine/dismiss', { method: 'POST', body: '{}' }),
+
+  newBuild: () => request<BridgeSnapshot>('/build/new', { method: 'POST', body: '{}' }),
 
   openBuild: (path: string) =>
-    request('/build/open', { method: 'POST', body: JSON.stringify({ path }) }),
+    request<BridgeSnapshot>('/build/open', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
 };
