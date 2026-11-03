@@ -20,7 +20,7 @@ local ItemSlotClass = newClass("ItemSlotControl", "DropDownControl")
 ---@param slotLabel? string
 ---@param nodeId integer?
 function ItemSlotClass:ItemSlotControl(anchor, x, y, itemsTab, slotName, slotLabel, nodeId)
-	self:DropDownControl(anchor, {x, y, 310, 20}, { }, function(index, value)
+	self:DropDownControl(anchor, {x, y, 310, uiLayout.rowDense}, { }, function(index, value)
 		if self.items[index] ~= self.selItemId then
 			self:SetSelItemId(self.items[index])
 			itemsTab:PopulateSlots()
@@ -41,7 +41,7 @@ function ItemSlotClass:ItemSlotControl(anchor, x, y, itemsTab, slotName, slotLab
 	self.slotName = slotName
 	self.slotNum = tonumber(slotName:match("%d+$") or slotName:match("%d+"))
 	if data.buildFileInventorySlotMap[slotName] then
-		self.controls.noteButton = new("ButtonControl"):ButtonControl({"LEFT",self,"RIGHT"}, {2, 0, 20, 20}, "~", function()
+		self.controls.noteButton = new("ButtonControl"):ButtonControl({"LEFT",self,"RIGHT"}, {uiLayout.hugGap, 0, uiLayout.rowDense, uiLayout.rowDense}, "~", function()
 			local item = itemsTab.items[self.selItemId]
 			main:OpenNoteEditPopup(self.slotName, self.note or "", function(note)
 				self.note = note
@@ -56,7 +56,7 @@ function ItemSlotClass:ItemSlotControl(anchor, x, y, itemsTab, slotName, slotLab
 		end
 	end
 	if slotName:match("Flask") then
-		self.controls.activate = new("CheckBoxControl"):CheckBoxControl({ "RIGHT", self, "LEFT" }, { -2, 0, 20 }, nil, function(state)
+		self.controls.activate = new("CheckBoxControl"):CheckBoxControl({ "RIGHT", self, "LEFT" }, { -uiLayout.hugGap, 0, uiLayout.rowDense }, nil, function(state)
 			self.active = state
 			itemsTab.activeItemSet[self.slotName].active = state
 			itemsTab:AddUndoState()
@@ -66,9 +66,9 @@ function ItemSlotClass:ItemSlotControl(anchor, x, y, itemsTab, slotName, slotLab
 			return self.selItemId ~= 0
 		end
 		self.controls.activate.tooltipText = "Activate this flask."
-		self.labelOffset = -24
+		self.labelOffset = -(uiLayout.rowDense + uiLayout.hugGap * 2)
 	elseif slotName:match("Charm") then
-		self.controls.activate = new("CheckBoxControl"):CheckBoxControl({ "RIGHT", self, "LEFT" }, { -2, 0, 20 }, nil, function(state)
+		self.controls.activate = new("CheckBoxControl"):CheckBoxControl({ "RIGHT", self, "LEFT" }, { -uiLayout.hugGap, 0, uiLayout.rowDense }, nil, function(state)
 			self.active = state
 			itemsTab.activeItemSet[self.slotName].active = state
 			itemsTab:AddUndoState()
@@ -78,9 +78,9 @@ function ItemSlotClass:ItemSlotControl(anchor, x, y, itemsTab, slotName, slotLab
 			return self.selItemId ~= 0
 		end
 		self.controls.activate.tooltipText = "Activate this charm."
-		self.labelOffset = -24
+		self.labelOffset = -(uiLayout.rowDense + uiLayout.hugGap * 2)
 	else
-		self.labelOffset = -2
+		self.labelOffset = -uiLayout.hugGap
 	end
 	self.socketList = { }
 	self.jewelSocketList = { }
@@ -168,7 +168,8 @@ end
 function ItemSlotClass:Draw(viewPort)
 	local x, y = self:GetPos()
 	local width, height = self:GetSize()
-	DrawString(x + self.labelOffset, y + 2, "RIGHT_X", height - 4, "VAR", "^7"..self.label..":")
+	local labelSize = ControlFontSize(height)
+	DrawString(x + self.labelOffset, y + (height - labelSize) / 2, "RIGHT_X", labelSize, "VAR", "^7"..self.label..":")
 	self.DropDownControl:Draw(viewPort)
 	self:DrawControls(viewPort)
 	if not main.popups[1] and self.nodeId and (self.dropped or (self:IsMouseOver() and (self.otherDragSource or not self.itemsTab.selControl))) then

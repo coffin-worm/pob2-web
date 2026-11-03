@@ -1291,6 +1291,10 @@ uiLayout = {
 	barHeight    = 46, -- top bar, including its lower edge
 	sideBarWidth = 312, -- side bar, including its right edge
 	rowHeight    = 24, -- one standard control
+	rowDense     = 20, -- a row inside a dense scrolling panel
+	rowCompact   = 16, -- an inline label beside a field
+	stackGap     = 4, -- between stacked rows in a dense panel
+	hugGap       = 2, -- between a label and the field it labels
 	gap          = 8, -- between controls that are not one group
 	tightGap     = 4, -- within a group: segmented tabs, label/field pairs
 	pad          = 4, -- inset from a screen or panel edge
@@ -1310,6 +1314,18 @@ end
 -- Top of one row to the top of the next.
 function uiLayout.rowPitch()
 	return uiLayout.rowHeight + uiLayout.gap
+end
+
+-- Top of one dense row to the top of the next. The section height
+-- functions in ItemsTab budget their extent in these.
+function uiLayout.densePitch()
+	return uiLayout.rowDense + uiLayout.stackGap
+end
+
+-- A sub-row tucked under its parent: the affix range slider that
+-- appears beneath its affix dropdown.
+function uiLayout.subRowPitch()
+	return uiLayout.rowCompact + uiLayout.stackGap
 end
 
 -- Offset of row `n` (0-based) within a stack of rows.

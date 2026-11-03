@@ -172,8 +172,8 @@ function ItemsTabClass:ItemsTab(build)
 			self:AddItemSetTooltip(tooltip, self.itemSets[self.itemSetOrderList[index]])
 		end
 	end
-	self.controls.setLabel = new("LabelControl"):LabelControl({ "RIGHT", self.controls.setSelect, "LEFT" }, { -2, 0, 0, 16 }, "^7Item set:")
-	self.controls.setManage = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.setSelect, "RIGHT" }, { 4, 0, 90, 20 }, "Manage...", function()
+	self.controls.setLabel = new("LabelControl"):LabelControl({ "RIGHT", self.controls.setSelect, "LEFT" }, { -uiLayout.hugGap, 0, 0, uiLayout.rowCompact }, "^7Item set:")
+	self.controls.setManage = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.setSelect, "RIGHT" }, { uiLayout.tightGap, 0, 90, uiLayout.rowDense }, "Manage...", function()
 		self:OpenItemSetManagePopup()
 	end)
 
@@ -216,7 +216,7 @@ function ItemsTabClass:ItemsTab(build)
 	end
 	local function addJewelSockets(parentSlot, shownFunc)
 		for i = 1, 6 do
-			local jewel = new("ItemSlotControl"):ItemSlotControl({ "TOPLEFT", prevSlot, "BOTTOMLEFT" }, 0, 2, self, parentSlot.slotName .. " Jewel Socket " .. i, "Jewel #" .. i)
+			local jewel = new("ItemSlotControl"):ItemSlotControl({ "TOPLEFT", prevSlot, "BOTTOMLEFT" }, 0, uiLayout.stackGap, self, parentSlot.slotName .. " Jewel Socket " .. i, "Jewel #" .. i)
 			addSlot(jewel)
 			jewel.parentSlot = parentSlot
 			jewel.weaponSet = parentSlot.weaponSet
@@ -227,7 +227,7 @@ function ItemsTabClass:ItemsTab(build)
 		end
 	end
 	for index, slotName in ipairs(baseSlots) do
-		local slot = new("ItemSlotControl"):ItemSlotControl({ "TOPLEFT", prevSlot, "BOTTOMLEFT" }, 0, 2, self, slotName)
+		local slot = new("ItemSlotControl"):ItemSlotControl({ "TOPLEFT", prevSlot, "BOTTOMLEFT" }, 0, uiLayout.stackGap, self, slotName)
 		addSlot(slot)
 		local swapSlot
 		if slotName:match("Weapon") then
@@ -236,7 +236,7 @@ function ItemsTabClass:ItemsTab(build)
 			slot.shown = function()
 				return not self.activeItemSet.useSecondWeaponSet
 			end
-			swapSlot = new("ItemSlotControl"):ItemSlotControl({ "TOPLEFT", prevSlot, "BOTTOMLEFT" }, 0, 2, self, slotName .. " Swap", slotName)
+			swapSlot = new("ItemSlotControl"):ItemSlotControl({ "TOPLEFT", prevSlot, "BOTTOMLEFT" }, 0, uiLayout.stackGap, self, slotName .. " Swap", slotName)
 			addSlot(swapSlot)
 			swapSlot.weaponSet = 2
 			swapSlot.shown = function()
@@ -266,7 +266,7 @@ function ItemsTabClass:ItemsTab(build)
 
 	for _, runeSlotData in ipairs(characterRuneSlotList) do
 		local slotName, slotType, label = unpack(runeSlotData)
-		local runeSlot = new("DropDownControl"):DropDownControl({ "TOPLEFT", prevSlot, "BOTTOMLEFT" }, { 0, 2, 310, 20 }, runeList[slotType], function(_, value)
+		local runeSlot = new("DropDownControl"):DropDownControl({ "TOPLEFT", prevSlot, "BOTTOMLEFT" }, { 0, uiLayout.stackGap, 310, uiLayout.rowDense }, runeList[slotType], function(_, value)
 			self.activeItemSet[slotName].runeName = value.name
 			self:AddUndoState()
 			self.build.buildFlag = true
@@ -299,7 +299,7 @@ function ItemsTabClass:ItemsTab(build)
 				end
 			end
 		end
-		self.controls[slotName .. " Label"] = new("LabelControl"):LabelControl({ "RIGHT", runeSlot, "LEFT" }, { -2, 0, 16, 16 }, s_format("^7%s:", label))
+		self.controls[slotName .. " Label"] = new("LabelControl"):LabelControl({ "RIGHT", runeSlot, "LEFT" }, { -uiLayout.hugGap, 0, 16, uiLayout.rowCompact }, s_format("^7%s:", label))
 		prevSlot = runeSlot
 		t_insert(self.controls, runeSlot)
 		self.runeSlots[slotName] = runeSlot
@@ -310,7 +310,7 @@ function ItemsTabClass:ItemsTab(build)
 	end
 
 	-- Passive tree dropdown controls
-	self.controls.specSelect = new("DropDownControl"):DropDownControl({ "TOPLEFT", prevSlot, "BOTTOMLEFT" }, { 0, 8, 216, 20 }, nil, function(index, value)
+	self.controls.specSelect = new("DropDownControl"):DropDownControl({ "TOPLEFT", prevSlot, "BOTTOMLEFT" }, { 0, uiLayout.gap, 216, uiLayout.rowDense }, nil, function(index, value)
 		if self.build.treeTab.specList[index] then
 			self.build.modFlag = true
 			self.build.treeTab:SetActiveSpec(index)
@@ -321,11 +321,11 @@ function ItemsTabClass:ItemsTab(build)
 		return #self.controls.specSelect.list > 1
 	end
 	prevSlot = self.controls.specSelect
-	self.controls.specButton = new("ButtonControl"):ButtonControl({ "LEFT", prevSlot, "RIGHT" }, { 4, 0, 90, 20 }, "Manage...", function()
+	self.controls.specButton = new("ButtonControl"):ButtonControl({ "LEFT", prevSlot, "RIGHT" }, { uiLayout.tightGap, 0, 90, uiLayout.rowDense }, "Manage...", function()
 		self.build.treeTab:OpenSpecManagePopup()
 	end)
 	self.controls.specButton.anchor.collapse = true
-	self.controls.specLabel = new("LabelControl"):LabelControl({ "RIGHT", prevSlot, "LEFT" }, { -2, 0, 0, 16 }, "^7Passive tree:")
+	self.controls.specLabel = new("LabelControl"):LabelControl({ "RIGHT", prevSlot, "LEFT" }, { -uiLayout.hugGap, 0, 0, uiLayout.rowCompact }, "^7Passive tree:")
 	self.controls.specLabel.anchor.collapse = true
 
 	self.sockets = { }
@@ -339,11 +339,11 @@ function ItemsTabClass:ItemsTab(build)
 		return a.id < b.id
 	end)
 	for _, node in ipairs(socketOrder) do
-		local socketControl = new("ItemSlotControl"):ItemSlotControl({ "TOPLEFT", prevSlot, "BOTTOMLEFT" }, 0, 2, self, "Jewel " .. node.id, "Socket", node.id)
+		local socketControl = new("ItemSlotControl"):ItemSlotControl({ "TOPLEFT", prevSlot, "BOTTOMLEFT" }, 0, uiLayout.stackGap, self, "Jewel " .. node.id, "Socket", node.id)
 		self.sockets[node.id] = socketControl
 		addSlot(socketControl)
 	end
-	self.controls.slotHeader = new("LabelControl"):LabelControl({ "BOTTOMLEFT", self.slotAnchor, "TOPLEFT" }, { 0, -4, 0, 16 }, "^7Equipped items:")
+	self.controls.slotHeader = new("LabelControl"):LabelControl({ "BOTTOMLEFT", self.slotAnchor, "TOPLEFT" }, { 0, -4, 0, uiLayout.rowCompact }, "^7Equipped items:")
 	self.controls.weaponSwap1 = new("ButtonControl"):ButtonControl({ "BOTTOMRIGHT", self.slotAnchor, "TOPRIGHT" }, { -20, -2, 18, 18 }, "I", function()
 		if self.activeItemSet.useSecondWeaponSet then
 			self.activeItemSet.useSecondWeaponSet = false
@@ -376,14 +376,14 @@ function ItemsTabClass:ItemsTab(build)
 	end
 
 	-- Database selector
-	self.controls.selectDBLabel = new("LabelControl"):LabelControl({ "TOPLEFT", self.controls.itemList, "BOTTOMLEFT" }, { 0, 14, 0, 16 }, "^7Import from:")
+	self.controls.selectDBLabel = new("LabelControl"):LabelControl({ "TOPLEFT", self.controls.itemList, "BOTTOMLEFT" }, { 0, 14, 0, uiLayout.rowCompact }, "^7Import from:")
 	self.controls.selectDBLabel.shown = function()
 		return self.height < 980
 	end
 	self.selectedDB = "UNIQUE"
 
 	-- Uniques Button
-	self.controls.uniqueButton = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.selectDBLabel, "RIGHT" }, { 4, 0, 110, 18 }, "Uniques", function()
+	self.controls.uniqueButton = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.selectDBLabel, "RIGHT" }, { uiLayout.tightGap, 0, 110, 18 }, "Uniques", function()
 	    self.selectedDB = "UNIQUE"
 	end)
 	self.controls.uniqueButton.locked = function() return self.selectedDB == "UNIQUE" end
@@ -419,10 +419,10 @@ function ItemsTabClass:ItemsTab(build)
 	self.controls.craftDisplayItem.shown = function()
 		return self.displayItem == nil
 	end
-	self.controls.newDisplayItem = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.controls.craftDisplayItem, "TOPRIGHT" }, { 8, 0, 120, 20 }, "Create custom...", function()
+	self.controls.newDisplayItem = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.controls.craftDisplayItem, "TOPRIGHT" }, { uiLayout.gap, 0, 120, uiLayout.rowDense }, "Create custom...", function()
 		self:EditDisplayItemText()
 	end)
-	self.controls.displayItemTip = new("LabelControl"):LabelControl({ "TOPLEFT", self.controls.craftDisplayItem, "BOTTOMLEFT" }, { 0, 8, 100, 16 },
+	self.controls.displayItemTip = new("LabelControl"):LabelControl({ "TOPLEFT", self.controls.craftDisplayItem, "BOTTOMLEFT" }, { 0, uiLayout.gap, 100, uiLayout.rowCompact },
 [[^7Double-click an item from one of the lists,
 or copy and paste an item from in game
 (hover over the item and Ctrl+C) to view or edit
@@ -444,21 +444,21 @@ holding Shift will put it in the second.]])
 	self.anchorDisplayItem.shown = function()
 		return self.displayItem ~= nil
 	end
-	self.controls.addDisplayItem = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.anchorDisplayItem, "TOPLEFT" }, { 0, 0, 100, 20 }, "", function()
+	self.controls.addDisplayItem = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.anchorDisplayItem, "TOPLEFT" }, { 0, 0, 100, uiLayout.rowDense }, "", function()
 		self:AddDisplayItem()
 	end)
 	self.controls.addDisplayItem.label = function()
 		return self.items[self.displayItem.id] and "Save" or "Add to build"
 	end
-	self.controls.editDisplayItem = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.addDisplayItem, "RIGHT" }, { 8, 0, 60, 20 }, "Edit...", function()
+	self.controls.editDisplayItem = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.addDisplayItem, "RIGHT" }, { uiLayout.gap, 0, 60, uiLayout.rowDense }, "Edit...", function()
 		self:EditDisplayItemText()
 	end)
-	self.controls.removeDisplayItem = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.editDisplayItem, "RIGHT" }, { 8, 0, 60, 20 }, "Cancel", function()
+	self.controls.removeDisplayItem = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.editDisplayItem, "RIGHT" }, { uiLayout.gap, 0, 60, uiLayout.rowDense }, "Cancel", function()
 		self:SetDisplayItem()
 	end)
 
 	self.controls.displayItemBuySimilar = new("ButtonControl"):ButtonControl({ "LEFT", self.controls.removeDisplayItem, "RIGHT", true },
-		{ 8, 0, 100, 20 }, "Buy similar", function()
+		{ uiLayout.tightGap, 0, 100, uiLayout.rowDense }, "Buy similar", function()
 			local itemSlot = self:GetComparisonSlotNameForItem(self.displayItem)
 			buySimilar.openPopup(self.displayItem, itemSlot, self.build)
 		end)
@@ -467,7 +467,7 @@ holding Shift will put it in the second.]])
 	end
 	-- Section: Variant(s)
 
-	self.controls.displayItemSectionVariant = new("Control"):Control({ "TOPLEFT", self.controls.addDisplayItem, "BOTTOMLEFT" }, { 0, 8, 0, function()
+	self.controls.displayItemSectionVariant = new("Control"):Control({ "TOPLEFT", self.controls.addDisplayItem, "BOTTOMLEFT" }, { 0, uiLayout.gap, 0, function()
 		if not self.displayItem then
 			return 0
 		end
@@ -487,21 +487,21 @@ holding Shift will put it in the second.]])
 					end
 				end
 			end
-			return rows > 0 and rows * 24 + 4 or 0
+			return rows > 0 and rows * uiLayout.densePitch() + uiLayout.stackGap or 0
 		end
 		if not self.controls.displayItemVariant:IsShown() and not self.controls.displayItemBaseVariant:IsShown() then
 			return 0
 		end
 		return (4 +
-			(self.displayItem.variantList and 24 or 0) +
-			(self.displayItem.baseList and 24 or 0) +
-			(self.displayItem.hasAltVariant and 24 or 0) +
-			(self.displayItem.hasAltVariant2 and 24 or 0) +
-			(self.displayItem.hasAltVariant3 and 24 or 0) +
-			(self.displayItem.hasAltVariant4 and 24 or 0) +
-			(self.displayItem.hasAltVariant5 and 24 or 0))
+			(self.displayItem.variantList and uiLayout.densePitch() or 0) +
+			(self.displayItem.baseList and uiLayout.densePitch() or 0) +
+			(self.displayItem.hasAltVariant and uiLayout.densePitch() or 0) +
+			(self.displayItem.hasAltVariant2 and uiLayout.densePitch() or 0) +
+			(self.displayItem.hasAltVariant3 and uiLayout.densePitch() or 0) +
+			(self.displayItem.hasAltVariant4 and uiLayout.densePitch() or 0) +
+			(self.displayItem.hasAltVariant5 and uiLayout.densePitch() or 0))
 	end})
-	self.controls.displayItemVersion = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemSectionVariant, "TOPLEFT" }, { 0, 0, 300, 20 }, nil, function(index, value)
+	self.controls.displayItemVersion = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemSectionVariant, "TOPLEFT" }, { 0, 0, 300, uiLayout.rowDense }, nil, function(index, value)
 		self.displayItem.selectedVersion = index
 		self.displayItem:NormaliseVariantSelections()
 		self.displayItem:BuildAndParseRaw()
@@ -515,7 +515,7 @@ holding Shift will put it in the second.]])
 		return self.displayItem and self.displayItem:UsesVersionedOrGroupedVariants()
 			and self.displayItem.versionList and #self.displayItem.versionList > 1
 	end
-	self.controls.displayItemBaseVariant = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemSectionVariant, "TOPLEFT" }, { 0, 0, 300, 20 }, nil, function(index, value)
+	self.controls.displayItemBaseVariant = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemSectionVariant, "TOPLEFT" }, { 0, 0, 300, uiLayout.rowDense }, nil, function(index, value)
 		self.displayItem.selectedBase = index
 		self.displayItem:NormaliseVariantSelections()
 		self.displayItem:BuildAndParseRaw()
@@ -525,54 +525,54 @@ holding Shift will put it in the second.]])
 		self:UpdateDisplayItemRangeLines()
 	end)
 	self.controls.displayItemBaseVariant.y = function()
-		return self.controls.displayItemVersion:IsShown() and 24 or 0
+		return self.controls.displayItemVersion:IsShown() and uiLayout.densePitch() or 0
 	end
 	self.controls.displayItemBaseVariant.maxDroppedWidth = 1000
 	self.controls.displayItemBaseVariant.shown = function()
 		return self.displayItem.baseList and #self.displayItem.baseList > 1
 	end
-	self.controls.displayItemVariant = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemSectionVariant, "TOPLEFT" }, { 0, 0, 300, 20 }, nil, function(index, value)
+	self.controls.displayItemVariant = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemSectionVariant, "TOPLEFT" }, { 0, 0, 300, uiLayout.rowDense }, nil, function(index, value)
 		self:SelectDisplayItemVariant(index, value, "variant", self.controls.displayItemVariant)
 	end)
 	self.controls.displayItemVariant.y = function()
 		local y = 0
-		y = y + (self.controls.displayItemBaseVariant:IsShown() and 24 or 0)
-		y = y + (self.controls.displayItemVersion:IsShown() and 24 or 0)
+		y = y + (self.controls.displayItemBaseVariant:IsShown() and uiLayout.densePitch() or 0)
+		y = y + (self.controls.displayItemVersion:IsShown() and uiLayout.densePitch() or 0)
 		return y
 	end
 	self.controls.displayItemVariant.maxDroppedWidth = 1000
 	self.controls.displayItemVariant.shown = function()
 		return self.displayItem.variantList and #self.displayItem.variantList > 1
 	end
-	self.controls.displayItemAltVariant = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemVariant, "BOTTOMLEFT" }, { 0, 4, 300, 20 }, nil, function(index, value)
+	self.controls.displayItemAltVariant = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemVariant, "BOTTOMLEFT" }, { 0, uiLayout.stackGap, 300, uiLayout.rowDense }, nil, function(index, value)
 		self:SelectDisplayItemVariant(index, value, "variantAlt", self.controls.displayItemAltVariant)
 	end)
 	self.controls.displayItemAltVariant.maxDroppedWidth = 1000
 	self.controls.displayItemAltVariant.shown = function()
 		return self.displayItem.hasAltVariant
 	end
-	self.controls.displayItemAltVariant2 = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemAltVariant, "BOTTOMLEFT" }, { 0, 4, 300, 20 }, nil, function(index, value)
+	self.controls.displayItemAltVariant2 = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemAltVariant, "BOTTOMLEFT" }, { 0, uiLayout.stackGap, 300, uiLayout.rowDense }, nil, function(index, value)
 		self:SelectDisplayItemVariant(index, value, "variantAlt2", self.controls.displayItemAltVariant2)
 	end)
 	self.controls.displayItemAltVariant2.maxDroppedWidth = 1000
 	self.controls.displayItemAltVariant2.shown = function()
 		return self.displayItem.hasAltVariant2
 	end
-	self.controls.displayItemAltVariant3 = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemAltVariant2, "BOTTOMLEFT" }, { 0, 4, 300, 20 }, nil, function(index, value)
+	self.controls.displayItemAltVariant3 = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemAltVariant2, "BOTTOMLEFT" }, { 0, uiLayout.stackGap, 300, uiLayout.rowDense }, nil, function(index, value)
 		self:SelectDisplayItemVariant(index, value, "variantAlt3", self.controls.displayItemAltVariant3)
 	end)
 	self.controls.displayItemAltVariant3.maxDroppedWidth = 1000
 	self.controls.displayItemAltVariant3.shown = function()
 		return self.displayItem.hasAltVariant3
 	end
-	self.controls.displayItemAltVariant4 = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemAltVariant3, "BOTTOMLEFT" }, { 0, 4, 300, 20 }, nil, function(index, value)
+	self.controls.displayItemAltVariant4 = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemAltVariant3, "BOTTOMLEFT" }, { 0, uiLayout.stackGap, 300, uiLayout.rowDense }, nil, function(index, value)
 		self:SelectDisplayItemVariant(index, value, "variantAlt4", self.controls.displayItemAltVariant4)
 	end)
 	self.controls.displayItemAltVariant4.maxDroppedWidth = 1000
 	self.controls.displayItemAltVariant4.shown = function()
 		return self.displayItem.hasAltVariant4
 	end
-	self.controls.displayItemAltVariant5 = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemAltVariant4, "BOTTOMLEFT" }, { 0, 4, 300, 20 }, nil, function(index, value)
+	self.controls.displayItemAltVariant5 = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemAltVariant4, "BOTTOMLEFT" }, { 0, uiLayout.stackGap, 300, uiLayout.rowDense }, nil, function(index, value)
 		self:SelectDisplayItemVariant(index, value, "variantAlt5", self.controls.displayItemAltVariant5)
 	end)
 	self.controls.displayItemAltVariant5.maxDroppedWidth = 1000
@@ -606,11 +606,11 @@ holding Shift will put it in the second.]])
 	self.controls.displayItemSectionSockets = new("Control"):Control({ "TOPLEFT", self.controls.displayItemSectionVariant, "BOTTOMLEFT" }, { 0, 0, 0, function()
 		return canHaveAugmentSockets(self.displayItem) and 28 or 0
 	end})
-	self.controls.displayItemSocketRune = new("LabelControl"):LabelControl({ "TOPLEFT", self.controls.displayItemSectionSockets, "TOPLEFT" }, { 0, 0, 36, 20 }, "^x7F7F7FS")
+	self.controls.displayItemSocketRune = new("LabelControl"):LabelControl({ "TOPLEFT", self.controls.displayItemSectionSockets, "TOPLEFT" }, { 0, 0, 36, uiLayout.rowDense }, "^x7F7F7FS")
 	self.controls.displayItemSocketRune.shown = function()
 		return canHaveAugmentSockets(self.displayItem)
 	end
-	self.controls.displayItemSocketRuneEdit = new("EditControl"):EditControl({ "LEFT", self.controls.displayItemSocketRune, "RIGHT" }, { 2, 0, 50, 20 }, nil, nil, "%D", 1, function(buf)
+	self.controls.displayItemSocketRuneEdit = new("EditControl"):EditControl({ "LEFT", self.controls.displayItemSocketRune, "RIGHT" }, { uiLayout.tightGap, 0, 50, uiLayout.rowDense }, nil, nil, "%D", 1, function(buf)
 		local count = tonumber(buf) or 0
 		if count > 6 then
 			self.controls.displayItemSocketRuneEdit:SetText(6)
@@ -625,8 +625,8 @@ holding Shift will put it in the second.]])
 	self.controls.displayItemSocketRuneEdit.shown = self.controls.displayItemSocketRune
 
 	-- Jewel Sockets // shown where Runes are shown
-	self.controls.displayItemSocketJewel = new("LabelControl"):LabelControl({ "TOPLEFT", self.controls.displayItemSocketRune, "TOPLEFT" }, { 70, 0, 36, 20 }, "^x7F7F7FJ")
-	self.controls.displayItemSocketJewelEdit = new("EditControl"):EditControl({ "LEFT", self.controls.displayItemSocketJewel, "RIGHT" }, { 2, 0, 50, 20 }, nil, nil, "%D", 1, function(buf)
+	self.controls.displayItemSocketJewel = new("LabelControl"):LabelControl({ "TOPLEFT", self.controls.displayItemSocketRune, "TOPLEFT" }, { 70, 0, 36, uiLayout.rowDense }, "^x7F7F7FJ")
+	self.controls.displayItemSocketJewelEdit = new("EditControl"):EditControl({ "LEFT", self.controls.displayItemSocketJewel, "RIGHT" }, { uiLayout.tightGap, 0, 50, uiLayout.rowDense }, nil, nil, "%D", 1, function(buf)
 		local count = tonumber(buf) or 0
 		if count > 6 then
 			self.controls.displayItemSocketJewelEdit:SetText(6)
@@ -641,34 +641,34 @@ holding Shift will put it in the second.]])
 	self.controls.displayItemSectionEnchant = new("Control"):Control({ "TOPLEFT", self.controls.displayItemSectionSockets, "BOTTOMLEFT" }, { 0, 0, 0, function()
 		return (self.controls.displayItemAnoint:IsShown() or self.controls.displayItemCorrupt:IsShown() ) and 28 or 0
 	end})
-	self.controls.displayItemAnoint = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.controls.displayItemSectionEnchant, "TOPLEFT" }, { 0, 0, 100, 20 }, "Anoint...", function()
+	self.controls.displayItemAnoint = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.controls.displayItemSectionEnchant, "TOPLEFT" }, { 0, 0, 100, uiLayout.rowDense }, "Anoint...", function()
 		self:AnointDisplayItem(1)
 	end)
 	self.controls.displayItemAnoint.shown = function()
 		return self.displayItem and isAnointable(self.displayItem)
 	end
-	self.controls.displayItemAnoint2 = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.controls.displayItemAnoint, "TOPRIGHT", true }, { 8, 0, 100, 20 }, "Anoint 2...", function()
+	self.controls.displayItemAnoint2 = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.controls.displayItemAnoint, "TOPRIGHT", true }, { uiLayout.gap, 0, 100, uiLayout.rowDense }, "Anoint 2...", function()
 		self:AnointDisplayItem(2)
 	end)
 	self.controls.displayItemAnoint2.shown = function()
 		return self.displayItem and isAnointable(self.displayItem) and
 			self.displayItem.canHaveTwoEnchants and #self.displayItem.enchantModLines > 0
 	end
-	self.controls.displayItemAnoint3 = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.controls.displayItemAnoint2, "TOPRIGHT", true }, { 8, 0, 100, 20 }, "Anoint 3...", function()
+	self.controls.displayItemAnoint3 = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.controls.displayItemAnoint2, "TOPRIGHT", true }, { uiLayout.gap, 0, 100, uiLayout.rowDense }, "Anoint 3...", function()
 		self:AnointDisplayItem(3)
 	end)
 	self.controls.displayItemAnoint3.shown = function()
 		return self.displayItem and isAnointable(self.displayItem) and
 			self.displayItem.canHaveThreeEnchants and #self.displayItem.enchantModLines > 1
 	end
-	self.controls.displayItemAnoint4 = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.controls.displayItemAnoint3, "TOPRIGHT", true }, { 8, 0, 100, 20 }, "Anoint 4...", function()
+	self.controls.displayItemAnoint4 = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.controls.displayItemAnoint3, "TOPRIGHT", true }, { uiLayout.gap, 0, 100, uiLayout.rowDense }, "Anoint 4...", function()
 		self:AnointDisplayItem(4)
 	end)
 	self.controls.displayItemAnoint4.shown = function()
 		return self.displayItem and isAnointable(self.displayItem) and
 			self.displayItem.canHaveFourEnchants and #self.displayItem.enchantModLines > 2
 	end
-	self.controls.displayItemCorrupt = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.controls.displayItemAnoint4, "TOPRIGHT", true }, { 8, 0, 100, 20 }, "Corrupt...", function()
+	self.controls.displayItemCorrupt = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.controls.displayItemAnoint4, "TOPRIGHT", true }, { uiLayout.gap, 0, 100, uiLayout.rowDense }, "Corrupt...", function()
 		self:CorruptDisplayItem()
 	end)
 	self.controls.displayItemCorrupt.shown = function()
@@ -679,12 +679,12 @@ holding Shift will put it in the second.]])
 	self.controls.displayItemSectionQuality = new("Control"):Control({ "TOPLEFT", self.controls.displayItemSectionEnchant, "BOTTOMLEFT" }, { 0, 0, 0, function()
 		return (self.controls.displayItemQuality:IsShown() and self.controls.displayItemQualityEdit:IsShown()) and 28 or 0
 	end})
-	self.controls.displayItemQuality = new("LabelControl"):LabelControl({ "TOPLEFT", self.controls.displayItemSectionQuality, "TOPRIGHT" }, { -4, 0, 0, 16 }, "^7Quality:")
+	self.controls.displayItemQuality = new("LabelControl"):LabelControl({ "TOPLEFT", self.controls.displayItemSectionQuality, "TOPRIGHT" }, { -4, 0, 0, uiLayout.rowCompact }, "^7Quality:")
 	self.controls.displayItemQuality.shown = function()
 		return self.displayItem and self.displayItem.quality and self.displayItem.base.quality
 	end
 
-	self.controls.displayItemQualityEdit = new("EditControl"):EditControl({ "LEFT", self.controls.displayItemQuality, "RIGHT" }, { 2, 0, 60, 20 }, nil, nil, "%D", 2, function(buf)
+	self.controls.displayItemQualityEdit = new("EditControl"):EditControl({ "LEFT", self.controls.displayItemQuality, "RIGHT" }, { uiLayout.tightGap, 0, 60, uiLayout.rowDense }, nil, nil, "%D", 2, function(buf)
 		self.displayItem.quality = tonumber(buf)
 		self.displayItem:BuildAndParseRaw()
 		self:UpdateDisplayItemTooltip()
@@ -697,7 +697,7 @@ holding Shift will put it in the second.]])
 	self.controls.displayItemSectionCatalyst = new("Control"):Control({ "TOPLEFT", self.controls.displayItemSectionQuality, "BOTTOMLEFT" }, { 0, 0, 0, function()
 		return (self.controls.displayItemCatalyst:IsShown() or self.controls.displayItemCatalystQualityEdit:IsShown()) and 28 or 0
 	end})
-	self.controls.displayItemCatalyst = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemSectionCatalyst, "TOPRIGHT" }, { 0, 0, 250, 20 },
+	self.controls.displayItemCatalyst = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemSectionCatalyst, "TOPRIGHT" }, { 0, 0, 250, uiLayout.rowDense },
 		{"Catalyst",
 		"Flesh (Life)",
 		"Neural (Mana)",
@@ -736,7 +736,7 @@ holding Shift will put it in the second.]])
 	self.controls.displayItemCatalyst.shown = function()
 		return self.displayItem and (self.displayItem.crafted or self.displayItem.hasModTags) and (self.displayItem.base.type == "Amulet" or self.displayItem.base.type == "Ring" or self.displayItem.base.type == "Jewel")
 	end
-	self.controls.displayItemCatalystQualityEdit = new("EditControl"):EditControl({ "LEFT", self.controls.displayItemCatalyst, "RIGHT" }, { 2, 0, 60, 20 }, nil, nil, "%D", 2, function(buf)
+	self.controls.displayItemCatalystQualityEdit = new("EditControl"):EditControl({ "LEFT", self.controls.displayItemCatalyst, "RIGHT" }, { uiLayout.tightGap, 0, 60, uiLayout.rowDense }, nil, nil, "%D", 2, function(buf)
 		self.displayItem.catalystQuality = tonumber(buf)
 		if self.displayItem.crafted then
 			for i = 1, self.displayItem.affixLimit do
@@ -756,7 +756,7 @@ holding Shift will put it in the second.]])
 	self.controls.displayItemSectionClusterJewel = new("Control"):Control({ "TOPLEFT", self.controls.displayItemSectionCatalyst, "BOTTOMLEFT" }, { 0, 0, 0, function()
 		return self.controls.displayItemClusterJewelSkill:IsShown() and 52 or 0
 	end})
-	self.controls.displayItemClusterJewelSkill = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemSectionClusterJewel, "TOPLEFT" }, { 0, 0, 300, 20 }, {}, function(index, value)
+	self.controls.displayItemClusterJewelSkill = new("DropDownControl"):DropDownControl({ "TOPLEFT", self.controls.displayItemSectionClusterJewel, "TOPLEFT" }, { 0, 0, 300, uiLayout.rowDense }, {}, function(index, value)
 		self.displayItem.clusterJewelSkill = value.skillId
 		self:CraftClusterJewel()
 	end) {
@@ -766,7 +766,7 @@ holding Shift will put it in the second.]])
 	}
 
 	self.controls.displayItemClusterJewelNodeCountLabel = new("LabelControl"):LabelControl({ "TOPLEFT", self.controls.displayItemClusterJewelSkill, "BOTTOMLEFT" }, { 0, 7, 0, 14 }, "^7Added Passives:")
-	self.controls.displayItemClusterJewelNodeCount = new("SliderControl"):SliderControl({ "LEFT", self.controls.displayItemClusterJewelNodeCountLabel, "RIGHT" }, { 2, 0, 150, 20 }, function(val)
+	self.controls.displayItemClusterJewelNodeCount = new("SliderControl"):SliderControl({ "LEFT", self.controls.displayItemClusterJewelNodeCountLabel, "RIGHT" }, { uiLayout.tightGap, 0, 150, uiLayout.rowDense }, function(val)
 		local divVal = self.controls.displayItemClusterJewelNodeCount:GetDivVal()
 		local clusterJewel = self.displayItem.clusterJewel
 		self.displayItem.clusterJewelNodeCount = round(val * (clusterJewel.maxNodes - clusterJewel.minNodes) + clusterJewel.minNodes)
@@ -781,7 +781,7 @@ holding Shift will put it in the second.]])
 		local h = 6
 		for i = 1, 6 do
 			if self.controls["displayItemRune"..i]:IsShown() then
-				h = h + 24
+				h = h + uiLayout.densePitch()
 			end
 		end
 		return h
@@ -799,7 +799,7 @@ holding Shift will put it in the second.]])
 			self:UpdateDisplayItemTooltip()
 		end)
 		drop.y = function()
-			return i == 1 and 0 or 24
+			return i == 1 and 0 or uiLayout.densePitch()
 		end
 		drop.tooltipFunc = function(tooltip, mode, index, value)
 			tooltip:Clear()
@@ -861,9 +861,9 @@ holding Shift will put it in the second.]])
 	self.controls.displayItemSectionCraftingSort = new("Control"):Control({ "TOPLEFT", self.controls.displayItemSectionRune, "BOTTOMLEFT" }, { 0, 0, 0, function()
 		return craftingSortingShown() and 28 or 0
 	end })
-	self.controls.craftingSortingLabel = new("LabelControl"):LabelControl({ "TOPLEFT", self.controls.displayItemSectionCraftingSort, "TOPLEFT" }, { 0, 6, 0, 16 }, "^7Modifier sorting:")
+	self.controls.craftingSortingLabel = new("LabelControl"):LabelControl({ "TOPLEFT", self.controls.displayItemSectionCraftingSort, "TOPLEFT" }, { 0, 6, 0, uiLayout.rowCompact }, "^7Modifier sorting:")
 	self.controls.craftingSortingLabel.shown = craftingSortingShown
-	self.controls.craftingSorting = new("DropDownControl"):DropDownControl({ "LEFT", self.controls.craftingSortingLabel, "RIGHT" }, { 4, 0, 200, 20 }, sortList, function()
+	self.controls.craftingSorting = new("DropDownControl"):DropDownControl({ "LEFT", self.controls.craftingSortingLabel, "RIGHT" }, { uiLayout.tightGap, 0, 200, uiLayout.rowDense }, sortList, function()
 		self:UpdateAffixControls()
 	end)
 	self.controls.craftingSorting.shown = craftingSortingShown
@@ -877,9 +877,9 @@ holding Shift will put it in the second.]])
 		local h = 6
 		for i = 1, maxModCount do
 			if self.controls["displayItemAffix"..i]:IsShown() then
-				h = h + 24
+				h = h + uiLayout.densePitch()
 				if self.controls["displayItemAffixRange"..i]:IsShown() then
-					h = h + 18
+					h = h + uiLayout.subRowPitch()
 				end
 			end
 		end
@@ -946,7 +946,7 @@ holding Shift will put it in the second.]])
 			self:UpdateAffixControls()
 		end)
 		drop.y = function()
-			return i == 1 and 0 or 24 + (prev.slider:IsShown() and 18 or 0)
+			return i == 1 and 0 or uiLayout.densePitch() + (prev.slider:IsShown() and uiLayout.subRowPitch() or 0)
 		end
 		drop.tooltipFunc = function(tooltip, mode, index, value)
 			local modList = value and value.modList
@@ -1064,7 +1064,7 @@ holding Shift will put it in the second.]])
 		drop.shown = function()
 			return self.displayItem and self.displayItem.crafted and i <= self.displayItem.affixLimit
 		end
-		slider = new("SliderControl"):SliderControl({ "TOPLEFT", drop, "BOTTOMLEFT" }, { 0, 2, 300, 16 }, function(val)
+		slider = new("SliderControl"):SliderControl({ "TOPLEFT", drop, "BOTTOMLEFT" }, { 0, uiLayout.stackGap, 300, uiLayout.rowCompact }, function(val)
 			local affix = self.displayItem[drop.outputTable][drop.outputIndex]
 			local index, range = slider:GetDivVal()
 			affix.modId = drop.list[drop.selIndex].modList[index]
@@ -1118,7 +1118,7 @@ holding Shift will put it in the second.]])
 	self.controls.displayItemSectionCustom = new("Control"):Control({ "TOPLEFT", self.controls.displayItemSectionAffix, "BOTTOMLEFT" }, { 0, 0, 0, function()
 		return self.controls.displayItemAddCustom:IsShown() and 28 + self.displayItem.customCount * 22 or 0
 	end})
-	self.controls.displayItemAddCustom = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.controls.displayItemSectionCustom, "TOPLEFT" }, { 0, 0, 120, 20 }, "Add modifier...", function()
+	self.controls.displayItemAddCustom = new("ButtonControl"):ButtonControl({ "TOPLEFT", self.controls.displayItemSectionCustom, "TOPLEFT" }, { 0, 0, 120, uiLayout.rowDense }, "Add modifier...", function()
 		self:AddCustomModifierToDisplayItem()
 	end)
 	self.controls.displayItemAddCustom.shown = function()
@@ -1144,7 +1144,7 @@ holding Shift will put it in the second.]])
 		return self.displayItem and self.displayItem.rangeLineList[1] ~= nil and
 		not (main.showAllItemAffixes and (self.displayItem.rarity == "UNIQUE" or self.displayItem.rarity == "RELIC"))
 	end
-	self.controls.displayItemRangeSlider = new("SliderControl"):SliderControl({ "LEFT", self.controls.displayItemRangeLine, "RIGHT" }, { 8, 0, 100, 18 }, function(val)
+	self.controls.displayItemRangeSlider = new("SliderControl"):SliderControl({ "LEFT", self.controls.displayItemRangeLine, "RIGHT" }, { uiLayout.gap, 0, 100, 18 }, function(val)
 		self.displayItem.rangeLineList[self.controls.displayItemRangeLine.selIndex].range = val
 		self.displayItem:BuildAndParseRaw()
 		self:UpdateDisplayItemTooltip()
@@ -1164,7 +1164,7 @@ holding Shift will put it in the second.]])
 				self:UpdateCustomControls()
 			end
 		end)
-		self.controls["displayItemStackedRangeLine" .. i] = new("LabelControl"):LabelControl({ "LEFT", self.controls["displayItemStackedRangeSlider" .. i], "RIGHT" }, { 8, -2, 350, 14 }, function()
+		self.controls["displayItemStackedRangeLine" .. i] = new("LabelControl"):LabelControl({ "LEFT", self.controls["displayItemStackedRangeSlider" .. i], "RIGHT" }, { uiLayout.gap, -2, 350, 14 }, function()
 			if self.displayItem and self.displayItem.rangeLineList[i] then
 				return "^7" .. self.displayItem.rangeLineList[i].line
 			end
@@ -1450,7 +1450,7 @@ function ItemsTabClass:Draw(viewPort, inputEvents)
 	self.controls.scrollBarV.x = viewPort.x + viewPort.width - 18
 	self.controls.scrollBarV.y = viewPort.y
 	do
-		local maxY = select(2, self.lastSlot:GetPos()) + 24
+		local maxY = select(2, self.lastSlot:GetPos()) + uiLayout.densePitch()
 		local maxX = self.anchorDisplayItem:GetPos() + 462
 		if self.displayItem then
 			local x, y = self.controls.displayItemTooltipAnchor:GetPos()

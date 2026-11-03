@@ -796,6 +796,7 @@ local autoBuildDone = os.getenv("POBLOVE_AUTOBUILD") == "0"
 -- a PNG behind to look at without anyone touching the window.
 frameNo = 0
 shotAtFrame = nil
+wantView = os.getenv("POBLOVE_VIEW")
 
 -- PoB reports load failures by setting launch.promptMsg and drawing its own
 -- error panel, with nothing on the console. Surface it.
@@ -828,6 +829,14 @@ function love.draw()
 		return
 	end
 	curLayer, curSubLayer = 0, 0
+	-- Which tab a headless run should screenshot: POBLOVE_VIEW=ITEMS, SKILLS,
+	-- CALCS, CONFIG, ... Reasserted every frame up to the capture, because
+	-- opening a build resets viewMode to TREE well after SetMode returns.
+	-- Released afterwards so the window stays usable by hand.
+	if wantView and shotAtFrame and _G.main and _G.main.modes
+			and _G.main.modes[_G.main.mode] then
+		_G.main.modes[_G.main.mode].viewMode = wantView
+	end
 	local ok, err = pcall(runCallback, "OnFrame")
 	tryAutoBuild()
 	flush()

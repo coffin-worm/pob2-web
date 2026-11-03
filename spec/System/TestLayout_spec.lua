@@ -43,6 +43,37 @@ describe("TestLayout", function()
 		assert.are.equals(32, uiLayout.rowPitch())
 	end)
 
+	it("gives dense panels their own pitch", function()
+		-- The Items editor budgets its section heights in these, so a row's
+		-- actual occupied space and the number the section reports have to
+		-- come from the same place.
+		assert.are.equals(24, uiLayout.densePitch())
+		assert.are.equals(uiLayout.rowDense + uiLayout.stackGap,
+			uiLayout.densePitch())
+		assert.are.equals(20, uiLayout.subRowPitch())
+		assert.are.equals(uiLayout.rowCompact + uiLayout.stackGap,
+			uiLayout.subRowPitch())
+	end)
+
+	it("keeps the dense row smaller than the primary row", function()
+		-- A toolbar row and a row in a scrolling list of forty are not the
+		-- same control. If these ever converge, something has flattened the
+		-- scale by accident.
+		assert.True(uiLayout.rowDense < uiLayout.rowHeight)
+		assert.True(uiLayout.rowCompact < uiLayout.rowDense)
+		assert.True(uiLayout.hugGap < uiLayout.stackGap)
+	end)
+
+	it("moves both pitches when the dense row changes", function()
+		local was = uiLayout.rowDense
+		finally(function() uiLayout.rowDense = was end)
+
+		uiLayout.rowDense = 28
+		assert.are.equals(32, uiLayout.densePitch())
+		-- A sub-row is sized off rowCompact, so it must not follow.
+		assert.are.equals(20, uiLayout.subRowPitch())
+	end)
+
 	it("snaps font sizes onto the atlas ladder", function()
 		-- Only these pixel heights exist under runtime/SimpleGraphic/Fonts.
 		-- Anything else is served by scaling a neighbour, which is how the

@@ -125,7 +125,8 @@ python -I restyle-tooling/apply_shadows.py && \
 python -I restyle-tooling/apply_statbar.py && \
 python -I restyle-tooling/apply_breathing_room.py && \
 python -I restyle-tooling/apply_hierarchy.py && \
-python -I restyle-tooling/apply_layout.py
+python -I restyle-tooling/apply_layout.py && \
+python -I restyle-tooling/apply_items_layout.py
 ```
 
 `apply_lua51_compat.py` is independent of the others and only needed to run
@@ -179,9 +180,42 @@ it.
 property the module exists for: change `barHeight` and every dependent
 measurement follows while the row rhythm does not.
 
+### The Items tab
+
+`apply_items_layout.py` extends the vocabulary with a second tier —
+`rowDense` (20), `rowCompact` (16), `stackGap`, `hugGap`, plus `densePitch()`
+and `subRowPitch()` — and puts the Items screen on it. A dense scrolling
+property editor wants a smaller row than a toolbar; forcing one scale on both
+would mean 24px dropdowns in a list of forty.
+
+Items was not cramped because its coordinates were absolute — its controls
+are already anchor-chained, so the pitch is derived. It was cramped because
+the two halves disagreed: the equipped-slot list ran 20px rows on a 2px gap
+while the editor beside it ran the same rows on a 4px gap. Both are now
+`densePitch()`.
+
+The coupling that pass removed is the section height functions. Each one
+budgets its own extent as `rows * 24 + 4`, with the pitch written out by
+hand — sixteen times across the file, in three different forms, two of them
+buried inside a row's own `y` function. A section that reports the wrong
+height clips or leaves a hole, silently. They all call `densePitch()` now.
+
+That bug is not hypothetical: widening the gap to 4 made an affix row 20px
+tall while two budgets still said 18, and nothing but reading the arithmetic
+would have caught it.
+
+`ItemSlotControl` is patched too. It takes its position as positional
+arguments rather than a rect, so it needs its own handling, and its label
+was drawn at `height - 4` — the one control `apply_breathing_room.py` never
+reached, because it draws its label itself instead of through
+`DropDownControl`.
+
+Popup dialogs below line ~1200 are deliberately untouched: they are shared
+with other tabs and have their own geometry.
+
 ## Verification status
 
-**Spec suite: 909 successes / 0 failures / 0 errors**, run against the
+**Spec suite: 912 successes / 0 failures / 0 errors**, run against the
 patched tree under LuaJIT via the repo's own harness:
 
 ```bash
