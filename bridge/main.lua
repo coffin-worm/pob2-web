@@ -6,17 +6,36 @@
 -- have no idea it exists, so the shipping host (the existing exe, or Tauri
 -- with mlua) replaces this file and keeps the other two.
 --
--- Run it with the working directory set to src/, because HeadlessWrapper.lua
+-- Normally started by the web dev server (web/plugins/pob-bridge.ts), which
+-- spawns it, waits for the ready line and proxies to it. To run it by hand,
+-- set the working directory to src/ first, because HeadlessWrapper.lua
 -- resolves _SimpleGraphic.def.lua and Launch.lua relative to the cwd:
 --
 --   cd C:\dev\pob2\src
 --   "C:\Program Files\LOVE\lovec.exe" C:\dev\pob2\bridge
+--
+-- POB_SRC, POB_RUNTIME, POB_BRIDGE_DIR and POB_BRIDGE_PORT override the
+-- defaults below.
 
-local POB_SRC = "C:/dev/pob2/src/"
-local POB_RUNTIME = "C:/dev/pob2/runtime/"
-local POB_BRIDGE = "C:/dev/pob2/bridge/"
+--- A directory from the environment, with either slash and a guaranteed
+--- trailing one, since every use here concatenates a file name onto it.
+local function envDir(name, fallback)
+	local value = os.getenv(name)
+	if not value or value == "" then
+		return fallback
+	end
+	value = value:gsub("\\", "/")
+	return value:match("/$") and value or value .. "/"
+end
 
-local PORTS = { 49090, 49091, 49092 }
+local POB_SRC = envDir("POB_SRC", "C:/dev/pob2/src/")
+local POB_RUNTIME = envDir("POB_RUNTIME", "C:/dev/pob2/runtime/")
+local POB_BRIDGE = envDir("POB_BRIDGE_DIR", "C:/dev/pob2/bridge/")
+
+-- A port given explicitly is the only one tried: when the caller picked it,
+-- quietly moving to another one strands whoever is waiting on it.
+local requestedPort = tonumber(os.getenv("POB_BRIDGE_PORT"))
+local PORTS = requestedPort and { requestedPort } or { 49090, 49091, 49092 }
 local TICK = 1 / 30
 
 local function log(fmt, ...)

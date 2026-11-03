@@ -43,9 +43,10 @@ export function EngineStatus() {
 
       {connection === 'offline' && (
         <p className={styles.detail}>
-          {error}. Start it with the working directory set to{' '}
-          <code>src/</code>:{' '}
-          <code>"C:\Program Files\LOVE\lovec.exe" C:\dev\pob2\bridge</code>
+          {error}. The dev server starts the engine itself, so this usually
+          means it could not find LÖVE — set <code>POB_LOVE</code> to{' '}
+          <code>lovec.exe</code> and restart <code>npm run dev</code>. The
+          terminal running it will say which.
         </p>
       )}
 

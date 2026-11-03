@@ -13,9 +13,13 @@ import type { BridgeSnapshot, CalcsSnapshot, StatsSnapshot } from './types';
  * No WebSocket yet. The handshake is available (SHA-1 and base64 both ship
  * in runtime/lua) but request/response is enough for state this small, and
  * it keeps the failure modes obvious.
+ *
+ * The default is a path, not a host: the dev server starts the engine and
+ * proxies it under its own origin (see plugins/pob-bridge.ts), so these are
+ * same-origin requests and which port the engine took is not the UI's
+ * business. Set VITE_POB_BRIDGE to a full URL to talk to one directly.
  */
-const BASE =
-  (import.meta.env.VITE_POB_BRIDGE as string | undefined) ?? 'http://127.0.0.1:49090';
+const BASE = (import.meta.env.VITE_POB_BRIDGE as string | undefined) ?? '/bridge';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(BASE + path, {

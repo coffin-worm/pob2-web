@@ -49,23 +49,38 @@ MB using the system WebView2, against Electron's ~150).
 
 ## Running it
 
-Two processes. The engine first, from `src/` — `HeadlessWrapper.lua`
-resolves its own `dofile`s relative to the working directory:
-
-```bash
-cd C:/dev/pob2/src
-"C:/Program Files/LOVE/lovec.exe" C:/dev/pob2/bridge
-```
-
-Then the UI:
-
 ```bash
 cd C:/dev/pob2/web
 npm install && npm run dev
 ```
 
-The page says whether the engine is reachable, and `VITE_POB_BRIDGE`
-overrides the default `http://127.0.0.1:49090`.
+That is the whole thing. `plugins/pob-bridge.ts` starts PoB's engine with
+the dev server, waits for it to report ready, and serves it under the dev
+server's own origin at `/bridge` — so the app makes same-origin requests and
+which port the engine took stops being the UI's problem.
+
+It was two hand-started processes before, in the right order from the right
+directory, and the page said "engine not reachable" whenever you forgot one.
+
+A few behaviours worth knowing, all of which cost something to get wrong:
+
+- **It reuses an engine that is already listening** rather than starting a
+  second one, which makes an engine you started by hand for debugging the
+  one the UI talks to.
+- **It only kills what it started.** Stop the dev server and an engine it
+  spawned goes with it; one you started by hand survives.
+- **It really kills it.** On Windows `child.kill()` leaves LÖVE running often
+  enough to matter, and a surviving engine is then *reused* by the next
+  start — so you edit `api.lua`, restart, and nothing changes. It shells out
+  to `taskkill /f /t`.
+- **No LÖVE, no engine.** The dev server still comes up and says so in the
+  terminal and on the page. `POB_LOVE` points at `lovec.exe` if it is
+  somewhere unusual.
+
+`VITE_POB_BRIDGE` set to a full URL talks to an engine directly instead,
+bypassing the proxy; the engine sends CORS headers for exactly that case.
+`POB_SRC`, `POB_RUNTIME`, `POB_BRIDGE_DIR` and `POB_BRIDGE_PORT` override
+the engine's own defaults.
 
 ## What is and isn't real
 
@@ -265,8 +280,9 @@ merely empty.
 - **Loadouts are tree specs.** `buildMode.loadoutsList` — the sets linked
   with `{name}` markers — is a richer thing that only exists after
   `SyncLoadouts`, and is not surfaced yet.
-- **Two processes, started by hand**, and the dev host is a game engine.
-  Fine for a dev loop, not a product.
+- **The dev host is still a game engine.** One command starts it now, but
+  LÖVE is a dev-loop convenience; a shipping build replaces `main.lua` and
+  `conf.lua` with the real host and keeps `api.lua` and `server.lua`.
 - The header needs about 1350px. Past that the loadout picker is dropped;
   below roughly 1150px it will scroll rather than hide anything that
   reports build state.
