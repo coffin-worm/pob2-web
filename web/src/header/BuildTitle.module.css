@@ -1,0 +1,59 @@
+.title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.name {
+  max-width: 320px;
+  overflow: hidden;
+  padding: var(--space-2) var(--space-3);
+  margin-left: calc(var(--space-3) * -1);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition:
+    background-color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
+}
+
+/* Editable, but not shouting about it: the affordance appears when the
+ * pointer is on the name, not as a permanent box around the title. */
+.name:hover {
+  background: var(--bg-raised);
+  border-color: var(--border-subtle);
+}
+
+.input {
+  width: 320px;
+  padding: var(--space-2) var(--space-3);
+  margin-left: calc(var(--space-3) * -1);
+  background: var(--bg-sunken);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+}
+
+.dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warning);
+  opacity: 0;
+  transition: opacity var(--duration) var(--ease);
+}
+
+.dot[data-visible] {
+  opacity: 1;
+}

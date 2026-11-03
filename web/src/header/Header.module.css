@@ -1,0 +1,65 @@
+/* Two zones: what this document is, and everything you do to it.
+ *
+ * An earlier arrangement put the character controls in a flexible middle
+ * group, which left them floating in 200px of empty space at wide windows
+ * with nothing to align to. They belong with the rest of the controls. */
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  height: var(--header-height);
+  padding: 0 var(--space-5);
+  background: var(--bg-raised);
+  /* One hairline instead of PoB's 4px light slab. The surface step between
+   * the header and the content below already separates them; the rule is
+   * only there to keep the edge crisp. */
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* The title block absorbs all the slack, so every control keeps its declared
+ * size. The name is the only thing here that can usefully give up space, and
+ * it has an ellipsis for when it has to. */
+.left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex: none;
+}
+
+.divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 var(--space-1);
+  background: var(--border);
+}
+
+/* The header needs about 1350px to sit comfortably. Past that the loadout
+ * picker is the one thing worth dropping -- it is reachable elsewhere and
+ * it is the widest control carrying the least information.
+ *
+ * Nothing else is hidden. Removing a control to win back pixels costs the
+ * user a feature and leaves no trace that it happened, so below this the
+ * header tightens its spacing instead and eventually scrolls. */
+@media (max-width: 1360px) {
+  .right > :nth-child(5) {
+    display: none;
+  }
+}
+
+@media (max-width: 1180px) {
+  .header {
+    gap: var(--space-4);
+    padding: 0 var(--space-4);
+  }
+  .right {
+    gap: var(--space-3);
+  }
+}

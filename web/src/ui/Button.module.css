@@ -1,0 +1,93 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  flex: none;
+  height: var(--row-height);
+  padding: 0 var(--space-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  transition:
+    background-color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.button:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+/* ------------------------------------------------------------- default */
+.default {
+  background: var(--bg-raised);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+.default:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.default:active:not(:disabled) {
+  background: var(--bg-active);
+}
+
+.default:disabled {
+  background: var(--bg-sunken);
+  border-color: var(--border-subtle);
+}
+
+/* ------------------------------------------------------------- primary */
+/* The one filled control in its region. If a second one appears, one of
+ * them is not actually the primary action. */
+.primary {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.primary:active:not(:disabled) {
+  background: var(--accent);
+}
+
+.primary:disabled {
+  background: var(--bg-sunken);
+  border-color: var(--border-subtle);
+}
+
+/* --------------------------------------------------------------- ghost */
+.ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.ghost:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ---------------------------------------------------------------- icon */
+.icon {
+  width: var(--row-height);
+  padding: 0;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.icon:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.icon:active:not(:disabled) {
+  background: var(--bg-active);
+}

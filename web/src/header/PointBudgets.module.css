@@ -1,0 +1,59 @@
+.group {
+  display: inline-flex;
+  align-items: stretch;
+  flex: none;
+  gap: var(--space-5);
+  height: var(--row-height);
+  padding: 0 var(--space-5);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+
+.segment {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+
+/* The label is deliberately small and quiet: you learn the positions after
+ * a day and then only read the numbers. It is there for the first day, and
+ * so "Set I" is never a mystery column of digits. */
+/* Small caps with tracking, so the label reads as a caption rather than as
+ * more text competing with the number. An 11px label beside a 12px value
+ * is not a hierarchy; this is. */
+.label {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.value {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--num-tabular);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.slash {
+  margin: 0 1px;
+  color: var(--text-disabled);
+  font-weight: var(--weight-normal);
+}
+
+/* Fully spent is a normal, good state -- it earns emphasis, not alarm. */
+.value[data-spent] {
+  color: var(--success);
+}
+
+.value[data-over] {
+  color: var(--danger);
+}

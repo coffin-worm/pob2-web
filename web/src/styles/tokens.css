@@ -1,0 +1,113 @@
+/* Design tokens.
+ *
+ * The descendants of uiLayout and uiStyle in src/Modules/Common.lua. The Lua
+ * side had to declare these because its renderer has no cascade; here they
+ * are the same decisions expressed where they belong. Keeping the names
+ * aligned means a change of mind only has to be made once, in both places.
+ *
+ * Sizes are in px rather than rem on purpose. This is a desktop application
+ * in a fixed-DPI window, not a document that reflows to a reader's font
+ * setting, and every measurement here is a deliberate pixel.
+ */
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/InterVariable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* ---------------------------------------------------------- typography */
+  --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+
+  /* A type scale, not a list of sizes anyone may reach for. PoB ran on 16
+   * fixed atlas heights; the point of leaving that behind is not more sizes
+   * but fewer, chosen. */
+  --text-xs: 11px;   /* budget labels, table captions */
+  --text-sm: 12px;   /* secondary text, field labels */
+  --text-base: 13px; /* the default: controls, body */
+  --text-md: 15px;   /* the build name, section headings */
+  --text-lg: 18px;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* Inter's optical sizing and tabular figures. Numbers that change every
+   * recalculation must not reflow the row they sit in. */
+  --num-tabular: 'tnum' 1, 'cv05' 1;
+
+  /* ------------------------------------------------------------- spacing */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 24px;
+
+  /* --------------------------------------------------------------- sizes */
+  --row-height: 28px;        /* a standard control; PoB's 24 plus room to breathe */
+  --row-height-dense: 24px;  /* rows inside a scrolling panel */
+  --header-height: 52px;
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+
+  /* --------------------------------------------------------------- color */
+  /* A single neutral ramp. Surfaces step up as they come forward, which is
+   * what carries depth here -- borders are a last resort, not the default.
+   * This is the main departure from the Lua UI, where every control was a
+   * 1px box on the same flat black. */
+  --bg-base: #0e0f12;
+  --bg-sunken: #0a0b0d;
+  --bg-raised: #16181d;
+  --bg-overlay: #1d2026;
+  --bg-hover: #23262e;
+  --bg-active: #2b2f38;
+
+  --border-subtle: #22252c;
+  --border: #2e323b;
+  --border-strong: #3d424d;
+
+  --text-primary: #e8eaed;
+  --text-secondary: #a0a6b0;
+  --text-muted: #6b7280;
+  --text-disabled: #4a4f58;
+
+  /* Accent is spent, not decorated with: the primary action, focus, and the
+   * current selection. Nothing else. */
+  --accent: #6e8fff;
+  --accent-hover: #87a2ff;
+  --accent-muted: #2a3660;
+  --accent-text: #ffffff;
+
+  /* Semantic colour means one thing each, and only when it means it. */
+  --danger: #e0574b;
+  --warning: #d9a441;
+  --success: #4caf7d;
+
+  /* -------------------------------------------------------------- effect */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow: 0 4px 12px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.55);
+  --focus-ring: 0 0 0 2px var(--bg-base), 0 0 0 4px var(--accent);
+
+  /* Fast enough to feel like a response rather than an animation. */
+  --ease: cubic-bezier(0.2, 0, 0.1, 1);
+  --duration: 120ms;
+}
+
+/* The app is dark by design -- it sits beside a dark game. A light theme
+ * would be a real piece of work, not a media query, so this does not pretend
+ * to offer one. */
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration: 0ms;
+  }
+}

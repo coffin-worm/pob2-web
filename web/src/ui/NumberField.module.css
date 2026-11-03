@@ -1,0 +1,97 @@
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  /* A control with a declared width keeps it. As a flex item it would
+   * otherwise shrink below its content, and the first thing to go is the
+   * input -- silently, all the way to zero, with the value still in it. */
+  flex: none;
+  height: var(--row-height);
+  padding: 0 var(--space-2) 0 var(--space-4);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition:
+    background-color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
+}
+
+.field:hover:not([data-disabled]) {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.field:focus-within {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.field[data-disabled] {
+  background: var(--bg-sunken);
+  border-color: var(--border-subtle);
+}
+
+.label {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.input {
+  flex: 1;
+  /* Never narrower than the widest value it can hold. */
+  min-width: 3ch;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--num-tabular);
+}
+
+.input:focus {
+  outline: none;
+}
+
+.input:disabled {
+  color: var(--text-disabled);
+}
+
+/* The steppers hold their space at rest so the value never shifts sideways
+ * when they appear -- a control that reflows under the pointer is worse
+ * than one that is always cluttered. */
+.steppers {
+  display: flex;
+  flex-direction: column;
+  width: 16px;
+  opacity: 0;
+  transition: opacity var(--duration) var(--ease);
+}
+
+.field:hover .steppers,
+.field:focus-within .steppers {
+  opacity: 1;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 12px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 2px;
+  color: var(--text-muted);
+}
+
+.stepper:hover:not(:disabled) {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.stepper:disabled {
+  color: var(--text-disabled);
+}

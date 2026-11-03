@@ -1,0 +1,41 @@
+.group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--row-height);
+  padding: 2px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+
+.segment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 var(--space-4);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  transition:
+    background-color var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.segment:hover:not([data-selected]) {
+  color: var(--text-secondary);
+}
+
+/* The selected segment is the thing that lifts; its siblings stay flat on
+ * the sunken track. One raised surface, so there is never a question which
+ * is active. */
+.segment[data-selected] {
+  background: var(--bg-active);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
