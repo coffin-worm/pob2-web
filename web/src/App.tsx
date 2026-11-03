@@ -1,23 +1,29 @@
+import { useEffect } from 'react';
 import { Header } from './header/Header';
-import { useMockStore } from './pob/mockStore';
+import { EngineStatus } from './pob/EngineStatus';
+import { startPolling, useBridgeStore } from './pob/bridgeStore';
 import styles from './App.module.css';
 
 export default function App() {
-  const state = useMockStore();
+  const state = useBridgeStore();
+
+  useEffect(() => startPolling(), []);
 
   return (
     <div className={styles.app}>
       <Header {...state} />
       <main className={styles.body}>
+        <EngineStatus />
         <p className={styles.note}>
-          Header prototype. Everything below this line is the rest of the
-          application, which does not exist yet.
+          Header prototype, on the real engine. PoB's Lua runs headless in a
+          separate process and serves its state over loopback HTTP; the
+          controls above drive its own callbacks, so a class change rebuilds
+          the passive tree and reloads the ascendancy list the same way the
+          desktop app does.
         </p>
         <p className={styles.note}>
-          The controls are live but the state is a mock, not the engine —
-          change the class and the ascendancy list follows it, set a level
-          and the passive budget moves, edit anything and the unsaved dot
-          appears.
+          Everything below this line is the rest of the application, which
+          does not exist yet.
         </p>
       </main>
     </div>

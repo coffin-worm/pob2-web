@@ -25,7 +25,9 @@ export function PointBudgets({ points }: Props) {
     <div className={styles.group}>
       {SEGMENTS.map(({ key, label, title }) => {
         const budget: PointBudget = points[key];
-        const over = budget.used > budget.max;
+        // The engine reports this itself; the comparison is only a fallback
+        // for the shape of the data, not a second opinion on the rules.
+        const over = budget.over ?? budget.used > budget.max;
         const spent = budget.max > 0 && budget.used === budget.max;
 
         return (

@@ -15,6 +15,12 @@
 export interface PointBudget {
   used: number;
   max: number;
+  /**
+   * The engine's own verdict on being over budget. It agrees with
+   * `used > max` today, but the budget rules live in Build.lua and the UI
+   * should not be the place they are restated.
+   */
+  over?: boolean;
 }
 
 export interface BuildPoints {
@@ -75,3 +81,29 @@ export interface HeaderActions {
 
 export const LEVEL_MIN = 1;
 export const LEVEL_MAX = 100;
+
+/**
+ * A modal the engine has opened and is waiting on.
+ *
+ * PoB answers some commands with a dialog rather than by doing the thing:
+ * changing class with an allocated tree, Save As, Back with unsaved work.
+ * Over a bridge that is invisible, so it travels with the state and the UI
+ * can say what is being waited on instead of looking hung.
+ */
+export interface EnginePopup {
+  title: string;
+}
+
+/** Whether the engine is reachable. */
+export type Connection = 'connecting' | 'live' | 'offline';
+
+/**
+ * What GET /state answers with.
+ *
+ * `ready` is false when the engine is up but no build is open, and in that
+ * case nothing else is present -- hence the union rather than optional
+ * fields, so a caller cannot read a level that is not there.
+ */
+export type BridgeSnapshot =
+  | { ready: false }
+  | (HeaderState & { ready: true; popup?: EnginePopup | null });

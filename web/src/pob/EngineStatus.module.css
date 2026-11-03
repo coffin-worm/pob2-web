@@ -1,0 +1,77 @@
+.panel {
+  max-width: 62ch;
+  margin: 0 0 var(--space-6);
+  padding: var(--space-5);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* A dot rather than a coloured word: the state is binary and glanceable, and
+ * it sits beside text that explains it rather than carrying the meaning. */
+.dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--text-disabled);
+}
+
+.dot[data-state='live'] {
+  background: var(--success);
+}
+
+.dot[data-state='offline'] {
+  background: var(--danger);
+}
+
+.dot[data-state='connecting'] {
+  background: var(--warning);
+}
+
+.title {
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+}
+
+.detail {
+  margin: var(--space-4) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.detail code {
+  padding: 1px 4px;
+  background: var(--bg-sunken);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+/* The engine is blocked on a dialog this UI cannot yet draw. Warning rather
+ * than danger: nothing is broken, something is waiting. */
+.popup {
+  margin-top: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-sunken);
+  border-left: 2px solid var(--warning);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
