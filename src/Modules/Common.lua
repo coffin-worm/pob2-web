@@ -1274,7 +1274,78 @@ function ControlFontSize(height, inset)
 	local size = height - (inset or 4)
 	local cap = uiStyle.fontSize or 16
 	if size > cap then
-		return cap
+		size = cap
 	end
-	return size
+	return SnapFontSize(size)
+end
+
+-- Layout metrics. The chrome, the controls and the viewports they bound were
+-- each written with their own copy of the same measurement, so a change to the
+-- top bar's height left two or three sites behind every time and the overhang
+-- only showed up in a screenshot. Declare the outer measurements here; derive
+-- everything that follows from them.
+--
+-- Read at control construction, so a token change applies when the build is
+-- reopened.
+uiLayout = {
+	barHeight    = 46, -- top bar, including its lower edge
+	sideBarWidth = 312, -- side bar, including its right edge
+	rowHeight    = 24, -- one standard control
+	gap          = 8, -- between controls that are not one group
+	tightGap     = 4, -- within a group: segmented tabs, label/field pairs
+	pad          = 4, -- inset from a screen or panel edge
+	edge         = 4, -- the light divider drawn as a region's border
+}
+
+-- The painted part of the top bar, above its edge.
+function uiLayout.barFill()
+	return uiLayout.barHeight - uiLayout.edge
+end
+
+-- Vertical inset that centres one row of controls in the bar.
+function uiLayout.barPadY()
+	return m_floor((uiLayout.barFill() - uiLayout.rowHeight) / 2)
+end
+
+-- Top of one row to the top of the next.
+function uiLayout.rowPitch()
+	return uiLayout.rowHeight + uiLayout.gap
+end
+
+-- Offset of row `n` (0-based) within a stack of rows.
+function uiLayout.row(n)
+	return n * uiLayout.rowPitch()
+end
+
+-- Usable width inside the side bar, between its padding and its edge.
+function uiLayout.sideBarContent()
+	return uiLayout.sideBarWidth - uiLayout.edge - uiLayout.pad * 2
+end
+
+-- Top of the side bar's content. `extraRows` makes room for rows that only
+-- appear at some window sizes, such as the build-name chip.
+function uiLayout.sideBarTop(extraRows)
+	return uiLayout.barHeight + uiLayout.pad + uiLayout.row(extraRows or 0)
+end
+
+-- The bitmap font atlases exist only at these pixel heights; see
+-- runtime/SimpleGraphic/Fonts. Asking for any other size gets a scaled
+-- neighbour rather than a hinted face, so snap on purpose instead of by
+-- accident -- this is how an 11px label silently became a blurry 10 or 12.
+local fontLadder = { 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40, 48, 56, 64 }
+
+function SnapFontSize(size)
+	if size <= fontLadder[1] then
+		return fontLadder[1]
+	end
+	for i = 2, #fontLadder do
+		local step = fontLadder[i]
+		if size <= step then
+			local below = fontLadder[i - 1]
+			-- Ties go to the larger size: between two equally wrong options,
+			-- the legible one.
+			return (size - below < step - size) and below or step
+		end
+	end
+	return fontLadder[#fontLadder]
 end

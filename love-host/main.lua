@@ -240,8 +240,17 @@ local function flush()
 	local lastBlend = nil
 	for i = 1, nCmds do
 		local c = active[i]
+		-- SimpleGraphic's SetViewport both clips and moves the origin, which is
+		-- why PoB writes DrawString(0, 0, ...) inside one and expects the text
+		-- at the viewport's corner. Scissoring alone sent every such draw to
+		-- the top-left of the screen -- silently, since the clip was still
+		-- right, so the content just vanished instead of landing somewhere
+		-- visibly wrong. Scissor first, with the transform still identity, then
+		-- translate for the draw itself.
 		if c.vp then
 			love.graphics.setScissor(c.vp[1], c.vp[2], c.vp[3], c.vp[4])
+			love.graphics.push()
+			love.graphics.translate(c.vp[1], c.vp[2])
 		else
 			love.graphics.setScissor()
 		end
@@ -271,6 +280,9 @@ local function flush()
 			love.graphics.draw(m)
 		elseif k == "text" then
 			drawText(c)
+		end
+		if c.vp then
+			love.graphics.pop()
 		end
 	end
 	love.graphics.setScissor()

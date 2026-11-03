@@ -25,7 +25,7 @@ place. That is the whole iteration loop.
 
 | File | What it drives |
 |---|---|
-| `src/Modules/Common.lua` | `uiStyle` table, `SetUIColor()`, `DrawRoundRect()` |
+| `src/Modules/Common.lua` | `uiStyle` and `uiLayout` tables, `SetUIColor()`, `DrawRoundRect()`, `ControlFontSize()`, `SnapFontSize()` |
 | `src/Assets/roundrect.png` | 64×64 corner texture (new, 419 bytes) |
 | `src/Classes/ButtonControl.lua` | Every button |
 | `src/Classes/CheckBoxControl.lua` | Every checkbox |
@@ -114,14 +114,25 @@ git restore src/Modules/Common.lua src/Classes/ButtonControl.lua src/Classes/Che
 
 ## Re-applying after a rebase
 
-Both scripts match exact upstream text and report failures rather than
-corrupting a file, so re-run them after pulling:
+Every script matches exact upstream text and reports failures rather than
+corrupting a file, so re-run them after pulling. **Order matters** — each
+later pass matches the output of the ones before it:
 
 ```bash
-python -I restyle-tooling/apply_restyle.py && python -I restyle-tooling/apply_corners.py
+python -I restyle-tooling/apply_restyle.py && \
+python -I restyle-tooling/apply_corners.py && \
+python -I restyle-tooling/apply_shadows.py && \
+python -I restyle-tooling/apply_statbar.py && \
+python -I restyle-tooling/apply_breathing_room.py && \
+python -I restyle-tooling/apply_hierarchy.py && \
+python -I restyle-tooling/apply_layout.py
 ```
 
-Anything that could not be matched is printed by name; patch those by hand.
+`apply_lua51_compat.py` is independent of the others and only needed to run
+the source under a stock Lua 5.1 host; see `love-host/README.md`.
+
+All of them are idempotent. Anything that could not be matched is printed by
+name; patch those by hand.
 
 ## Not done
 
@@ -133,12 +144,44 @@ Anything that could not be matched is printed by name; patch those by hand.
   border rather than `radius - 1`, so the 1px border is very slightly thin
   at the corners. Invisible at radius 4; worth fixing if you push the radius
   higher.
-- **Padding and hit targets.** Control sizes come from each tab's call site,
-  so making things taller means touching every screen.
+- **Padding and hit targets beyond the top bar.** `uiLayout` (see below) now
+  drives the top bar and side bar, but each tab's own screen still writes its
+  own numbers. Of the 485 `DrawString`/`DrawImage` calls under `src/`, only
+  185 are in the control classes; the other 300 are screens painting
+  themselves. Those are the remaining work, and they should reference
+  `uiLayout` rather than growing fresh literals.
+
+## Layout metrics
+
+`apply_layout.py` adds `uiLayout` to `src/Modules/Common.lua` and rewrites the
+top bar and side bar to derive from it.
+
+The problem it solves is not that coordinates were absolute — `Control.lua`
+anchors are parent-relative and accept functions — but that the chrome, the
+controls and the viewports they bound each carried their own copy of the same
+measurement. Raising the header from 32 to 46 took four separate follow-up
+fixes, every one found by looking at a screenshot rather than by reading the
+code.
+
+Declared tokens: `barHeight`, `sideBarWidth`, `rowHeight`, `gap`, `tightGap`,
+`pad`, `edge`. Everything else is a function of them — `barFill()`,
+`barPadY()`, `rowPitch()`, `row(n)`, `sideBarContent()`, `sideBarTop(n)`.
+Set `barHeight` and the fill, the edge, the control row's centring, the tab
+viewport, the side bar background and its content origin all move together.
+
+`SnapFontSize()` lands any requested text size on one of the 16 pixel heights
+the bitmap atlases actually ship (10–64, even below 28). Off-ladder sizes are
+served by scaling a neighbour rather than by a hinted face — which is how the
+stat bar's 11px label was quietly blurry. `ControlFontSize()` routes through
+it.
+
+`spec/System/TestLayout_spec.lua` covers the derivations, including the
+property the module exists for: change `barHeight` and every dependent
+measurement follows while the row rhythm does not.
 
 ## Verification status
 
-**Spec suite: 903 successes / 0 failures / 0 errors**, run against the
+**Spec suite: 909 successes / 0 failures / 0 errors**, run against the
 patched tree under LuaJIT via the repo's own harness:
 
 ```bash
