@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "tree-art": "python tools/tree_art.py --tree-data ../src/TreeData --out public/tree-art"
+    "tree-art": "python tools/tree_art.py --tree-data ../src/TreeData --out public/tree-art",
+    "engine-tests": "docker compose -f ../docker-compose.yml up"
   },
   "dependencies": {
     "@radix-ui/react-select": "^2.4.1",

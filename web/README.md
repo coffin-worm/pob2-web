@@ -33,8 +33,35 @@ touches landed in `Data` (880), `TreeData` (448), `Export` (123), `Classes`
 unchanged. The UI barely moves upstream, so owning it costs little.
 
 `src/HeadlessWrapper.lua` already runs the whole application with the
-renderer stubbed out; it is how the 912-test spec suite drives real builds.
-The engine does not need a window.
+renderer stubbed out; it is how PoB's spec suite drives real builds. The
+engine does not need a window.
+
+## What this branch touches
+
+Every commit on it has said "`src/` is untouched". That is checkable, so
+here is the check:
+
+```bash
+git diff <base>..HEAD --name-only | awk -F/ '{print $1}' | sort | uniq -c
+```
+
+At the time of writing: 41 files under `web/`, 4 under `bridge/`, and
+`.gitignore`. Nothing in `src/`, nothing in `spec/`.
+
+That proves the *inputs* to PoB's test suite are unchanged. It is not the
+same as having run it, which needs the container CI uses and a Docker
+daemon:
+
+```bash
+docker compose up
+```
+
+Worth being exact about, because "the suite is unaffected" and "the suite
+passes" are different claims and only the first one follows from a diff.
+Everything the bridge adds lives beside the engine rather than inside it,
+which is what makes the first claim worth anything: the capabilities the
+headless host was missing -- zlib, a filesystem -- are installed over its
+stubs from `bridge/`, at runtime, by code the suite never loads.
 
 ## Stack
 
