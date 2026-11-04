@@ -1,0 +1,237 @@
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: 900px;
+  min-height: 0;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.titleActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-left: auto;
+}
+
+.count {
+  color: var(--text-disabled);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.unsaved {
+  padding: 1px var(--space-2);
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--warning);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.field {
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-base);
+}
+
+.field:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+/* -------------------------------------------------------------- the list */
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.folder {
+  margin-top: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.emptyFolder {
+  margin: 0 0 0 var(--space-4);
+  color: var(--text-disabled);
+  font-size: var(--text-xs);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-1) var(--space-2);
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-sm);
+}
+
+/* The build currently loaded, so the list says which one you are editing
+ * rather than leaving it to memory. */
+.row[data-open='true'] {
+  border-left-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.name {
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-base);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.name:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.name:disabled {
+  cursor: default;
+  color: var(--accent-hover);
+}
+
+.meta {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.modified {
+  color: var(--text-disabled);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.delete {
+  padding: 0 var(--space-3);
+  background: transparent;
+  border: 0;
+  color: var(--text-disabled);
+  font: inherit;
+  font-size: var(--text-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.delete:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.delete:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* The second click. Deleting a build file cannot be undone, so the first
+ * click only changes what the second one will do. */
+.confirm {
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font: inherit;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.confirm:hover {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+}
+
+/* ------------------------------------------------------------------ other */
+
+.path {
+  padding: 1px var(--space-2);
+  background: var(--bg-sunken);
+  border-radius: var(--radius-sm);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-xs);
+  word-break: break-all;
+}
+
+.refusal {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-raised);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.dismiss {
+  margin-left: auto;
+  padding: 0 var(--space-2);
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.hint {
+  margin: 0;
+  max-width: 72ch;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+}
+
+.empty {
+  padding: var(--space-6);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}

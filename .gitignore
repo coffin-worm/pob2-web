@@ -9,7 +9,9 @@ inspect.lua
 *.lnk
 
 # Application files
-Builds/
+# Anchored to the repo root: unanchored, and with git's case-insensitive
+# ignore matching on Windows, "Builds/" also swallowed web/src/builds/.
+/Builds/
 *.cfg
 Settings.xml
 
