@@ -1,9 +1,10 @@
 # PoB web UI — header prototype
 
 A prototype of Path of Building's UI as a web app, intended to run in
-WebView2 against the existing Lua calc engine. Seven screens so far: the
+WebView2 against the existing Lua calc engine. Eight screens so far: the
 top bar, the stat sidebar, the passive tree, the Items tab, the Skills tab,
-the Configuration tab and the Calcs tab, all driven by the real engine.
+the Configuration tab, the Calcs tab and import/export, all driven by the
+real engine.
 
 ```bash
 npm install
@@ -567,6 +568,78 @@ sidebar reads 189.5 DPS and the Calcs tab reads 241.4, and both are right.
 Because it is the expensive route, it is not polled. `buildMode.outputRevision`
 moves on every recalculation, and the app refetches on that.
 
+## Import and export, and the zlib that was missing
+
+A build code is base64 of the deflated build XML. Two transforms, both
+PoB's, so a code from here opens in the desktop app and a code from the
+desktop app or a build site opens here.
+
+Except that neither transform existed. `src/_SimpleGraphic.def.lua` stubs
+`Deflate` and `Inflate` to return `""`, with a TODO asking for FFI bindings
+to the zlib PoB already ships — the renderer normally provides them, and
+nothing headless had needed them. That is a nasty failure to inherit: an
+empty string is not an error, so importing a code would have produced a
+build that silently did not load.
+
+`bridge/zlib.lua` binds `runtime/zlib1.dll` through LuaJIT's FFI and
+installs the result over the stubs at boot, and only over the stubs — a
+host that provides real ones keeps them. It is about sixty lines:
+`compressBound`/`compress2` one way, `uncompress` the other, with the
+output buffer grown on `Z_BUF_ERROR` because zlib never says how big the
+answer will be. `src/` stays untouched, which is the point: the bridge
+fills in a capability the headless wrapper lacks rather than editing the
+engine to suit itself.
+
+```
+[bridge] zlib 1.3.1 bound over the headless stubs
+```
+
+| | |
+|---|---|
+| This build as XML | 14,012 bytes |
+| As a code | 3,824 chars |
+| Round trip | class, ascendancy, level, tree and items all back |
+
+### Reading a code is not fetching one
+
+The paste box accepts a build-site link as well as a bare code, because the
+code is the last path segment and trimming it by hand is a silly thing to
+ask. **The link is read, never opened.** Fetching it would be sending the
+user's build off the machine as a side effect of pasting, and that is a
+decision to make explicitly rather than one to infer. The same goes for
+character import: PoB can pull a character from the game's API, and this
+screen takes the JSON you paste instead, because that request needs your
+session and it is yours to make.
+
+So this whole screen works with no network at all.
+
+### What it tells you before it acts
+
+PoB's import box validates as you type and says "Code is valid". Valid is
+not the question anyone has. This decodes and reads the `Build` element out
+of the XML, so before you commit you see **Infernalist · level 70** and
+what the code weighs against what it unpacks to. Importing replaces the
+open build outright, which PoB guards with a modal; here the sentence is
+next to the button that does it.
+
+The export is tagged with the `outputRevision` it was generated from, so
+when the build moves underneath it the code goes away and the screen says
+"the build changed — generate it again" rather than offering a stale code
+that looks fine.
+
+### What it does not do
+
+- **No fetching from build sites**, per above, and no uploading to them —
+  PoB's Share button posts the build to pobb.in and hands back a short
+  link.
+- **No import as a comparison build**, which PoB offers as a third mode.
+- **No local build list.** Builds still open by absolute path through
+  `POST /build/open`, and `GetUserPath` is stubbed headless, so there is
+  nothing to list. This screen is how a build gets in for now.
+- **Gzip is not handled** on the way in. `uncompress` reads the zlib
+  wrapper only, and build codes are always zlib — but saying so beats
+  appearing to support a format that would come back as a length error.
+
 ## The bridge
 
 I had this wrong. The earlier note here said there is no standalone LuaJIT
@@ -642,9 +715,8 @@ merely empty.
 
 ## Known gaps
 
-- **Seven screens of perhaps a dozen.** Notes, the build list and the
-  import/export screens are unbuilt. None of them looks harder than what is
-  here.
+- **Eight screens of perhaps a dozen.** Notes, the build list and the
+  compare view are unbuilt. None of them looks harder than what is here.
 - **Each screen's own gaps** are listed with that screen above: the tree's
   notable glow and path preview, the Items tab's missing item editor, the
   Skills tab's gem defaults, the Config tab's per-option comparison.
@@ -655,7 +727,8 @@ merely empty.
   would reset an allocated tree currently cannot be confirmed from here.
 - **No build list.** Builds are opened by absolute path through
   `POST /build/open`; `GetUserPath` is stubbed headless, so `/paths` reports
-  nothing useful and there is no directory listing.
+  nothing useful and there is no directory listing. Import/export is how a
+  build gets in and out for now.
 - **Rename is in-memory.** `setBuildName` marks the build dirty; it does not
   rename the file, because in PoB the name *is* the file name and renaming
   happens inside Save As.

@@ -1333,6 +1333,92 @@ function api.config(build)
 	}
 end
 
+-------------------------------------------------------- import and export
+
+--- A build code is base64 of the deflated build XML, in the URL-safe
+--- alphabet. PoB's own transforms, both directions, so a code from here
+--- opens in the desktop app and vice versa.
+function api.decodeCode(code)
+	code = tostring(code or ""):gsub("%s+", "")
+	if code == "" then
+		return nil, "no code"
+	end
+	-- Build sites hand out the code as the last path segment of a URL;
+	-- taking it is friendlier than telling the user to trim it themselves.
+	-- A link is never fetched here -- only read.
+	local tail = code:match("^https?://[%w%.%-]+/[%w%-/]*/([%w%-_=]+)$")
+		or code:match("^https?://[%w%.%-]+/([%w%-_=]+)$")
+	if tail then
+		code = tail
+	end
+
+	local raw = common.base64.decode((code:gsub("-", "+"):gsub("_", "/")))
+	if not raw or raw == "" then
+		return nil, "that is not valid base64"
+	end
+	local xml = Inflate(raw)
+	if not xml or xml == "" then
+		return nil, "the code decoded but would not decompress"
+	end
+	-- The cleaned code travels back too, so callers measure the code
+	-- rather than whatever URL it arrived wrapped in.
+	return xml, code
+end
+
+--- What a code contains, without importing it.
+---
+--- PoB's import box validates as you type and says "Code is valid"; this
+--- goes a little further and reads the class and level out of the decoded
+--- XML, because "valid" is not the question anyone actually has. Nothing
+--- is changed: the build on screen is untouched until the import runs.
+function api.inspectCode(code)
+	local xml, cleaned = api.decodeCode(code)
+	if not xml then
+		return { valid = false, error = cleaned }
+	end
+
+	local parsed, parseErr = common.xml.ParseXML(xml)
+	if not parsed then
+		return { valid = false, error = "decoded, but the XML did not parse: " .. tostring(parseErr) }
+	end
+
+	-- The root is PathOfBuilding2; the Build element carries the summary.
+	local summary = {}
+	for _, node in ipairs(parsed[1] or parsed) do
+		if type(node) == "table" and node.elem == "Build" then
+			summary = node.attrib or {}
+			break
+		end
+	end
+
+	return {
+		valid = true,
+		level = tonumber(summary.level),
+		class = summary.className,
+		ascendancy = summary.ascendClassName ~= "None" and summary.ascendClassName or nil,
+		-- Both sizes, because the ratio is the interesting part of a code.
+		codeBytes = #cleaned,
+		xmlBytes = #xml,
+	}
+end
+
+--- The current build as a code, exactly as the desktop app's Export does.
+function api.buildCode(build)
+	if not build or not build.SaveDB then
+		return { ready = false }
+	end
+	local ok, xml = pcall(build.SaveDB, build, "code")
+	if not ok or not xml then
+		return { ready = false, error = "the build would not serialise" }
+	end
+	local packed = Deflate(xml)
+	if not packed or packed == "" then
+		return { ready = false, error = "deflate is not available in this host" }
+	end
+	local code = (common.base64.encode(packed):gsub("%+", "-"):gsub("/", "_"))
+	return { ready = true, code = code, codeBytes = #code, xmlBytes = #xml }
+end
+
 ------------------------------------------------------------------- commands
 
 local commands = {}

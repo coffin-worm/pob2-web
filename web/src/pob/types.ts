@@ -553,3 +553,22 @@ export type ConfigSnapshot =
       buildMs: number;
       engineError?: string | null;
     };
+
+/* ---------------------------------------------------- import and export */
+
+/** What a build code contains, read without importing it. */
+export type CodeInspection =
+  | { valid: false; error: string }
+  | {
+      valid: true;
+      level?: number;
+      class?: string;
+      ascendancy?: string;
+      /** The code itself, after any URL wrapper is stripped. */
+      codeBytes: number;
+      xmlBytes: number;
+    };
+
+export type BuildCode =
+  | { ready: false; error?: string }
+  | { ready: true; code: string; codeBytes: number; xmlBytes: number };

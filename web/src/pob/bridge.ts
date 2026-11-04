@@ -1,5 +1,7 @@
 import type {
   BridgeSnapshot,
+  BuildCode,
+  CodeInspection,
   CalcsSnapshot,
   ConfigSnapshot,
   ItemDetail,
@@ -108,6 +110,32 @@ export const bridge = {
 
   /** The configuration tab: only the options this build actually uses. */
   config: () => request<ConfigSnapshot>('/config'),
+
+  /**
+   * What a build code contains, without importing it.
+   *
+   * Decode only. A link pasted here has its code read out of it; nothing
+   * is ever fetched, so this works with no network and sends nothing.
+   */
+  inspectCode: (code: string) =>
+    request<CodeInspection>(`/code/inspect?code=${encodeURIComponent(code)}`),
+
+  /** The current build as a code, exactly as the desktop app exports it. */
+  buildCode: () => request<BuildCode>('/code'),
+
+  /** Replace the open build with one decoded from a code. */
+  importCode: (code: string) =>
+    request<BridgeSnapshot>('/code/import', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+
+  /** Import a character from a pasted game API response. */
+  importCharacter: (json: string) =>
+    request<BridgeSnapshot>('/code/character', {
+      method: 'POST',
+      body: JSON.stringify({ json }),
+    }),
 
   /** Ask the engine to run one of api.lua's commands. */
   act: (action: string, value?: unknown) =>

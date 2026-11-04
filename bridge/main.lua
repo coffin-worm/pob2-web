@@ -311,6 +311,53 @@ end
 
 --- Where PoB keeps the user's builds, so the UI can offer something real to
 --- open without the path being hardcoded on the web side.
+--- What a build code contains, without importing it. Decode only: a link
+--- pasted here has its code read out of it, never fetched.
+routes["GET /code/inspect"] = function(_, query)
+	return 200, api.inspectCode(query.code)
+end
+
+--- The current build as a code, exactly as the desktop app's Export does.
+routes["GET /code"] = function()
+	return 200, api.buildCode(currentBuild())
+end
+
+--- Replace the open build with one decoded from a code.
+routes["POST /code/import"] = function(payload)
+	local code = type(payload) == "table" and payload.code
+	local detail = api.inspectCode(code)
+	if not detail.valid then
+		return 400, { error = detail.error or "that code is not valid" }
+	end
+
+	local xml, err = api.decodeCode(code)
+	if not xml then
+		return 400, { error = tostring(err) }
+	end
+
+	-- Named for what it is, since a code carries no file name and
+	-- "Imported build" tells you nothing once you have two of them.
+	local name = detail.ascendancy or detail.class or "Imported build"
+	loadBuildFromXML(xml, name)
+	settle(4)
+	return 200, api.snapshot(currentBuild())
+end
+
+--- Import a character straight from the game's API response, which the
+--- user pastes. Nothing is fetched here either.
+routes["POST /code/character"] = function(payload)
+	local json = type(payload) == "table" and payload.json
+	if type(json) ~= "string" or json:match("^%s*$") then
+		return 400, { error = "expected { json = ... }" }
+	end
+	local ok, err = pcall(loadBuildFromJSON, json)
+	if not ok then
+		return 400, { error = "that is not a character export PoB understands: " .. tostring(err) }
+	end
+	settle(4)
+	return 200, api.snapshot(currentBuild())
+end
+
 routes["GET /paths"] = function()
 	return 200, {
 		buildPath = main and main.buildPath or nil,
@@ -350,6 +397,22 @@ function love.load()
 		log("PoB booted headless")
 	end
 
+	-- HeadlessWrapper stubs Deflate and Inflate to return "", with a TODO
+	-- asking for FFI bindings to the zlib PoB already ships. Build codes
+	-- are base64 of deflated XML, so without these, importing one produces
+	-- an empty document and a build that silently does not load.
+	--
+	-- Installed here rather than by editing the stub, so src/ stays
+	-- untouched. Only a stub is replaced: a host that provides real ones
+	-- keeps them.
+	local stubbed = type(Inflate) == "function" and Inflate("probe") == ""
+	local zlib, zerr = dofile(POB_BRIDGE .. "zlib.lua").install(POB_RUNTIME, stubbed)
+	if zlib then
+		log("zlib %s bound%s", zlib.version, stubbed and " over the headless stubs" or "")
+	else
+		log("zlib NOT available (%s); build codes will not work", tostring(zerr))
+	end
+
 	api = dofile(POB_BRIDGE .. "api.lua")
 
 	local Server = dofile(POB_BRIDGE .. "server.lua")
@@ -364,6 +427,7 @@ function love.load()
 	log("  GET /health /state /stats /calcs /paths")
 	log("  GET /tree /tree/alloc   GET /items /item /items/search")
 	log("  GET /skills /skills/group /gem /gems/search   GET /config")
+	log("  GET /code /code/inspect   POST /code/import /code/character")
 	log("  POST /action  POST /build/new  POST /build/open")
 end
 
