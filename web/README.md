@@ -48,16 +48,28 @@ git diff <base>..HEAD --name-only | awk -F/ '{print $1}' | sort | uniq -c
 At the time of writing: 41 files under `web/`, 4 under `bridge/`, and
 `.gitignore`. Nothing in `src/`, nothing in `spec/`.
 
-That proves the *inputs* to PoB's test suite are unchanged. It is not the
-same as having run it, which needs the container CI uses and a Docker
-daemon:
+That proves the *inputs* to PoB's test suite are unchanged -- `.busted`
+reads `src/`, `spec/` and `runtime/lua/`, and none of them differ from the
+base. But "the suite is unaffected" and "the suite passes" are different
+claims, and only the first one follows from a diff. So the suite was also
+run, in the container CI uses:
 
 ```bash
 docker compose up
 ```
 
-Worth being exact about, because "the suite is unaffected" and "the suite
-passes" are different claims and only the first one follows from a diff.
+```
+912 successes / 0 failures / 0 errors / 0 pending : 178.2 seconds
+```
+
+All 53 files under `spec/System` ran: `.busted` sets
+`exclude-tags = "builds"`, but nothing in the suite carries that tag, so
+it excludes nothing. Two bits of output look alarming and are not --
+`missing node <id>` comes from `HeadlessWrapper.lua` processing the tree,
+and `Failed to get token from server: SSL connect error` is
+`src/Classes/PoEAPI.lua:127` reaching for the live API from a container
+with no network. Both appear on a clean checkout.
+
 Everything the bridge adds lives beside the engine rather than inside it,
 which is what makes the first claim worth anything: the capabilities the
 headless host was missing -- zlib, a filesystem -- are installed over its
