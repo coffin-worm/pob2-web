@@ -12,6 +12,8 @@
 
 local api = {}
 
+local math_floor = math.floor
+
 -- PoB labels carry inline colour codes (^7, ^xRRGGBB). They are presentation
 -- for a renderer that no longer exists on this path.
 local function strip(s)
@@ -223,6 +225,104 @@ function api.stats(build)
 		socketGroups = socketGroups,
 		skillId = skillId,
 		skills = skills,
+	}
+end
+
+-------------------------------------------------------------- the tree
+
+--- The passive tree's geometry: where every node is and what it joins to.
+---
+--- Positions are PoB's. It resolves each node's group, orbit and orbit index
+--- into node.x/node.y once at load (PassiveTree.lua:574), so there is no
+--- orbit trigonometry to repeat here -- which is just as well, since getting
+--- it subtly wrong would be invisible until the tree looked faintly bent.
+---
+--- Big enough to be worth fetching once: this does not change while a build
+--- is open, only when the tree version does. The allocation on top of it is
+--- a separate, small route.
+function api.tree(build)
+	local spec = build and build.spec
+	local treeNodes = spec and spec.nodes
+	if not treeNodes then
+		return { ready = false }
+	end
+
+	local nodes, edges = asArray({}), asArray({})
+	local seen = {}
+	local minX, minY, maxX, maxY
+
+	for id, node in pairs(treeNodes) do
+		-- OnlyImage nodes are decoration with no meaning, and a node with no
+		-- position is not on the tree (cluster jewel notables, mostly).
+		if node.x and node.y and node.type ~= "OnlyImage" then
+			local x, y = math_floor(node.x + 0.5), math_floor(node.y + 0.5)
+
+			nodes[#nodes + 1] = {
+				id = id,
+				x = x,
+				y = y,
+				type = node.type or "Normal",
+				name = strip(node.dn or node.name or ""),
+				-- Ascendancy nodes live in their own distant groups; PoB
+				-- draws them as a separate overlay rather than in place.
+				ascendancy = node.ascendancyName or nil,
+			}
+
+			if not node.ascendancyName then
+				minX = (not minX or x < minX) and x or minX
+				minY = (not minY or y < minY) and y or minY
+				maxX = (not maxX or x > maxX) and x or maxX
+				maxY = (not maxY or y > maxY) and y or maxY
+			end
+
+			-- linkedId is symmetric, so each edge would arrive twice.
+			for _, otherId in ipairs(node.linkedId or {}) do
+				local a, b = id, otherId
+				if a > b then a, b = b, a end
+				local key = a .. ":" .. b
+				local other = treeNodes[otherId]
+				if not seen[key] and other and other.x and other.type ~= "OnlyImage" then
+					seen[key] = true
+					edges[#edges + 1] = { a, b }
+				end
+			end
+		end
+	end
+
+	return {
+		ready = true,
+		nodes = nodes,
+		edges = edges,
+		bounds = { minX = minX or 0, minY = minY or 0, maxX = maxX or 0, maxY = maxY or 0 },
+	}
+end
+
+--- What is allocated, and what could be. Small, and changes on every click.
+---
+--- `path` is PoB's own reachability answer, rebuilt by
+--- BuildAllDependsAndPaths: a node with no path cannot be reached from the
+--- allocated tree, which is exactly what makes it unclickable.
+function api.treeAlloc(build)
+	local spec = build and build.spec
+	if not spec or not spec.nodes then
+		return { ready = false }
+	end
+
+	local allocated, reachable = asArray({}), asArray({})
+	for id, node in pairs(spec.nodes) do
+		if node.alloc then
+			allocated[#allocated + 1] = id
+		elseif node.path and #node.path > 0 then
+			reachable[#reachable + 1] = id
+		end
+	end
+
+	return {
+		ready = true,
+		allocated = allocated,
+		reachable = reachable,
+		classId = spec.curClassId or 0,
+		ascendClassId = spec.curAscendClassId or 0,
 	}
 end
 
@@ -519,6 +619,36 @@ end
 
 commands.setCalcsSocketGroup = selectInCalcs("mainSocketGroup")
 commands.setCalcsSkill = selectInCalcs("mainSkill")
+
+--- Allocate or deallocate a passive, as a left-click on the tree does.
+---
+--- AllocNode walks the node's own path, so clicking something three nodes
+--- away allocates the route to it exactly as PoB does. A node with no path
+--- cannot be reached and is refused rather than quietly doing nothing.
+---
+--- Not handled, all of which open dialogs or need modifier keys in PoB:
+--- attribute-node swapping, cross-class ascendancy switching, and jewel
+--- sockets. Those arrive as a plain allocation here.
+function commands.toggleNode(build, value)
+	local id = tonumber(value)
+	local spec = build.spec
+	local node = spec and spec.nodes and spec.nodes[id]
+	if not node then
+		return nil, "no node with id " .. tostring(value)
+	end
+
+	if node.alloc then
+		spec:DeallocNode(node)
+	elseif node.path and #node.path > 0 then
+		spec:AllocNode(node)
+	else
+		return nil, "node is not reachable from the allocated tree"
+	end
+
+	spec:AddUndoState()
+	build.buildFlag = true
+	return true
+end
 
 function commands.dismissPopup(build)
 	if main and main.popups and main.popups[1] and main.ClosePopup then

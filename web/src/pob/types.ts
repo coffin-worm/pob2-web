@@ -153,6 +153,47 @@ export interface StatLine {
   note?: boolean;
 }
 
+/** A passive, positioned where PoB computed it at tree load. */
+export interface TreeNode {
+  id: number;
+  x: number;
+  y: number;
+  /** Normal | Notable | Keystone | Socket | ClassStart | AscendClassStart */
+  type: string;
+  name: string;
+  /** Set on ascendancy nodes, which live in their own distant groups. */
+  ascendancy?: string;
+}
+
+export interface TreeBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+export type TreeSnapshot =
+  | { ready: false }
+  | {
+      ready: true;
+      nodes: TreeNode[];
+      /** Node id pairs, deduplicated — PoB's linkedId is symmetric. */
+      edges: [number, number][];
+      bounds: TreeBounds;
+      buildMs: number;
+    };
+
+export type TreeAllocSnapshot =
+  | { ready: false }
+  | {
+      ready: true;
+      allocated: number[];
+      /** Nodes PoB can path to from the allocated tree, so clickable. */
+      reachable: number[];
+      classId: number;
+      ascendClassId: number;
+    };
+
 /**
  * One row of a Calcs section.
  *

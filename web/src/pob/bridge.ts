@@ -1,4 +1,10 @@
-import type { BridgeSnapshot, CalcsSnapshot, StatsSnapshot } from './types';
+import type {
+  BridgeSnapshot,
+  CalcsSnapshot,
+  StatsSnapshot,
+  TreeAllocSnapshot,
+  TreeSnapshot,
+} from './types';
 
 /**
  * The transport to the Lua engine.
@@ -51,6 +57,12 @@ export const bridge = {
 
   /** The Calcs tab. Fetched when outputRevision moves, not on a timer. */
   calcs: () => request<CalcsSnapshot>('/calcs'),
+
+  /** The tree's geometry. ~420 kB, fetched once — it does not change. */
+  tree: () => request<TreeSnapshot>('/tree'),
+
+  /** What is allocated on it. Small, and changes on every click. */
+  treeAlloc: () => request<TreeAllocSnapshot>('/tree/alloc'),
 
   /** Ask the engine to run one of api.lua's commands. */
   act: (action: string, value?: unknown) =>

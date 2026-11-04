@@ -1,8 +1,9 @@
 # PoB web UI — header prototype
 
 A prototype of Path of Building's UI as a web app, intended to run in
-WebView2 against the existing Lua calc engine. Three screens so far: the top
-bar, the stat sidebar and the Calcs tab, all driven by the real engine.
+WebView2 against the existing Lua calc engine. Four screens so far: the top
+bar, the stat sidebar, the Calcs tab and the passive tree, all driven by the
+real engine.
 
 ```bash
 npm install
@@ -138,6 +139,57 @@ quiet enough to scan, and a palette of its own. PoB's colour codes are
 classified into names (`fire`, `warning`, `positive`, `source`) by the
 bridge, so the meaning survives while the 2010-era hex does not.
 
+## The passive tree
+
+This was the screen that could have sunk the approach — a canvas with
+thousands of nodes, pan, zoom and hit-testing, resembling none of the other
+three. It did not.
+
+| | |
+|---|---|
+| Nodes / edges in the tree | 4546 / 5187 |
+| Drawn (ascendancy excluded) | 4115 / 4749 |
+| Geometry payload, fetched once | 424 kB |
+| Engine time to build it | 35 ms |
+| **Draw time per frame** | **1.2 ms** measured in isolation, **1.8–2.0 ms** in the app |
+| **Hit-test, every mouse move** | **0.041 ms** |
+
+That is roughly eight times the headroom needed for 60fps, at full zoom-out
+with nothing culled. The node count was the surprise: I had assumed ~1500,
+and it is three times that.
+
+**Canvas, not SVG**, and not as a taste: ten thousand SVG elements is ten
+thousand things for the browser to lay out and hit-test on every pan. Canvas
+draws the whole tree as five batched paths — two `stroke` calls for the
+edges and three `fill` calls for the nodes, by state — instead of ten
+thousand draw calls. Hit-testing is a linear scan this code does itself, and
+at 0.041 ms there is no case for a spatial index that could fall out of step
+with the data.
+
+Positions are PoB's. It resolves each node's group, orbit and orbit index
+into `node.x`/`node.y` once at tree load, so there is no orbit trigonometry
+repeated here — which matters, because getting it subtly wrong would be
+invisible until the tree looked faintly bent.
+
+Allocation is PoB's too. A click sends `toggleNode`, and `AllocNode` walks
+the node's own path, so clicking something several nodes away allocates the
+route to it exactly as the desktop app does. Reachability is `node.path`: a
+node PoB cannot path to is refused with a reason rather than quietly doing
+nothing. Verified end to end by clicking a node in the browser — 48 → 49
+allocated, the header moving 44/123 to 45/123, and the build going unsaved.
+
+### What the tree still lacks
+
+- **Node art.** PoB's sprite sheets are most of `TreeData/0_5`'s 88 MB.
+  Nodes are circles sized by type here, which is enough to navigate and
+  nothing like enough to ship.
+- **Stat tooltips.** Hovering names the node and says whether it is
+  allocated or reachable; it does not yet show what it does.
+- **The ascendancy overlay.** Those 431 nodes live in their own groups
+  thousands of units away, which is why PoB draws them separately. They are
+  excluded rather than dragged into a view they do not belong in.
+- Masteries, jewel sockets, attribute swapping, search and path previews.
+
 ## The Calcs tab, and a prediction that was wrong
 
 This file used to say the Calcs tab "was the original argument for this
@@ -263,9 +315,8 @@ merely empty.
 
 ## Known gaps
 
-- **Two screens of perhaps a dozen.** The passive tree, items, skills and
-  the calculation breakdown are all unbuilt, and the tree is the one that
-  will not resemble either of these — a canvas with 1500 nodes, not a list.
+- **Four screens of perhaps a dozen.** Items, skills, configuration and the
+  build list are unbuilt. None of them looks harder than what is here.
 - **Nothing is virtualised, and on this evidence nothing needs to be.** See
   below — this was the opposite of what this file predicted.
 - **Dialogs are not drawn.** The UI reports that the engine is waiting on

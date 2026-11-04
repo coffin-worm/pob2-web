@@ -174,6 +174,19 @@ routes["GET /stats"] = function()
 	return 200, stats
 end
 
+--- The tree's geometry. Fetched once: it only changes with the tree version.
+routes["GET /tree"] = function()
+	local started = os.clock()
+	local tree = api.tree(currentBuild())
+	tree.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, tree
+end
+
+--- What is allocated on it. Small, and changes on every click.
+routes["GET /tree/alloc"] = function()
+	return 200, api.treeAlloc(currentBuild())
+end
+
 --- The Calcs tab. Much the most expensive route: it runs CheckFlag over a
 --- thousand rows and formats every one that survives, so the UI fetches it
 --- on demand rather than on the 1s poll the other two use.

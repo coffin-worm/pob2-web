@@ -14,9 +14,28 @@
 }
 
 .body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
   flex: 1;
-  padding: var(--space-7);
+  min-height: 0;
+  padding: var(--space-6);
+}
+
+/* The tree fills its panel and manages its own viewport; the Calcs board
+ * scrolls. min-height: 0 so a tall board cannot stretch the column instead
+ * of scrolling inside it. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
+}
+
+/* `hidden` on a flex child does not hide it without this. */
+.panel[hidden] {
+  display: none;
 }
 
 .note {
