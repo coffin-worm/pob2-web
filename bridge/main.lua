@@ -253,6 +253,15 @@ routes["GET /gems/search"] = function(_, query)
 	return 200, api.gemSearch(query.q, query.limit)
 end
 
+--- The configuration tab: only the options this build actually uses.
+routes["GET /config"] = function()
+	local started = os.clock()
+	local config = api.config(currentBuild())
+	config.engineError = engineError()
+	config.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, config
+end
+
 routes["POST /action"] = function(payload)
 	if type(payload) ~= "table" or not payload.action then
 		return 400, { error = "expected { action = ..., value = ... }" }
@@ -354,7 +363,7 @@ function love.load()
 	log("listening on http://127.0.0.1:%d", server.port)
 	log("  GET /health /state /stats /calcs /paths")
 	log("  GET /tree /tree/alloc   GET /items /item /items/search")
-	log("  GET /skills /skills/group /gem /gems/search")
+	log("  GET /skills /skills/group /gem /gems/search   GET /config")
 	log("  POST /action  POST /build/new  POST /build/open")
 end
 

@@ -1,6 +1,7 @@
 import type {
   BridgeSnapshot,
   CalcsSnapshot,
+  ConfigSnapshot,
   ItemDetail,
   ItemSearchSnapshot,
   ItemsSnapshot,
@@ -104,6 +105,9 @@ export const bridge = {
   /** Every gem the game has, by name. */
   gemSearch: (query: string) =>
     request<GemSearchSnapshot>(`/gems/search?q=${encodeURIComponent(query)}`),
+
+  /** The configuration tab: only the options this build actually uses. */
+  config: () => request<ConfigSnapshot>('/config'),
 
   /** Ask the engine to run one of api.lua's commands. */
   act: (action: string, value?: unknown) =>

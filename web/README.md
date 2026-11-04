@@ -1,9 +1,9 @@
 # PoB web UI — header prototype
 
 A prototype of Path of Building's UI as a web app, intended to run in
-WebView2 against the existing Lua calc engine. Six screens so far: the top
-bar, the stat sidebar, the passive tree, the Items tab, the Skills tab and
-the Calcs tab, all driven by the real engine.
+WebView2 against the existing Lua calc engine. Seven screens so far: the
+top bar, the stat sidebar, the passive tree, the Items tab, the Skills tab,
+the Configuration tab and the Calcs tab, all driven by the real engine.
 
 ```bash
 npm install
@@ -443,6 +443,80 @@ carry the grouping.
 - **No copy and paste of socket groups**, which the real tab does with
   Ctrl+C and Ctrl+V.
 
+## The Configuration tab
+
+The interesting thing about this screen is how much of it is usually not on
+it.
+
+| | |
+|---|---|
+| Options PoB declares | **663** |
+| Options this build is asked | **77**, in five sections |
+| Payload | 22.6 kB, **1–3 ms** |
+| With "show all" | 533 options, 97.6 kB, 3 ms |
+
+An option appears when the build could answer it: `ifCond` against the
+conditions the calculation actually used, `ifFlag` against the mod list,
+`ifSkillData` against the active skill, `ifNode` against the allocated
+tree. That gating is a function of the whole calculation — allocate a
+keystone and new questions appear — so every option's visibility is asked
+of its own control rather than worked out again here.
+
+Two rules inside that closure are worth knowing, because neither is obvious
+and both would be wrong if reimplemented:
+
+- **An option that no longer applies is still shown when its value differs
+  from the default.** Otherwise a setting could go on affecting the build
+  from somewhere you cannot see it.
+- **"Show all" reveals the build-gated options but deliberately not the
+  ones gated on another option being set** (`ifOption`), because those
+  would have nothing to attach to.
+
+PoB draws a blue border round an option that is not at its default. That
+comparison is `GetDefaultState`, which is not simply the declared default —
+it prefers the placeholder when the build computed one. It travels as a
+`changed` flag and becomes a rule down the side of the row; on a list this
+long, knowing what you have changed is most of what you want from it.
+
+The tooltips are the engine's too, and some of them are functions of the
+live mod list rather than fixed strings: *"You will automatically be
+considered to be on Low Life if you have at least 43% Life reserved"* is
+computed from the build in front of you.
+
+### A bug this turned up in PoB itself
+
+`conditionEnemyExitedPresenceRecently` is declared twice in
+`Modules/ConfigOptions.lua` — once as "Enemy exited Presence Recently?"
+gated on `ExitedPresenceRecently` (line 1669), and again as "Enemy entered
+Presence Recently?" gated on `EnteredPresenceRecently` (line 1672). The
+second was meant to have its own variable. As it stands both checkboxes
+read and write one input, so ticking either ticks both and the entered
+condition can never be set on its own.
+
+That is upstream, not here, and `src/` is untouched — but sending both
+would have given this UI two controls bound to one value. The first wins,
+the rest come back in a `duplicates` list, and the screen says so rather
+than quietly dropping one. Should be exactly one entry; anything else is
+news.
+
+### Custom modifiers
+
+Free text, parsed exactly as an item's mods are — which is how a build
+describes something the 663 options have no question for. The blocks are
+editable here with their titles and enable flags; what the real tab also
+has, and this does not, is the mod browser that helps you write one.
+
+### What it does not do
+
+- **No per-option comparison.** PoB's checkbox tooltips run the whole
+  calculation with the option flipped and show what would change. The route
+  for that is the one the Items tab already uses; it is not wired up here.
+- **No config sets beyond switching between them.**
+- **No mod browser** for the custom modifier blocks.
+- **The filter is local**, over the options already fetched. PoB's own
+  search feeds the same visibility closure, so searching there means a
+  round trip and a recalculation per keystroke.
+
 ## The Calcs tab, and a prediction that was wrong
 
 This file used to say the Calcs tab "was the original argument for this
@@ -568,12 +642,12 @@ merely empty.
 
 ## Known gaps
 
-- **Six screens of perhaps a dozen.** Configuration, notes, the build list
-  and the import/export screens are unbuilt. None of them looks harder than
-  what is here.
+- **Seven screens of perhaps a dozen.** Notes, the build list and the
+  import/export screens are unbuilt. None of them looks harder than what is
+  here.
 - **Each screen's own gaps** are listed with that screen above: the tree's
   notable glow and path preview, the Items tab's missing item editor, the
-  Skills tab's gem defaults and weapon-set gating.
+  Skills tab's gem defaults, the Config tab's per-option comparison.
 - **Nothing is virtualised, and on this evidence nothing needs to be.** See
   below — this was the opposite of what this file predicted.
 - **Dialogs are not drawn.** The UI reports that the engine is waiting on

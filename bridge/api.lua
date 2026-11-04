@@ -1147,6 +1147,192 @@ function api.gemSearch(query, limit)
 	return { ready = true, results = results, total = total, truncated = total > #results }
 end
 
+------------------------------------------------------------ the config tab
+
+--- PoB's configuration options, in their declared order.
+---
+--- The same table ConfigTab builds its controls from: section markers and
+--- 547 option definitions, interleaved. Required rather than reproduced,
+--- obviously, and `require` returns the instance ConfigTab already holds.
+local configOptions
+local function loadConfigOptions()
+	if configOptions == nil then
+		local ok, result = pcall(require, "Modules.ConfigOptions")
+		configOptions = ok and result or false
+	end
+	return configOptions or nil
+end
+
+--- The tooltip PoB would show for one option.
+---
+--- `control.tooltipText` is assembled from every `ifCond`, `ifFlag` and
+--- `tooltip` the option declared, and some of those are functions of the
+--- live mod list -- "You will automatically be considered to be on Low Life
+--- if you have at least 43% Life reserved" is computed from the build. So
+--- it is called rather than read from the option definition.
+local function optionTooltip(control)
+	local text = control.tooltipText
+	if type(text) == "function" then
+		local ok, result = pcall(text)
+		text = ok and result or nil
+	end
+	if type(text) ~= "string" or text == "" then
+		return nil
+	end
+	local lines = asArray({})
+	for line in (strip(text) .. "\n"):gmatch("([^\n]*)\n") do
+		lines[#lines + 1] = line
+	end
+	return lines
+end
+
+--- The build's configuration: every option that currently applies to it.
+---
+--- The interesting thing about this screen is how much of it is usually
+--- not on it. There are 547 options and a given build is asked perhaps
+--- forty of them, because PoB only shows an option when the build could
+--- answer it: `ifCond` against the conditions the calculation actually
+--- used, `ifFlag` against the mod list, `ifSkillData` against the active
+--- skill, `ifNode` against the allocated tree. That gating is a function of
+--- the whole calculation, so every option's visibility is asked of its own
+--- control rather than worked out here.
+---
+--- Two rules in that closure are worth knowing about, because neither is
+--- obvious and both would be wrong if reimplemented. An option that no
+--- longer applies is still shown when its value differs from the default,
+--- so a setting cannot go on affecting the build from somewhere you cannot
+--- see it. And `toggleConfigs` -- the tab's "show all" -- reveals the
+--- build-gated options but deliberately not the ones gated on another
+--- option being set, because those would have nothing to attach to.
+function api.config(build)
+	local tab = build and build.configTab
+	local varList = loadConfigOptions()
+	if not tab or not tab.varControls or not varList then
+		return { ready = false }
+	end
+
+	local set = tab.configSets and tab.configSets[tab.activeConfigSetId]
+	if not set then
+		return { ready = false }
+	end
+
+	local sections, current = asArray({}), nil
+	local shownCount = 0
+
+	-- PoB's option list is not quite unique. As of this tree,
+	-- `conditionEnemyExitedPresenceRecently` is declared twice -- once as
+	-- "Enemy exited Presence Recently?" gated on ExitedPresenceRecently,
+	-- and again as "Enemy entered Presence Recently?" gated on
+	-- EnteredPresenceRecently -- so two different questions write to one
+	-- input. That is an upstream bug rather than something to paper over,
+	-- but sending both would give the UI two controls bound to one value,
+	-- where ticking either ticks both. The first wins and the rest are
+	-- reported, so the collision is visible instead of silent.
+	local emitted, duplicates = {}, asArray({})
+
+	for _, varData in ipairs(varList) do
+		if varData.section then
+			current = {
+				name = strip(varData.section),
+				-- PoB lays the sections out in three columns.
+				col = varData.col or 1,
+				options = asArray({}),
+			}
+			sections[#sections + 1] = current
+		elseif varData.var and current then
+			if emitted[varData.var] then
+				duplicates[#duplicates + 1] = varData.var
+				goto continue
+			end
+			emitted[varData.var] = true
+			local control = tab.varControls[varData.var]
+			local ok, shown = pcall(function()
+				return control and control:IsShown()
+			end)
+			if ok and shown then
+				shownCount = shownCount + 1
+
+				local value = set.input[varData.var]
+				local default = tab:GetDefaultState(varData.var, type(value))
+
+				local options = nil
+				if varData.type == "list" then
+					options = asArray({})
+					for _, entry in ipairs(varData.list or {}) do
+						options[#options + 1] = {
+							value = entry.val,
+							label = strip(entry.label or tostring(entry.val)),
+							tone = toneOf(entry.label),
+						}
+					end
+				end
+
+				current.options[#current.options + 1] = {
+					var = varData.var,
+					-- check | count | integer | countAllowZero | float |
+					-- list | text
+					type = varData.type or "check",
+					label = strip(varData.label or varData.var),
+					value = value,
+					placeholder = set.placeholder[varData.var],
+					default = default,
+					-- PoB draws a blue border round an option that is not
+					-- at its default; the UI needs the same cue, and the
+					-- comparison is the tab's own.
+					changed = (value ~= nil and value ~= default) or nil,
+					list = options,
+					tooltip = optionTooltip(control),
+				}
+			end
+		end
+		::continue::
+	end
+
+	-- Sections that asked nothing of this build are not worth a heading.
+	local kept = asArray({})
+	for _, section in ipairs(sections) do
+		if #section.options > 0 then
+			kept[#kept + 1] = section
+		end
+	end
+
+	local sets = asArray({})
+	for _, id in ipairs(tab.configSetOrderList or {}) do
+		local entry = tab.configSets and tab.configSets[id]
+		if entry then
+			sets[#sets + 1] = { id = id, name = strip(entry.title or "Default") }
+		end
+	end
+
+	-- Free-text modifier blocks, which is how a build describes something
+	-- PoB has no option for.
+	local customMods = asArray({})
+	for index, block in ipairs(set.customModsList or {}) do
+		customMods[#customMods + 1] = {
+			index = index,
+			title = strip(block.title or ""),
+			enabled = block.enabled ~= false,
+			text = tostring(block.text or ""),
+		}
+	end
+
+	return {
+		ready = true,
+		sections = kept,
+		sets = sets,
+		setId = tab.activeConfigSetId or 0,
+		showAll = tab.toggleConfigs and true or false,
+		customMods = customMods,
+		shown = shownCount,
+		-- Options declared more than once upstream, dropped after the
+		-- first. Should be one entry today; anything else is news.
+		duplicates = duplicates,
+		-- How many there are in total, so the screen can say what it is
+		-- not showing rather than looking like that is all there is.
+		total = #varList,
+	}
+end
+
 ------------------------------------------------------------------- commands
 
 local commands = {}
@@ -1620,6 +1806,162 @@ function commands.setSkillSet(build, value)
 	end
 	tab:SetActiveSkillSet(id)
 	tab:AddUndoState()
+	build.buildFlag = true
+	return true
+end
+
+----------------------------------------------------------- config commands
+
+--- Set one configuration option.
+---
+--- The value is coerced to the option's declared type rather than trusted:
+--- the input table is read by the calculation engine, and a "3" where it
+--- expects 3 is the kind of thing that produces a wrong number rather than
+--- an error. nil clears the option back to its default, which is what the
+--- tab's own controls do with an empty field.
+function commands.setConfig(build, value)
+	local tab = build.configTab
+	local varList = loadConfigOptions()
+	local name = type(value) == "table" and value.var
+	if not tab or not varList or type(name) ~= "string" then
+		return nil, "expected { var = ..., value = ... }"
+	end
+
+	local varData
+	for _, entry in ipairs(varList) do
+		if entry.var == name then
+			varData = entry
+			break
+		end
+	end
+	if not varData then
+		return nil, "no configuration option called " .. name
+	end
+
+	local set = tab.configSets[tab.activeConfigSetId]
+	local raw = value.value
+	local coerced
+	if raw == nil then
+		coerced = nil
+	elseif varData.type == "check" then
+		coerced = raw and true or false
+	elseif varData.type == "list" then
+		-- The value has to be one the option offers; anything else would
+		-- reach the engine as an unknown enum.
+		for _, entry in ipairs(varData.list or {}) do
+			if entry.val == raw then
+				coerced = raw
+				break
+			end
+		end
+		if coerced == nil then
+			return nil, tostring(raw) .. " is not an option for " .. name
+		end
+	elseif varData.type == "text" then
+		coerced = tostring(raw)
+	else
+		coerced = tonumber(raw)
+		if coerced == nil then
+			return nil, tostring(raw) .. " is not a number"
+		end
+		if varData.type ~= "float" then
+			coerced = math.floor(coerced)
+		end
+		-- "count" means a non-negative count; "integer" and
+		-- "countAllowZero" are the ones that may go below one.
+		if varData.type == "count" and coerced < 0 then
+			coerced = 0
+		end
+	end
+
+	set.input[name] = coerced
+	tab:AddUndoState()
+	tab:BuildModList()
+	build.buildFlag = true
+	return true
+end
+
+--- Reveal the options this build does not currently use.
+function commands.setConfigShowAll(build, value)
+	local tab = build.configTab
+	if not tab then return nil, "no config tab" end
+	-- Written out rather than `a and b or c`: with b false that idiom
+	-- falls through to c, so passing { showAll = false } turned it on.
+	local want = value
+	if type(value) == "table" then
+		want = value.showAll
+	end
+	tab.toggleConfigs = want and true or false
+	return true
+end
+
+function commands.setConfigSet(build, value)
+	local tab = build.configTab
+	local id = tonumber(value)
+	if not tab or not id or not (tab.configSets and tab.configSets[id]) then
+		return nil, "no config set with id " .. tostring(value)
+	end
+	tab:SetActiveConfigSet(id)
+	tab:AddUndoState()
+	build.buildFlag = true
+	return true
+end
+
+--- Edit one block of custom modifiers.
+function commands.setCustomMods(build, value)
+	local tab = build.configTab
+	local set = tab and tab.configSets[tab.activeConfigSetId]
+	local index = tonumber(type(value) == "table" and value.index) or 0
+	local block = set and set.customModsList and set.customModsList[index]
+	if not block then
+		return nil, "no custom modifier block " .. tostring(index)
+	end
+	if value.text ~= nil then
+		block.text = tostring(value.text)
+	end
+	if value.title ~= nil then
+		block.title = tostring(value.title)
+	end
+	if value.enabled ~= nil then
+		block.enabled = value.enabled and true or false
+	end
+	tab:AddUndoState()
+	tab:BuildModList()
+	build.buildFlag = true
+	return true
+end
+
+function commands.addCustomModBlock(build)
+	local tab = build.configTab
+	local set = tab and tab.configSets[tab.activeConfigSetId]
+	if not set then return nil, "no config set" end
+	set.customModsList = set.customModsList or {}
+	table.insert(set.customModsList, {
+		title = "Group " .. (#set.customModsList + 1),
+		enabled = true,
+		text = "",
+	})
+	tab:AddUndoState()
+	tab:BuildModList()
+	build.buildFlag = true
+	return true
+end
+
+--- Remove a block. PoB keeps one empty block rather than none, because the
+--- tab has nowhere to type otherwise.
+function commands.deleteCustomModBlock(build, value)
+	local tab = build.configTab
+	local set = tab and tab.configSets[tab.activeConfigSetId]
+	local index = tonumber(value) or 0
+	if not set or not set.customModsList or not set.customModsList[index] then
+		return nil, "no custom modifier block " .. tostring(value)
+	end
+	table.remove(set.customModsList, index)
+	if #set.customModsList == 0 then
+		table.insert(set.customModsList, { title = "Default", enabled = true, text = "" })
+	end
+	tab:AddUndoState()
+	tab:BuildModList()
 	build.buildFlag = true
 	return true
 end

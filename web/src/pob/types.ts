@@ -491,3 +491,65 @@ export interface GemSearchSnapshot {
   total?: number;
   truncated?: boolean;
 }
+
+/* ------------------------------------------------------- the config tab */
+
+/** check | count | integer | countAllowZero | float | list | text */
+export type ConfigType =
+  | 'check'
+  | 'count'
+  | 'integer'
+  | 'countAllowZero'
+  | 'float'
+  | 'list'
+  | 'text';
+
+export type ConfigValue = boolean | number | string;
+
+export interface ConfigOption {
+  var: string;
+  type: ConfigType;
+  label: string;
+  /** Absent when the option has never been set — JSON drops a nil. */
+  value?: ConfigValue;
+  /** What the field shows while empty; PoB computes some of these. */
+  placeholder?: ConfigValue;
+  default?: ConfigValue;
+  /** Set when the value differs from the default. PoB draws a border. */
+  changed?: boolean;
+  list?: { value: ConfigValue; label: string; tone?: StatTone }[];
+  /** PoB's own explanation, some of it computed from the live build. */
+  tooltip?: string[];
+}
+
+export interface ConfigSection {
+  name: string;
+  /** PoB lays its sections out in three columns. */
+  col: number;
+  options: ConfigOption[];
+}
+
+export interface CustomModBlock {
+  index: number;
+  title: string;
+  enabled: boolean;
+  text: string;
+}
+
+export type ConfigSnapshot =
+  | { ready: false; engineError?: string | null }
+  | {
+      ready: true;
+      sections: ConfigSection[];
+      sets: { id: number; name: string }[];
+      setId: number;
+      showAll: boolean;
+      customMods: CustomModBlock[];
+      /** How many options apply to this build, and how many exist. */
+      shown: number;
+      total: number;
+      /** Options PoB declares more than once; the first won. */
+      duplicates: string[];
+      buildMs: number;
+      engineError?: string | null;
+    };

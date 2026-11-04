@@ -4,6 +4,7 @@ import { Sidebar } from './sidebar/Sidebar';
 import { CalcsView } from './calcs/CalcsView';
 import { ItemsView } from './items/ItemsView';
 import { SkillsView } from './skills/SkillsView';
+import { ConfigView } from './config/ConfigView';
 import { TreeView } from './tree/TreeView';
 import { EngineStatus } from './pob/EngineStatus';
 import { Segmented } from './ui/Segmented';
@@ -13,7 +14,7 @@ import { useCalcsStore } from './pob/calcsStore';
 import { useTreeStore } from './pob/treeStore';
 import styles from './App.module.css';
 
-type Tab = 'tree' | 'items' | 'skills' | 'calcs';
+type Tab = 'tree' | 'items' | 'skills' | 'config' | 'calcs';
 
 export default function App() {
   const state = useBridgeStore();
@@ -49,6 +50,7 @@ export default function App() {
               { value: 'tree', label: 'Tree', title: 'The passive tree' },
               { value: 'items', label: 'Items', title: 'Equipment and the item list' },
               { value: 'skills', label: 'Skills', title: 'Socket groups and gems' },
+              { value: 'config', label: 'Config', title: 'Everything the engine has to be told' },
               { value: 'calcs', label: 'Calcs', title: 'Calculation breakdown' },
             ]}
           />
@@ -69,6 +71,11 @@ export default function App() {
           {tab === 'skills' && (
             <div className={styles.panel}>
               <SkillsView />
+            </div>
+          )}
+          {tab === 'config' && (
+            <div className={styles.panel}>
+              <ConfigView />
             </div>
           )}
           <div className={styles.panel} hidden={tab !== 'calcs'}>
