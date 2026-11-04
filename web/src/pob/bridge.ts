@@ -26,7 +26,7 @@ import type {
  *
  * The engine runs as a separate process serving JSON over loopback HTTP
  * (bridge/ in the repo root). Every call answers with a whole snapshot
- * rather than a diff, because one command can move several things at once --
+ * rather than a diff, because one command can move several things at once:
  * changing class reloads the ascendancy list, and a recalculation can move
  * the level and all four budgets. A UI that patched fields individually
  * would be guessing at which ones moved.
@@ -73,7 +73,7 @@ export const bridge = {
   /** The Calcs tab. Fetched when outputRevision moves, not on a timer. */
   calcs: () => request<CalcsSnapshot>('/calcs'),
 
-  /** The tree's geometry. ~420 kB, fetched once — it does not change. */
+  /** The tree's geometry. ~420 kB, fetched once; it does not change. */
   tree: () => request<TreeSnapshot>('/tree'),
 
   /** The route a click on one node would allocate, and what it costs. */
@@ -88,7 +88,7 @@ export const bridge = {
   /**
    * One item as PoB would draw it. With a slot it also carries the
    * "Equipping this item will..." comparison, which is a full recalculation
-   * against that slot — hence a route of its own, fetched on demand.
+   * against that slot, hence a route of its own, fetched on demand.
    */
   item: (id: number, slot?: string) =>
     request<ItemDetail>(

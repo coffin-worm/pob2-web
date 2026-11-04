@@ -38,7 +38,7 @@
 
 /* PoB asks for three of its columns for the damage matrices and one for
  * everything else. A multi-column board cannot span part of itself, so the
- * wide sections get their own grid above it — which is also where the eye
+ * wide sections get their own grid above it, which is also where the eye
  * should land first. */
 .wideBoard {
   display: grid;

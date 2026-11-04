@@ -13,7 +13,7 @@ import type { Connect, Plugin, PreviewServer, ViteDevServer } from 'vite';
  * `/character/poe2/<name>` for one character. None of it runs in the
  * headless host. `LaunchSubScript` and `OpenURL` are empty stubs in
  * `src/_SimpleGraphic.def.lua`, and `launch:DownloadPage` is a Lua source
- * string that it hands to `LaunchSubScript` -- so the import tab's whole
+ * string that it hands to `LaunchSubScript`, so the import tab's whole
  * network layer is inert there, and `FetchAuthToken` never gets past its
  * `if id then`.
  *
@@ -28,8 +28,8 @@ import type { Connect, Plugin, PreviewServer, ViteDevServer } from 'vite';
  * wrong fails in ways that look like something else:
  *
  *  - `client_id=pob`. PoB's registered public client. A fork cannot mint its
- *    own without GGG registering it, so this identifies itself as what it is
- *    -- a build of PoB.
+ *    own without GGG registering it, so this identifies itself as what it
+ *    is: a build of PoB.
  *  - The redirect ports are **49082, 49083, 49084**, and the redirect URI is
  *    `http://localhost:<port>` with no path (`src/LaunchServer.lua:11`).
  *    Those exact origins are what GGG has registered. An ephemeral port, or
@@ -423,8 +423,8 @@ export function poeAccount(options: Options): Plugin {
           // another browser. LaunchServer.lua puts it on the clipboard for
           // the same reason, and the reason is a good one: the sign-in can
           // be impossible in the browser that happens to be in front of
-          // you -- an embedded or automated one will loop a Cloudflare
-          // challenge forever -- while working first try in a normal one.
+          // you: an embedded or automated one will loop a Cloudflare
+          // challenge forever, while working first try in a normal one.
           case 'GET /signin': {
             const authUrl = await beginSignIn();
             if (url.searchParams.get('format') === 'json') {
@@ -489,7 +489,7 @@ export function poeAccount(options: Options): Plugin {
               return;
             }
             // Passed through exactly as GGG sent it. The envelope it comes
-            // in is the engine's business, not this file's -- the bridge
+            // in is the engine's business, not this file's: the bridge
             // unwraps it, so there is one place that knows the shape.
             res.statusCode = 200;
             res.setHeader('content-type', 'application/json; charset=utf-8');

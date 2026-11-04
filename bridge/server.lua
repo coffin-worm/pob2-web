@@ -6,7 +6,7 @@
 --
 -- HTTP with polling rather than a WebSocket, deliberately. The handshake
 -- needs SHA-1 and base64 and both ship in runtime/lua, so the upgrade is
--- open -- but request/response is the simpler thing that proves the stack,
+-- open, but request/response is the simpler thing that proves the stack,
 -- and the header's state is small enough that polling it costs nothing.
 --
 -- Bound to 127.0.0.1 explicitly. This serves a live engine with filesystem

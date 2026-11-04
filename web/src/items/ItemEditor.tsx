@@ -15,15 +15,15 @@ import styles from './ItemEditor.module.css';
  *   position between the bounds. Moving it is the control people actually
  *   use, and the engine recalculates the whole build from it.
  * - **The variant**, for uniques with more than one version.
- * - **The raw text**, which is the escape hatch. A PoB item *is* its text
- *   — it is parsed back from it — so this covers crafting, custom
+ * - **The raw text**, which is the escape hatch. A PoB item *is* its text:
+ *   it is parsed back from it, so this covers crafting, custom
  *   modifiers, quality and corruption without a control for each.
  *
  * What the item looks like afterwards is not drawn here: that is the panel
  * above, which is PoB's own tooltip.
  *
- * Mounted with the item's text as its key, so moving a roll — which
- * rewrites that text — gives a fresh editor rather than one holding a
+ * Mounted with the item's text as its key, so moving a roll, which
+ * rewrites that text, gives a fresh editor rather than one holding a
  * draft of the item as it used to be. The disclosure is the caller's, so
  * remounting does not close it.
  */
@@ -86,7 +86,7 @@ export function ItemEditor({
           {edit.variantGroups && (
             <p className={styles.note}>
               This item picks its variants from several independent groups, which this
-              editor does not set yet — the text below still works.
+              editor does not set yet: the text below still works.
             </p>
           )}
 

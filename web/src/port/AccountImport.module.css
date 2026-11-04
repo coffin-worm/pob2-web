@@ -40,7 +40,7 @@
   margin-top: var(--space-1);
 }
 
-/* A link that reads as the primary action, because that is what it is --
+/* A link that reads as the primary action, because that is what it is:
  * the navigation has to be a real click to keep it the user's own. */
 .signIn {
   display: inline-flex;

@@ -43,7 +43,7 @@ const TIP_GUTTER = 12;
  * A normal node's frame is 54 tree units, so at 0.06 it covers about three
  * pixels: two scaled blits to paint something no bigger than the dot that
  * replaces them. The whole tree fits on screen at around 0.045, so the
- * zoomed-all-out view is the one that takes the cheap path -- which is also
+ * zoomed-all-out view is the one that takes the cheap path, which is also
  * the view with the most nodes in it.
  */
 const SPRITE_SCALE = 0.06;
@@ -263,7 +263,7 @@ export function TreeView() {
     let raf = 0;
     // A rolling average reported on a clock rather than a frame count. An
     // average over N frames reads zero until N have happened, which is
-    // exactly wrong when frames are scarce -- a backgrounded tab would claim
+    // exactly wrong when frames are scarce: a backgrounded tab would claim
     // it was drawing instantly.
     let ema = 0;
     let lastReport = 0;
@@ -623,7 +623,7 @@ export function TreeView() {
             const wrap = wrapRef.current;
             // What this click would actually allocate. Asked of the
             // engine, cached per node, and only when the node under the
-            // pointer changes -- not per mouse-move.
+            // pointer changes, not per mouse-move.
             void previewPath(found && reachable.has(found.id) ? found.id : null);
             setHover(
               found

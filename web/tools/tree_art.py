@@ -11,7 +11,7 @@ backgrounds into WebP.
 No third-party packages beyond Pillow: zstd comes from Python 3.14's stdlib
 (compression.zstd, PEP 784), and Pillow already decodes BC1 and BC7 DDS.
 
-Output is a build product, not a source asset -- it is gitignored, and the
+Output is a build product, not a source asset: it is gitignored, and the
 tree falls back to drawing plain circles when it is absent.
 """
 
@@ -42,8 +42,8 @@ except ModuleNotFoundError:  # pragma: no cover
 #
 # The skills-disabled atlases hold a greyed-out copy of every icon under the
 # same asset names as the lit ones, so PoB's own ddsMap keeps whichever file
-# its `pairs` loop reaches last. It never asks for the greyed copy -- it tints
-# the lit one instead -- so unpacking them would only decode 500 images to
+# its `pairs` loop reaches last. It never asks for the greyed copy: it tints
+# the lit one instead, so unpacking them would only decode 500 images to
 # have them overwritten by name.
 SKIP_ATLASES = {
     "mastery-active-effect_784_776_BC7.dds.zst",
@@ -151,7 +151,7 @@ def pack(sprites: list, name: str, out_dir: Path, lossless: bool) -> tuple[dict,
             atlas.paste(im, (px, py))
             entries[key] = {"p": page_index, "x": px, "y": py, "w": im.width, "h": im.height}
         # WebP, because the same atlas is 9.8 MB as a PNG and 2.8 MB at q92,
-        # and the lossy part is the RGB only -- WebP keeps alpha lossless, so
+        # and the lossy part is the RGB only: WebP keeps alpha lossless, so
         # the cut-outs these sprites depend on stay exact.
         file = f"{name}-{page_index}.webp"
         atlas.save(out_dir / file, lossless=lossless, quality=80 if lossless else 92, method=4)
@@ -202,8 +202,8 @@ def main() -> int:
     data = json.loads(tree_json.read_text(encoding="utf-8"))
     dds_coords = data["ddsCoords"]
 
-    # Only what the tree asks for. The atlases also carry PoE1 leftovers --
-    # legion jewel art, anointment oils, cluster-jewel frames -- and those are
+    # Only what the tree asks for. The atlases also carry PoE1 leftovers:
+    # legion jewel art, anointment oils, cluster-jewel frames, and those are
     # the physically largest sprites in the set, so taking the lot would
     # quadruple the atlas for art no PoE2 node references.
     wanted = set()

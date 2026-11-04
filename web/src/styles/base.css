@@ -48,7 +48,7 @@ input {
   color: inherit;
 }
 
-/* One focus treatment for the whole app, and only for keyboard users --
+/* One focus treatment for the whole app, and only for keyboard users:
  * a visible ring on every click is noise, its absence on tab is a defect. */
 :focus {
   outline: none;

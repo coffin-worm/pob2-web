@@ -10,8 +10,8 @@ interface Props<T extends string | number> {
 /**
  * A small set of mutually exclusive choices, shown all at once.
  *
- * PoB uses a button that cycles its own label for these -- "Auto" that you
- * click to get "Manual" -- so the control shows the current state and the
+ * PoB uses a button that cycles its own label for these, "Auto" that you
+ * click to get "Manual", so the control shows the current state and the
  * available one in the same place and you cannot tell which it is. Laying
  * the options out side by side costs a few pixels and removes the question.
  */

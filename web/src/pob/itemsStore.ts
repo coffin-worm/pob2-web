@@ -50,7 +50,7 @@ export const useItemsStore = create<ItemsStore>((set, get) => {
       }
       set({ connection: 'live', snapshot });
 
-      // An item can vanish under the selection -- deleted, or unequipped
+      // An item can vanish under the selection: deleted, or unequipped
       // from the slot it was being compared against. Re-reading it keeps
       // the detail honest rather than stale.
       const { selectedId, selectedSlot } = get();
@@ -132,7 +132,7 @@ export const useItemsStore = create<ItemsStore>((set, get) => {
         await refresh();
         return null;
       } catch (error) {
-        // A refusal is an answer -- "that item does not fit Boots" -- and is
+        // A refusal is an answer, "that item does not fit Boots", and is
         // worth showing rather than swallowing.
         await refresh();
         return error instanceof Error ? error.message : String(error);

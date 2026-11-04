@@ -45,7 +45,7 @@
   accent-color: var(--accent);
 }
 
-/* "77 of 663" — the number that says what this screen is not showing, so it
+/* "77 of 663": the number that says what this screen is not showing, so it
  * does not look as though that is all there is. */
 .counts {
   color: var(--text-disabled);

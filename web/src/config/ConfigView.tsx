@@ -14,7 +14,7 @@ import styles from './ConfigView.module.css';
  *
  * The interesting thing about this screen is how much of it is usually not
  * on it. PoB declares 663 options and asks a given build about seventy,
- * because an option only appears when the build could answer it — the
+ * because an option only appears when the build could answer it: the
  * conditions the calculation actually used, the flags on the mod list, the
  * active skill's data, the allocated tree. That gating is a function of the
  * whole calculation, so every option's visibility is the engine's answer,
@@ -261,7 +261,7 @@ export function ConfigView() {
         </h3>
         <p className={styles.hint}>
           Anything the options above have no question for. One modifier a line, in the
-          game's own wording — PoB parses them exactly as it parses an item.
+          game's own wording: PoB parses them exactly as it parses an item.
         </p>
         {snapshot.customMods.map((block) => (
           <div key={block.index} className={styles.modBlock}>

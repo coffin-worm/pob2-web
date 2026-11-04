@@ -60,7 +60,7 @@
 
   /* --------------------------------------------------------------- color */
   /* A single neutral ramp. Surfaces step up as they come forward, which is
-   * what carries depth here -- borders are a last resort, not the default.
+   * what carries depth here: borders are a last resort, not the default.
    * This is the main departure from the Lua UI, where every control was a
    * 1px box on the same flat black. */
   --bg-base: #0e0f12;
@@ -93,7 +93,7 @@
 
   /* Damage types. The game gives these fixed identities and players read
    * them as a set, so this is one of the few places colour is allowed to
-   * carry the meaning on its own — the label still names the type.
+   * carry the meaning on its own: the label still names the type.
    *
    * Chosen for this background rather than taken from PoB, whose palette is
    * tuned for a black canvas and whose lightning yellow in particular is too
@@ -109,7 +109,7 @@
   --stat-custom: #5ad6a8;
 
   /* Item rarities. Fixed identities the player already knows, like the
-   * damage types, and read as a set — but again tuned for this background
+   * damage types, and read as a set, but again tuned for this background
    * rather than copied: PoB's unique brown (#AF6025) is close to unreadable
    * at 12px on anything lighter than black, and its rare yellow is the same
    * hue as the warning amber above. */
@@ -133,7 +133,7 @@
   --duration: 120ms;
 }
 
-/* The app is dark by design -- it sits beside a dark game. A light theme
+/* The app is dark by design: it sits beside a dark game. A light theme
  * would be a real piece of work, not a media query, so this does not pretend
  * to offer one. */
 

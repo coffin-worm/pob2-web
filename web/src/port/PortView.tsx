@@ -18,7 +18,7 @@ import styles from './PortView.module.css';
  *
  * Nothing here reaches the network. A build-site link is accepted because
  * the code is the last path segment of it and reading that is friendlier
- * than asking someone to trim a URL — but the link is read, never fetched.
+ * than asking someone to trim a URL, but the link is read, never fetched.
  * Fetching one would be sending the user's build off the machine, and that
  * is a decision for them to make explicitly rather than a side effect of
  * pasting.
@@ -128,7 +128,7 @@ export function PortView() {
       <section className={styles.panel}>
         <h3 className={styles.title}>Import a build</h3>
         <p className={styles.hint}>
-          Paste a build code, or a link to one — the code is read out of the link here,
+          Paste a build code, or a link to one: the code is read out of the link here,
           and the link is never opened.
         </p>
 
@@ -213,7 +213,7 @@ export function PortView() {
             <span className={styles.bad}>{current.error ?? 'the build would not export'}</span>
           )}
           {stale && (
-            <span className={styles.status}>the build changed — generate it again</span>
+            <span className={styles.status}>the build changed: generate it again</span>
           )}
         </div>
 
@@ -242,7 +242,7 @@ export function PortView() {
           </button>
         </h3>
         <p className={styles.hint}>
-          Paste the JSON the game's character API returns, if you already have it — the
+          Paste the JSON the game's character API returns, if you already have it: the
           whole response or just the character object inside it, either works. Signing in
           above does the same thing without the copying.
         </p>

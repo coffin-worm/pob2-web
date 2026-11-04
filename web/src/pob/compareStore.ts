@@ -5,7 +5,7 @@ import type { CompareSnapshot, Connection } from './types';
 /**
  * This build against another.
  *
- * One fetch, re-read whenever the engine recalculates — which is whenever
+ * One fetch, re-read whenever the engine recalculates, which is whenever
  * either side moves, since a comparison build is a full second
  * calculation rather than a stored snapshot.
  */

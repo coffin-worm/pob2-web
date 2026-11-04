@@ -8,7 +8,7 @@
 -- empty folder rather than an error.
 --
 -- Supplied from the bridge rather than by editing the stub, so `src/` stays
--- untouched -- the same arrangement as bridge/zlib.lua.
+-- untouched, the same arrangement as bridge/zlib.lua.
 --
 -- Windows only, which the dev host already is: it is started through a
 -- Windows path to lovec.exe and stopped with taskkill. A different host
@@ -118,7 +118,7 @@ end
 --- Where PoB keeps the user's data.
 ---
 --- The real host returns the Documents folder, and PoB appends
---- "Path of Building (PoE2)/" to it -- so this points at the same builds
+--- "Path of Building (PoE2)/" to it, so this points at the same builds
 --- folder the desktop app uses, and the two see each other's builds.
 --- POB_USER_PATH overrides it.
 function fs.userPath()

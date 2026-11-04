@@ -13,8 +13,8 @@ import type {
 /**
  * The passive tree.
  *
- * Three loads with very different lifetimes. The geometry — 4546 nodes, 5149
- * connectors, every node's stat lines and the names of its art, about 1 MB —
+ * Three loads with very different lifetimes. The geometry (4546 nodes, 5149
+ * connectors, every node's stat lines and the names of its art, about 1 MB)
  * does not change while a build is open, so it is fetched once. The artwork
  * is a static build product, also fetched once. The allocation on top of
  * both changes on every click and is small enough to refetch freely.
@@ -163,7 +163,7 @@ export const useTreeStore = create<TreeStore>((set, get) => {
         await refreshAlloc();
       } catch {
         // A node with no path is refused by the engine. That is a legitimate
-        // answer -- it is not reachable -- and not worth an error state.
+        // answer: it is not reachable, and not worth an error state.
         await refreshAlloc();
       }
     },

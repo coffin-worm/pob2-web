@@ -5,7 +5,7 @@ import type { BuildSort, BuildsSnapshot, Connection } from './types';
 /**
  * The builds folder.
  *
- * One fetch, re-read whenever the engine recalculates — saving moves a
+ * One fetch, re-read whenever the engine recalculates: saving moves a
  * file's modified time and opening moves which row is the open one. The
  * scan itself is PoB's `BuildListHelpers`, which reads each build's class
  * and level out of the first 2 kB of the file rather than loading it.
@@ -57,8 +57,8 @@ export const useBuildsStore = create<BuildsStore>((set, get) => {
         await work();
         return null;
       } catch (e) {
-        // A refusal is an answer — "that build is open; open another one
-        // first" — and worth showing rather than swallowing.
+        // A refusal is an answer, "that build is open; open another one
+        // first", and worth showing rather than swallowing.
         return e instanceof Error ? e.message : String(e);
       } finally {
         set({ busy: false });

@@ -11,8 +11,8 @@ import type {
 /**
  * The header's state, backed by the real engine.
  *
- * This replaces mockStore. The shape above it is unchanged -- Header still
- * takes HeaderState and HeaderActions -- which is the whole point of having
+ * This replaces mockStore. The shape above it is unchanged: Header still
+ * takes HeaderState and HeaderActions, which is the whole point of having
  * written the contract from the Lua field names in the first place.
  *
  * Commands are deliberately not optimistic. The engine owns the state and

@@ -21,7 +21,7 @@ interface Props {
  * The Lua version put two permanent 20px buttons inside a 24px field, which
  * left the value fighting them for room and the buttons crowding the field's
  * own border. Here the primary interaction is typing, arrow keys step by one
- * (ten with Shift), and the steppers only appear on hover or focus -- so the
+ * (ten with Shift), and the steppers only appear on hover or focus, so the
  * resting state is just the number.
  */
 export function NumberField({
@@ -35,7 +35,7 @@ export function NumberField({
   'aria-label': ariaLabel,
 }: Props) {
   // Held as text while editing so a half-typed value does not get clamped
-  // out from under the caret -- typing "100" would otherwise snap at "1".
+  // out from under the caret: typing "100" would otherwise snap at "1".
   const [draft, setDraft] = useState(String(value));
   const focused = useRef(false);
 

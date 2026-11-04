@@ -5,7 +5,7 @@ import type { ConfigSnapshot, ConfigValue, Connection } from './types';
 /**
  * The configuration screen.
  *
- * One fetch, refreshed whenever the engine recalculates — which is also
+ * One fetch, refreshed whenever the engine recalculates, which is also
  * whenever an option changes, since every option feeds the mod list. The
  * payload is 22 kB for the options a build actually uses and 98 kB with
  * "show all" on, which is why that is a toggle rather than the default.
@@ -35,8 +35,8 @@ export const useConfigStore = create<ConfigStore>((set) => {
       await refresh();
       return null;
     } catch (error) {
-      // A refusal is an answer — "-999 is not an option for
-      // resistancePenalty" — and worth showing rather than swallowing.
+      // A refusal is an answer, "-999 is not an option for
+      // resistancePenalty", and worth showing rather than swallowing.
       await refresh();
       return error instanceof Error ? error.message : String(error);
     }

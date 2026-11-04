@@ -17,7 +17,7 @@ const SEGMENTS: { key: keyof BuildPoints; label: string; title: string }[] = [
  *
  * This is the number the user watches while speccing a tree, so it gets a
  * label per figure and tabular digits that do not reflow as they count up.
- * Colour appears for one reason only -- over budget -- which is what makes
+ * Colour appears for one reason only: over budget, which is what makes
  * it readable at a glance rather than decorative.
  */
 export function PointBudgets({ points }: Props) {

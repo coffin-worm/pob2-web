@@ -12,8 +12,8 @@ import type {
  *
  * The group list is small and refetched on every recalculation. One group's
  * gems come with it when a group is expanded, because the engine has to
- * reprocess that group to resolve its gems anyway. The two tooltips — what
- * a group does, and what a gem does — are fetched on demand.
+ * reprocess that group to resolve its gems anyway. The two tooltips (what
+ * a group does, and what a gem does) are fetched on demand.
  */
 interface SkillsStore {
   connection: Connection;
@@ -138,8 +138,8 @@ export const useSkillsStore = create<SkillsStore>((set, get) => {
         await refresh();
         return null;
       } catch (error) {
-        // A refusal is an answer — "that group comes from Tabula Rasa and
-        // cannot be deleted" — and is worth showing rather than swallowing.
+        // A refusal is an answer, "that group comes from Tabula Rasa and
+        // cannot be deleted", and is worth showing rather than swallowing.
         await refresh();
         return error instanceof Error ? error.message : String(error);
       }

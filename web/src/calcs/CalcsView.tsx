@@ -12,8 +12,8 @@ import styles from './CalcsView.module.css';
  * `formatCalcStr` resolves templates like `{2:output:Speed}`. Nothing here
  * knows what a modifier is.
  *
- * The one thing this file decides is shape. A damage section is a matrix --
- * damage types across, modifiers down -- while most sections are plain
+ * The one thing this file decides is shape. A damage section is a matrix:
+ * damage types across, modifiers down, while most sections are plain
  * label/value pairs, and a row with an empty label is the column header for
  * the rows beneath it.
  */

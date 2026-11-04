@@ -12,7 +12,7 @@ import styles from './ItemsView.module.css';
  * The Items tab.
  *
  * Almost none of this screen is its own work. The slots are PoB's, including
- * which of them exist right now — the third ring appears only behind a tree
+ * which of them exist right now: the third ring appears only behind a tree
  * flag, the weapon swaps follow the active set, and a jewel socket exists
  * only while its passive is allocated. Which items may go in a slot is
  * `IsItemValidForSlot`, a real game rule about two-handers and jewel

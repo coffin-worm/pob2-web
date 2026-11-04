@@ -4,7 +4,7 @@
   gap: var(--space-3);
   /* A control with a declared width keeps it. As a flex item it would
    * otherwise shrink below its content, and the first thing to go is the
-   * input -- silently, all the way to zero, with the value still in it. */
+   * input: silently, all the way to zero, with the value still in it. */
   flex: none;
   height: var(--row-height);
   padding: 0 var(--space-2) 0 var(--space-4);
@@ -60,7 +60,7 @@
 }
 
 /* The steppers hold their space at rest so the value never shifts sideways
- * when they appear -- a control that reflows under the pointer is worse
+ * when they appear: a control that reflows under the pointer is worse
  * than one that is always cluttered. */
 .steppers {
   display: flex;

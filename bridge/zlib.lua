@@ -93,7 +93,7 @@ end
 --- Put them where PoB looks for them.
 ---
 --- The engine calls the globals, so overriding them is what makes every
---- existing code path -- import, export, the update check -- work. Only the
+--- existing code path (import, export, the update check) work. Only the
 --- stubs are replaced; if a real host already provided them, they stay.
 function zlib.install(runtimeDir, isStub)
 	local lib, err = zlib.open(runtimeDir)

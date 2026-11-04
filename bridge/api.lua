@@ -20,8 +20,8 @@ local function strip(s)
 	return (tostring(s or ""):gsub("%^x%x%x%x%x%x%x", ""):gsub("%^%d", ""))
 end
 
--- Some of those colours mean something -- a warning, a damage type, an
--- over-cap resistance -- so they are classified into names rather than
+-- Some of those colours mean something (a warning, a damage type, an
+-- over-cap resistance) so they are classified into names rather than
 -- dropped or passed through as hex. Passing the hex through would bake PoB's
 -- palette into a UI whose whole point is not to look like PoB; dropping it
 -- would lose the only thing marking a resistance as uncapped.
@@ -51,8 +51,8 @@ local TONE = {
 -- copied, so the two cannot drift apart.
 --
 -- The curated entries win, and the rest are taken in name order, because
--- several names share one code -- MARAUDER, WARRIOR, STRENGTH and LIFE are
--- all ^xE05030 -- and `pairs` would otherwise pick a different one on every
+-- several names share one code (MARAUDER, WARRIOR, STRENGTH and LIFE are
+-- all ^xE05030) and `pairs` would otherwise pick a different one on every
 -- boot, which is the sort of thing that makes a UI flicker between two
 -- correct answers.
 local function learnColours()
@@ -193,7 +193,7 @@ end
 --- which told the user the engine was stuck without giving them any way
 --- out of it.
 ---
---- A popup's controls are one mixed table -- the array part is the message,
+--- A popup's controls are one mixed table: the array part is the message,
 --- one LabelControl per line, and the named keys are its buttons. Read that
 --- way it is general: any dialog PoB opens comes through, not only the ones
 --- anticipated here, and the buttons are answered by their own Click, which
@@ -336,7 +336,7 @@ end
 ---
 --- Positions are PoB's. It resolves each node's group, orbit and orbit index
 --- into node.x/node.y once at load (PassiveTree.lua:574), so there is no
---- orbit trigonometry to repeat here -- which is just as well, since getting
+--- orbit trigonometry to repeat here, which is just as well, since getting
 --- it subtly wrong would be invisible until the tree looked faintly bent.
 ---
 --- Art is PoB's too, by name: node.icon and node.overlay[state] are asset
@@ -444,7 +444,7 @@ function api.tree(build)
 	-- A curve is an arc of an orbit, and BuildArc puts that orbit's centre in
 	-- the first vertex of the quad it builds. Both endpoints are on the
 	-- circle through it by construction, so centre plus the two node
-	-- positions is the whole arc -- no radius or sweep to re-derive, and
+	-- positions is the whole arc: no radius or sweep to re-derive, and
 	-- nothing to get subtly wrong. `arcErrors` below is that claim checked.
 	--
 	-- Connectors wider than 90 degrees arrive as two, because PoB's arc
@@ -497,7 +497,7 @@ end
 --- The route a click would take, as the engine would take it.
 ---
 --- GetEffectiveAllocationPath, not `node.path`: AllocNode calls the former,
---- and the two differ exactly where it matters -- a path that runs through
+--- and the two differ exactly where it matters: a path that runs through
 --- a weapon-set branch, or one shortened by an Intuitive Leap style jewel.
 --- A preview built on the raw path would be right almost always and wrong
 --- on the builds that care.
@@ -659,8 +659,8 @@ end
 --- value comes from formatCalcStr (Modules/CalcFormat.lua) resolving a
 --- template like "{2:output:Speed}" against the actor.
 ---
---- UpdateSize is skipped deliberately. It is the layout pass -- positions,
---- heights, collapse state -- and the only thing here that depends on it is
+--- UpdateSize is skipped deliberately. It is the layout pass (positions,
+--- heights, collapse state) and the only thing here that depends on it is
 --- the CheckFlag call it makes first, which this does directly. Collapse
 --- state is skipped for the same reason: which sections are folded is this
 --- UI's business, and hiding the rows here would stop it ever being able to
@@ -723,9 +723,9 @@ function api.calcs(build)
 				for _, rowData in ipairs(subSec.data or {}) do
 					if tab:CheckFlag(rowData, actor) then
 						-- A column slot is kept even when it has nothing in
-						-- it. PoB's rows carry empty placeholders -- "Added
+						-- it. PoB's rows carry empty placeholders, "Added
 						-- Min" starts with a bare {} because it has no "All
-						-- Types" figure -- and UpdateSize gives every slot an
+						-- Types" figure, and UpdateSize gives every slot an
 						-- x offset whether or not it has a format. Dropping
 						-- the empties instead of emptying them shifts the
 						-- whole row left and silently misaligns the matrix
@@ -817,7 +817,7 @@ local function slotShown(slot)
 		return slot:IsShown()
 	end)
 	-- IsShown returns the `shown` property, which for the conditional slots
-	-- is a closure over build state -- and the third ring's returns nil, not
+	-- is a closure over build state, and the third ring's returns nil, not
 	-- false, when its tree flag is absent. Coerced rather than compared,
 	-- because `nil ~= false` is true and that put an extra ring on screen.
 	if not ok then
@@ -828,8 +828,8 @@ end
 
 --- A slot's dropdown: "None" plus every item PoB considers valid for it.
 ---
---- IsItemValidForSlot is a real game rule -- a two-handed weapon blocks the
---- off-hand, a jewel only fits a socket whose passive allows its rarity --
+--- IsItemValidForSlot is a real game rule: a two-handed weapon blocks the
+--- off-hand, a jewel only fits a socket whose passive allows its rarity,
 --- so the list travels as PoB built it rather than being filtered here.
 local function slotOptions(slot)
 	local options = asArray({})
@@ -934,8 +934,8 @@ end
 --- `block` separating the thing itself from whatever comparison follows it.
 ---
 --- colorCodes.TIP is dropped and counted. It is used in exactly one way
---- across the codebase -- advice about the desktop UI's keyboard shortcuts,
---- "Press Ctrl+D", "Right click this socket" -- and none of those keys do
+--- across the codebase (advice about the desktop UI's keyboard shortcuts,
+--- "Press Ctrl+D", "Right click this socket") and none of those keys do
 --- anything here, so forwarding them would tell the user something untrue
 --- about the application in front of them.
 local function tooltipLines(tooltip)
@@ -966,9 +966,9 @@ end
 --- One item, as PoB itself would draw it.
 ---
 --- This is the whole reason the items screen is cheap. AddItemTooltip
---- already knows how to lay an item out -- the rarity header, the base, the
+--- already knows how to lay an item out (the rarity header, the base, the
 --- requirements, implicits above explicits, every mod in its own colour,
---- the unsupported ones called out -- and with a slot it also runs the
+--- the unsupported ones called out) and with a slot it also runs the
 --- comparison that produces "Equipping this item will...". All of that is
 --- game knowledge, and none of it is worth having a second copy of.
 ---
@@ -1065,7 +1065,7 @@ local function gemSummary(index, gem)
 		support = effect and effect.support and true or nil,
 		tags = data and data.tagString ~= "" and strip(data.tagString) or nil,
 		maxLevel = data and data.naturalMaxLevel or nil,
-		-- Set when the gem cannot be used -- a support that supports
+		-- Set when the gem cannot be used: a support that supports
 		-- nothing here, a name that matched two gems, an active skill that
 		-- is hidden from the side bar.
 		error = gem.errMsg and strip(gem.errMsg) or nil,
@@ -1274,7 +1274,7 @@ end
 ---
 --- `control.tooltipText` is assembled from every `ifCond`, `ifFlag` and
 --- `tooltip` the option declared, and some of those are functions of the
---- live mod list -- "You will automatically be considered to be on Low Life
+--- live mod list: "You will automatically be considered to be on Low Life
 --- if you have at least 43% Life reserved" is computed from the build. So
 --- it is called rather than read from the option definition.
 local function optionTooltip(control)
@@ -1308,7 +1308,7 @@ end
 --- obvious and both would be wrong if reimplemented. An option that no
 --- longer applies is still shown when its value differs from the default,
 --- so a setting cannot go on affecting the build from somewhere you cannot
---- see it. And `toggleConfigs` -- the tab's "show all" -- reveals the
+--- see it. And `toggleConfigs`, the tab's "show all", reveals the
 --- build-gated options but deliberately not the ones gated on another
 --- option being set, because those would have nothing to attach to.
 function api.config(build)
@@ -1327,10 +1327,10 @@ function api.config(build)
 	local shownCount = 0
 
 	-- PoB's option list is not quite unique. As of this tree,
-	-- `conditionEnemyExitedPresenceRecently` is declared twice -- once as
+	-- `conditionEnemyExitedPresenceRecently` is declared twice (once as
 	-- "Enemy exited Presence Recently?" gated on ExitedPresenceRecently,
 	-- and again as "Enemy entered Presence Recently?" gated on
-	-- EnteredPresenceRecently -- so two different questions write to one
+	-- EnteredPresenceRecently) so two different questions write to one
 	-- input. That is an upstream bug rather than something to paper over,
 	-- but sending both would give the UI two controls bound to one value,
 	-- where ticking either ticks both. The first wins and the rest are
@@ -1452,7 +1452,7 @@ function api.decodeCode(code)
 	end
 	-- Build sites hand out the code as the last path segment of a URL;
 	-- taking it is friendlier than telling the user to trim it themselves.
-	-- A link is never fetched here -- only read.
+	-- A link is never fetched here: only read.
 	local tail = code:match("^https?://[%w%.%-]+/[%w%-/]*/([%w%-_=]+)$")
 		or code:match("^https?://[%w%.%-]+/([%w%-_=]+)$")
 	if tail then
@@ -1530,8 +1530,8 @@ end
 
 --- PoB's own builds-folder scanner.
 ---
---- Modules/BuildListHelpers is already UI-free -- it is shared by the
---- startup list and the Compare tab's folder import -- so the scan, the
+--- Modules/BuildListHelpers is already UI-free: it is shared by the
+--- startup list and the Compare tab's folder import, so the scan, the
 --- header read and the sort are all the engine's. It reads the class,
 --- ascendancy and level out of the first 2 kB of each file rather than
 --- loading the build, which is what makes listing a folder cheap.
@@ -1550,7 +1550,7 @@ local SORT_MODES = { NAME = true, CLASS = true, EDITED = true, LEVEL = true }
 ---
 --- Folders come back flattened, each carrying its own subPath, because the
 --- scanner recurses and the UI can nest them again if it wants to. The
---- alternative -- one request per folder -- would be a round trip per
+--- alternative, one request per folder, would be a round trip per
 --- expand for a tree that is usually a dozen entries.
 function api.builds(build, sortMode)
 	local helpers = loadBuildList()
@@ -1643,7 +1643,7 @@ end
 ---
 --- This is the one screen where PoB's rules are reproduced rather than
 --- called. Every other panel in this UI reads something the engine already
---- built -- a Tooltip, a statBox, a control's shown() -- but the
+--- built (a Tooltip, a statBox, a control's shown()) but the
 --- side-by-side comparison exists only inside CompareTab:DrawStatList
 --- (line 3308), interleaved with the DrawString calls that put it on the
 --- screen. There is no data-only version to call.
@@ -1652,8 +1652,8 @@ end
 --- order, with its skips: the SkillDPS row that does not fit a two-column
 --- layout, hidden stats, stats neither build's active skill uses, table
 --- values, stats that are zero on both sides, and condFunc. Everything
---- inside it is still the engine's -- statData.fmt, condFunc, lowerIsBetter,
---- formatNumSep -- so what is duplicated is the sequence, not the rules.
+--- inside it is still the engine's (statData.fmt, condFunc, lowerIsBetter,
+--- formatNumSep) so what is duplicated is the sequence, not the rules.
 --- If DrawStatList changes, this has to follow; nothing will notice on its
 --- own, which is the cost of the one place I could not avoid it.
 function api.compare(build)
@@ -1750,8 +1750,8 @@ function api.compare(build)
 					rows[#rows + 1] = {
 						label = strip(statData.label),
 						tone = toneOf(statData.color or ""),
-						primary = onPrimary and strip(statData.val or "") or "–",
-						compare = onCompare and strip(statData.val or "") or "–",
+						primary = onPrimary and strip(statData.val or "") or "-",
+						compare = onCompare and strip(statData.val or "") or "-",
 					}
 				end
 			end
@@ -1850,7 +1850,7 @@ end
 ---
 --- `apply` makes the change and returns a function that undoes it. Both
 --- run inside this pcall, so a change that throws halfway is still put
---- back -- the build the user is looking at must not be left holding a
+--- back: the build the user is looking at must not be left holding a
 --- setting nobody chose.
 local function whatIf(build, apply, header)
 	local calcsTab = build and build.calcsTab
@@ -1881,7 +1881,7 @@ local function whatIf(build, apply, header)
 
 	local tooltip = new("Tooltip"):Tooltip()
 	-- The comparison can fail where the change removes the thing being
-	-- compared -- turning off the only socket group leaves no main skill,
+	-- compared: turning off the only socket group leaves no main skill,
 	-- and buildMode's own AddStatComparesToTooltip reaches straight
 	-- through it. Reported, because "it broke" and "nothing moved" look
 	-- identical from an empty list and only one of them is fine.
@@ -2709,9 +2709,9 @@ end
 
 --- Load another build to compare against, from a code or a saved file.
 ---
---- CompareTab:ImportBuild builds a CompareEntry -- PoB's own lightweight
+--- CompareTab:ImportBuild builds a CompareEntry (PoB's own lightweight
 --- build wrapper, which loads the XML, creates the tabs and runs the
---- calculation without any of the UI chrome -- and refuses if the result
+--- calculation without any of the UI chrome) and refuses if the result
 --- has no output, which is the check worth keeping.
 function commands.addCompare(build, value)
 	local tab = build.compareTab
@@ -2800,7 +2800,7 @@ end
 --- Replace an item's text and reparse it.
 ---
 --- ParseRaw on the item already in the build keeps its id, so whatever it
---- was equipped in stays equipped -- unless the new text is a different
+--- was equipped in stays equipped, unless the new text is a different
 --- base, in which case PopulateSlots takes it out, which is the engine's
 --- call and the right one.
 function commands.setItemText(build, value)
@@ -2869,7 +2869,7 @@ end
 --- Press one of the open dialog's buttons.
 ---
 --- Through the control's own Click, which checks IsShown and IsEnabled
---- first -- so a button the dialog has greyed out stays greyed out, and
+--- first, so a button the dialog has greyed out stays greyed out, and
 --- the handler behind it is PoB's, closing the popup and doing whatever it
 --- was going to do.
 function commands.answerPopup(build, value)
@@ -2881,7 +2881,7 @@ function commands.answerPopup(build, value)
 	-- A confirm dialog's buttons are not all named: the three-button
 	-- layout t_inserts two of them, so their keys are integers while
 	-- `confirm` is a string. They come out of JSON as strings either way,
-	-- and in Lua t[4] and t["4"] are different keys -- which looks exactly
+	-- and in Lua t[4] and t["4"] are different keys, which looks exactly
 	-- like a button that quietly does nothing.
 	local controls = popup.controls or {}
 	local control = (type(key) == "string" or type(key) == "number")

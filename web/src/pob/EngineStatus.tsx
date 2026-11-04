@@ -27,7 +27,7 @@ export function EngineStatus() {
         : engineError
           ? 'The build stopped calculating'
           : ready
-            ? 'Live — this is the real build'
+            ? 'Live: this is the real build'
             : 'Engine running, no build open';
 
   return (
@@ -43,7 +43,7 @@ export function EngineStatus() {
       {connection === 'offline' && (
         <p className={styles.detail}>
           {error}. The dev server starts the engine itself, so this usually
-          means it could not find LÖVE — set <code>POB_LOVE</code> to{' '}
+          means it could not find LÖVE: set <code>POB_LOVE</code> to{' '}
           <code>lovec.exe</code> and restart <code>npm run dev</code>. The
           terminal running it will say which.
         </p>

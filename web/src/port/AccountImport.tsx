@@ -20,7 +20,7 @@ import styles from './AccountImport.module.css';
  *
  * Signing in is a plain link, not a scripted navigation. The credentials are
  * typed on GGG's page, the tab is opened by the user's own click, and this
- * app never sees a password or a token -- the dev server holds the token in
+ * app never sees a password or a token: the dev server holds the token in
  * memory and tells the browser only whether there is one.
  */
 
@@ -54,7 +54,7 @@ async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
     const message = (parsed as { error?: string } | null)?.error;
     const retry = (parsed as { retryAfter?: number } | null)?.retryAfter;
     throw new Error(
-      retry ? `${message ?? response.statusText} — try again in ${retry}s` : message ?? response.statusText,
+      retry ? `${message ?? response.statusText}, try again in ${retry}s` : message ?? response.statusText,
     );
   }
   return parsed as T;
@@ -75,8 +75,8 @@ export function AccountImport() {
   /**
    * The error text the user has already dismissed.
    *
-   * The server keeps reporting its last failure until the next sign-in --
-   * clearing it on read made it unreadable, since a poll would eat it --
+   * The server keeps reporting its last failure until the next sign-in:
+   * clearing it on read made it unreadable, since a poll would eat it,
    * so dismissing has to be remembered here, or the next poll two seconds
    * later puts it straight back.
    */
@@ -116,8 +116,8 @@ export function AccountImport() {
     });
   }, [refreshStatus, listCharacters]);
 
-  // While the sign-in tab is open there is nothing to react to -- the
-  // redirect lands on the dev server, not here -- so this asks.
+  // While the sign-in tab is open there is nothing to react to (the
+  // redirect lands on the dev server, not here) so this asks.
   useEffect(() => {
     if (!waiting) return;
     poll.current = window.setInterval(() => {
@@ -176,7 +176,7 @@ export function AccountImport() {
         const message = (JSON.parse(text) as { error?: string; retryAfter?: number }) ?? {};
         throw new Error(
           message.retryAfter
-            ? `${message.error} — try again in ${message.retryAfter}s`
+            ? `${message.error}, try again in ${message.retryAfter}s`
             : message.error ?? response.statusText,
         );
       }
@@ -198,7 +198,7 @@ export function AccountImport() {
         <>
           <p className={styles.hint}>
             Sign in at pathofexile.com and your characters are listed here. The sign-in
-            happens on their site — this app never sees your password, and the token stays
+            happens on their site: this app never sees your password, and the token stays
             in the dev server's memory rather than on disk or in the browser.
           </p>
           <div className={styles.actions}>
@@ -230,12 +230,12 @@ export function AccountImport() {
           </div>
           <p className={styles.note}>
             Asks for the scopes PoB asks for: profile, leagues, characters, trade.
-            It identifies itself as PoB because it is a build of PoB — the OAuth client
+            It identifies itself as PoB because it is a build of PoB: the OAuth client
             id is PoB's registered one.
           </p>
           <p className={styles.note}>
             If the sign-in page gets stuck on “verify you are human”, copy the link and
-            open it in an ordinary browser window — embedded ones loop that check
+            open it in an ordinary browser window: embedded ones loop that check
             forever. It comes back to this app either way.
           </p>
         </>

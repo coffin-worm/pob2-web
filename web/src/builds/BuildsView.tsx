@@ -216,7 +216,7 @@ export function BuildsView() {
         {total === 0 && (
           <p className={styles.hint}>
             Nothing saved yet. The folder is{' '}
-            <code className={styles.path}>{snapshot.buildPath}</code> — the one the desktop
+            <code className={styles.path}>{snapshot.buildPath}</code>: the one the desktop
             app uses, so anything saved there shows up here.
           </p>
         )}

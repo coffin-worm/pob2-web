@@ -9,7 +9,7 @@ import styles from './CompareView.module.css';
 /**
  * This build against another.
  *
- * The comparison build is a `CompareEntry` — PoB's own lightweight build
+ * The comparison build is a `CompareEntry`: PoB's own lightweight build
  * wrapper, which loads the XML, creates the tabs and runs the calculation
  * without any of the UI chrome. So the right-hand column is a second full
  * calculation, not a stored snapshot of numbers.
@@ -19,7 +19,7 @@ import styles from './CompareView.module.css';
  * the side-by-side comparison exists only inside
  * `CompareTab:DrawStatList`, interleaved with the `DrawString` calls that
  * put it on screen, and there is no data-only version. The bridge
- * transcribes that function's sequence and keeps its rules — the stat's
+ * transcribes that function's sequence and keeps its rules: the stat's
  * own format string, its `condFunc`, its `lowerIsBetter`. Noted in the
  * README as the exception it is.
  */
@@ -99,7 +99,7 @@ export function CompareView() {
 
         <p className={styles.hint}>
           Each one is a second full calculation, so the right-hand column moves when you
-          change its own configuration — not a snapshot of numbers. Export the current
+          change its own configuration, not a snapshot of numbers. Export the current
           build on the Import tab to compare it against a later version of itself.
         </p>
 

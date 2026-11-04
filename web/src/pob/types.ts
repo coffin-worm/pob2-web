@@ -39,7 +39,7 @@ export interface NamedOption {
 export interface HeaderState {
   buildName: string;
   /**
-   * buildMode.outputRevision — bumped on every recalculation. The Calcs view
+   * buildMode.outputRevision: bumped on every recalculation. The Calcs view
    * refetches when this moves instead of polling.
    */
   outputRevision?: number;
@@ -49,7 +49,7 @@ export interface HeaderState {
   dbFileName: string | null;
 
   characterLevel: number;
-  /** buildMode.characterLevelAutoMode -- level derived from the tree, or typed. */
+  /** buildMode.characterLevelAutoMode: level derived from the tree, or typed. */
   levelAutoMode: boolean;
 
   classId: number;
@@ -109,7 +109,7 @@ export interface EnginePopup {
   /** The button Enter would press, and the one Escape would. */
   defaultKey?: string;
   cancelKey?: string;
-  /** Set when answering needs more than a button — a name, a folder. */
+  /** Set when answering needs more than a button: a name, a folder. */
   needsInput?: boolean;
   /** PoB stacks dialogs; answering one can reveal another. */
   depth: number;
@@ -122,7 +122,7 @@ export type Connection = 'connecting' | 'live' | 'offline';
  * What GET /state answers with.
  *
  * `ready` is false when the engine is up but no build is open, and in that
- * case nothing else is present -- hence the union rather than optional
+ * case nothing else is present, hence the union rather than optional
  * fields, so a caller cannot read a level that is not there.
  */
 export type BridgeSnapshot =
@@ -137,7 +137,7 @@ export type BridgeSnapshot =
  * PoB's colours, classified.
  *
  * The engine marks stat lines with inline colour codes, and some of them
- * carry meaning — a damage type, a warning, an over-cap value. The bridge
+ * carry meaning: a damage type, a warning, an over-cap value. The bridge
  * turns those into names so this UI can give them its own palette instead of
  * inheriting PoB's.
  */
@@ -203,7 +203,7 @@ export interface TreeFrameSet {
  * A connector between two nodes.
  *
  * `[a, b]` is a straight line. `[a, b, cx, cy]` is an arc of the orbit
- * centred at (cx, cy) — both endpoints lie on that circle by construction,
+ * centred at (cx, cy): both endpoints lie on that circle by construction,
  * which the bridge checks before sending it.
  */
 export type TreeConnector = [number, number] | [number, number, number, number];
@@ -347,7 +347,7 @@ export type StatsSnapshot =
 export interface ItemSlot {
   /** The engine's own name, and the key every command uses. */
   name: string;
-  /** What PoB labels it — the two weapon sets share labels, not names. */
+  /** What PoB labels it: the two weapon sets share labels, not names. */
   label: string;
   /** 0 when empty. */
   itemId: number;
@@ -448,7 +448,7 @@ export interface SocketGroup {
   fullDPS?: boolean;
   main?: boolean;
   /** Set when an item or passive granted the group, which makes it
-   * read-only — PoB rebuilds it on every pass. */
+   * read-only: PoB rebuilds it on every pass. */
   source?: string;
   gemCount: number;
   /** The active skills the group currently grants. */
@@ -530,7 +530,7 @@ export interface ConfigOption {
   var: string;
   type: ConfigType;
   label: string;
-  /** Absent when the option has never been set — JSON drops a nil. */
+  /** Absent when the option has never been set: JSON drops a nil. */
   value?: ConfigValue;
   /** What the field shows while empty; PoB computes some of these. */
   placeholder?: ConfigValue;
@@ -655,7 +655,7 @@ export interface CompareRow {
   /** Absent when the two agree. */
   diff?: string;
   percent?: number;
-  /** Whether the difference is an improvement — more resistance is, more
+  /** Whether the difference is an improvement: more resistance is, more
    * mana cost is not. The stat decides. */
   better?: boolean;
 }

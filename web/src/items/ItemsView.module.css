@@ -16,7 +16,7 @@
   flex: 1;
 }
 
-/* Two columns where there is room, one where there is not — decided by the
+/* Two columns where there is room, one where there is not, decided by the
  * panel's own width, not the window's. A media query would be wrong here:
  * this screen sits in a column beside a 290px sidebar, so the viewport is
  * wide long before this is, and `auto-fit` asks the right question. */

@@ -19,7 +19,7 @@ type Props = HeaderState & HeaderActions;
  *
  * The Lua header put Save and Save As at the far left, the build name in
  * the middle of them and the point display, and the character controls
- * split across a centre divider -- an order that came from what was added
+ * split across a centre divider: an order that came from what was added
  * when rather than from what belongs together.
  */
 export function Header(props: Props) {

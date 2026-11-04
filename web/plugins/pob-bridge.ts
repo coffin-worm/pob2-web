@@ -84,8 +84,8 @@ export function pobBridge(options: Options): Plugin {
    *
    * Both the dev server and `vite preview` get this. The preview one
    * matters more than it looks: it is the only way to run what actually
-   * ships, and without it a built app serves a UI with nothing behind it
-   * -- every request a 404, which reads as "the engine is broken" rather
+   * ships, and without it a built app serves a UI with nothing behind it:
+   * every request a 404, which reads as "the engine is broken" rather
    * than "nobody wired this up".
    */
   const attach = async (server: ViteDevServer | PreviewServer) => {
@@ -165,8 +165,8 @@ export function pobBridge(options: Options): Plugin {
 
       ready = start();
 
-      // Requests arrive before the engine finishes booting -- the browser is
-      // usually faster -- so they wait on it rather than failing.
+      // Requests arrive before the engine finishes booting: the browser is
+      // usually faster, so they wait on it rather than failing.
       const proxy: Connect.NextHandleFunction = async (
         req: IncomingMessage,
         res: ServerResponse,

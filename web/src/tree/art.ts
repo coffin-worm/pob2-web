@@ -5,8 +5,8 @@
  * canvas cannot read at all. `web/tools/tree_art.py` unpacks those once into
  * a WebP atlas plus a manifest of sprite rects, and this loads the result.
  *
- * The contract between the two sides is PoB's own asset names — `node.icon`
- * and `node.overlay[state]`, forwarded untouched by the bridge — so nothing
+ * The contract between the two sides is PoB's own asset names (`node.icon`
+ * and `node.overlay[state]`, forwarded untouched by the bridge) so nothing
  * here or in the extractor decides which picture a node gets.
  *
  * The art is a build product and may simply not be there. Every lookup

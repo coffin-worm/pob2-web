@@ -9,7 +9,7 @@ import styles from './EngineDialog.module.css';
  * PoB answers some commands with a modal rather than by doing the thing:
  * changing class with an allocated tree, Back with unsaved work, a build
  * that failed to load. Until this existed the UI could say the engine was
- * stuck and nothing more, which left a basic operation — changing class —
+ * stuck and nothing more, which left a basic operation, changing class,
  * with no way through.
  *
  * Everything here is the engine's: the title, the message, the buttons and

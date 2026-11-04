@@ -9,7 +9,7 @@ import styles from './Sidebar.module.css';
  * Every line here was built by PoB: the filtering (which stats apply to this
  * skill), the formatting (how many decimals, what suffix) and the emphasis
  * are all the engine's, because they are game rules. What this component
- * owns is the typography, the alignment and the palette — the parts that are
+ * owns is the typography, the alignment and the palette: the parts that are
  * presentation, and the parts PoB's bitmap renderer could not do well.
  */
 function StatRow({ line }: { line: StatLine }) {

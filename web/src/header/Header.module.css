@@ -42,7 +42,7 @@
 }
 
 /* The header needs about 1350px to sit comfortably. Past that the loadout
- * picker is the one thing worth dropping -- it is reachable elsewhere and
+ * picker is the one thing worth dropping: it is reachable elsewhere and
  * it is the widest control carrying the least information.
  *
  * Nothing else is hidden. Removing a control to win back pixels costs the

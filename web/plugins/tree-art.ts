@@ -13,7 +13,7 @@ import type { Plugin } from 'vite';
  * the HUD and ran it by hand.
  *
  * The dev server does not wait for it: it comes up immediately, the tree
- * renders in its fallback form, and the art appears on the next reload --
+ * renders in its fallback form, and the art appears on the next reload:
  * a far better twenty seconds than a blank terminal. A build does wait,
  * because a build that quietly omits the artwork ships a tree of plain
  * circles with nothing to say why.
@@ -35,7 +35,7 @@ export function treeArt(options: { repoRoot: string }): Plugin {
    * Extract and wait, for a build.
    *
    * Blocking is right here and wrong for the dev server. A build has one
-   * job -- produce the thing that ships -- and a build that quietly omits
+   * job: produce the thing that ships, and a build that quietly omits
    * the artwork produces a tree of plain circles with nothing to say why.
    */
   const extractNow = () =>
@@ -73,8 +73,8 @@ export function treeArt(options: { repoRoot: string }): Plugin {
       child.stdout.on('data', (chunk: Buffer) => {
         lastLine = chunk.toString().trim().split('\n').pop() ?? lastLine;
       });
-      // Python's own message says what is missing -- no interpreter, no
-      // Pillow, the wrong version -- and guessing at it here would only get
+      // Python's own message says what is missing (no interpreter, no
+      // Pillow, the wrong version) and guessing at it here would only get
       // in the way of the real one.
       child.stderr.on('data', (chunk: Buffer) => {
         server.config.logger.warn(`[tree-art] ${chunk.toString().trim()}`);

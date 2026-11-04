@@ -214,7 +214,7 @@ end
 
 --- One item as PoB would draw it. Given ?slot= it also carries the
 --- "Equipping this item will..." comparison, which is a full recalculation
---- against that slot -- so it is a route of its own, fetched on demand.
+--- against that slot, so it is a route of its own, fetched on demand.
 routes["GET /item"] = function(_, query)
 	local started = os.clock()
 	local detail = api.itemDetail(currentBuild(), query.id, query.slot)
@@ -402,7 +402,7 @@ end
 --- /poe/character, and in both cases it is whatever GGG sent, which wraps
 --- the character in a `character` key. PoB's own import path unwraps that
 --- (`ImportTab.lua:811`, `fullCharData = fullCharData.character`) but
---- HeadlessWrapper's loadBuildFromJSON does not -- it hands the top level
+--- HeadlessWrapper's loadBuildFromJSON does not: it hands the top level
 --- straight to the importers, which want `.equipment` and `.passives` on it.
 --- Fed the envelope, the import dies on a nil index and reports only that
 --- the JSON was not understood.
