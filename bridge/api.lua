@@ -44,6 +44,36 @@ local TONE = {
 	["^8"] = "dim",
 }
 
+-- PoB names about seventy colours in Data/Global.lua and uses them
+-- everywhere: item rarities, damage types, crafted and enchanted mods,
+-- class names. The hand-written table above covers what the first three
+-- screens needed; the rest is learned from colorCodes itself rather than
+-- copied, so the two cannot drift apart.
+--
+-- The curated entries win, and the rest are taken in name order, because
+-- several names share one code -- MARAUDER, WARRIOR, STRENGTH and LIFE are
+-- all ^xE05030 -- and `pairs` would otherwise pick a different one on every
+-- boot, which is the sort of thing that makes a UI flicker between two
+-- correct answers.
+local function learnColours()
+	if type(colorCodes) ~= "table" then
+		return
+	end
+	local names = {}
+	for name in pairs(colorCodes) do
+		names[#names + 1] = name
+	end
+	table.sort(names)
+	for _, name in ipairs(names) do
+		local code = colorCodes[name]
+		if type(code) == "string" and not TONE[code] then
+			TONE[code] = name:lower()
+		end
+	end
+end
+
+learnColours()
+
 local function toneOf(s)
 	s = tostring(s or "")
 	local code = s:match("^(%^x%x%x%x%x%x%x)") or s:match("^(%^%d)")
@@ -660,6 +690,237 @@ function api.calcs(build)
 	}
 end
 
+------------------------------------------------------------- the items tab
+
+--- PoB's slots are a flat list of dropdowns, and the list is longer than it
+--- looks: twelve equipment slots, two weapon sets, five flasks, and six
+--- jewel sockets hanging off every slot that can carry them. Which of those
+--- are on screen at any moment is decided by the slot's own `shown` closure
+--- (weapon-set swaps, the third ring that only exists with a tree flag) and
+--- by `inactive` (a jewel socket whose passive is not allocated).
+---
+--- Both are asked rather than reimplemented, because both are build state:
+--- the third ring slot appears because a modDB flag says so, and no table
+--- of slot names on the web side could know that.
+local function slotShown(slot)
+	if slot.inactive then
+		return false
+	end
+	local ok, shown = pcall(function()
+		return slot:IsShown()
+	end)
+	-- IsShown returns the `shown` property, which for the conditional slots
+	-- is a closure over build state -- and the third ring's returns nil, not
+	-- false, when its tree flag is absent. Coerced rather than compared,
+	-- because `nil ~= false` is true and that put an extra ring on screen.
+	if not ok then
+		return true
+	end
+	return shown and true or false
+end
+
+--- A slot's dropdown: "None" plus every item PoB considers valid for it.
+---
+--- IsItemValidForSlot is a real game rule -- a two-handed weapon blocks the
+--- off-hand, a jewel only fits a socket whose passive allows its rarity --
+--- so the list travels as PoB built it rather than being filtered here.
+local function slotOptions(slot)
+	local options = asArray({})
+	for index, id in ipairs(slot.items or {}) do
+		local label = slot.list and slot.list[index]
+		options[#options + 1] = {
+			id = id,
+			name = strip(label or (id == 0 and "None" or ("Item " .. id))),
+			rarity = label and toneOf(label) or nil,
+		}
+	end
+	return options
+end
+
+--- Everything the items screen draws, except the item tooltips.
+---
+--- PopulateSlots is run first for the same reason the Calcs selector runs
+--- its updateFunc: these lists are only rebuilt when something changes them,
+--- so a bridge that never populated would serve empty dropdowns until the
+--- first edit. It is also what reconciles a slot holding an item that is no
+--- longer valid for it, which is PoB's normalisation and not this file's.
+function api.items(build)
+	local tab = build and build.itemsTab
+	if not tab or not tab.orderedSlots then
+		return { ready = false }
+	end
+
+	-- Both of these are normally run by the tab's own layout pass, which
+	-- never happens headless. PopulateSlots rebuilds the per-slot item
+	-- lists; UpdateSockets decides which jewel sockets exist, by looking at
+	-- what the tree has allocated. Without the second, all nineteen sockets
+	-- are reported as available regardless of the tree.
+	tab:PopulateSlots()
+	pcall(tab.UpdateSockets, tab)
+
+	local slots = asArray({})
+	for _, slot in ipairs(tab.orderedSlots) do
+		if slotShown(slot) then
+			slots[#slots + 1] = {
+				name = slot.slotName,
+				label = strip(slot.label or slot.slotName),
+				itemId = slot.selItemId or 0,
+				options = slotOptions(slot),
+				-- Flasks are the only slots that can be equipped but turned
+				-- off, and the checkbox is part of what the slot means.
+				flask = slot.slotName:match("Flask") and true or nil,
+				active = slot.slotName:match("Flask") and (slot.active and true or false) or nil,
+				-- A jewel socket belongs to the passive tree, not to a piece
+				-- of equipment, and is grouped apart in the UI.
+				socket = slot.nodeId and true or nil,
+				jewel = slot.parentSlot and slot.parentSlot.slotName or nil,
+				weaponSet = slot.weaponSet,
+			}
+		end
+	end
+
+	-- itemOrderList is PoB's own sort: by the slot an item belongs in, then
+	-- by where it is equipped. Reproducing that ordering on the web side
+	-- would mean reproducing GetPrimarySlot, which is a table of base types.
+	local items = asArray({})
+	for _, id in ipairs(tab.itemOrderList or {}) do
+		local item = tab.items[id]
+		if item then
+			local equipped = nil
+			local ok, slot = pcall(tab.GetEquippedSlotForItem, tab, item)
+			if ok and slot then
+				equipped = slot.slotName
+			end
+			items[#items + 1] = {
+				id = id,
+				name = strip(item.name or item.title or item.baseName or "Item"),
+				base = strip(item.baseName or ""),
+				rarity = item.rarity or "NORMAL",
+				equipped = equipped,
+			}
+		end
+	end
+
+	local sets = asArray({})
+	for _, id in ipairs(tab.itemSetOrderList or {}) do
+		local set = tab.itemSets and tab.itemSets[id]
+		if set then
+			sets[#sets + 1] = { id = id, name = strip(set.title or "Default") }
+		end
+	end
+
+	return {
+		ready = true,
+		slots = slots,
+		items = items,
+		sets = sets,
+		setId = tab.activeItemSetId or 0,
+		-- Which of the two weapon sets the slots above are showing.
+		weaponSet = (tab.activeItemSet and tab.activeItemSet.useSecondWeaponSet) and 2 or 1,
+	}
+end
+
+--- One item, as PoB itself would draw it.
+---
+--- This is the whole reason the items screen is cheap. AddItemTooltip
+--- already knows how to lay an item out -- the rarity header, the base, the
+--- requirements, implicits above explicits, every mod in its own colour,
+--- the unsupported ones called out -- and with a slot it also runs the
+--- comparison that produces "Equipping this item will...". All of that is
+--- game knowledge, and none of it is worth having a second copy of.
+---
+--- So a Tooltip is built and its `lines` are read, exactly as the sidebar
+--- reads statBox.list. A line is {size, text, block, separatorImage}; block
+--- is what separates the item itself from the equip delta beneath it.
+function api.itemDetail(build, itemId, slotName)
+	local tab = build and build.itemsTab
+	local item = tab and tab.items and tab.items[tonumber(itemId) or 0]
+	if not item then
+		return { ready = false }
+	end
+
+	local slot = slotName and tab.slots and tab.slots[slotName] or nil
+	local tooltip = new("Tooltip"):Tooltip()
+	local ok, err = pcall(tab.AddItemTooltip, tab, tooltip, item, slot)
+	if not ok then
+		return { ready = false, error = tostring(err) }
+	end
+
+	local lines, tips = asArray({}), 0
+	for _, line in ipairs(tooltip.lines or {}) do
+		if line.separatorImage or not line.text then
+			-- A rule between sections. PoB draws it as a rarity-coloured
+			-- image; here it is just a rule, and the rarity is on the item.
+			lines[#lines + 1] = { separator = true, block = line.block or 1 }
+		elseif toneOf(line.text) == "tip" then
+			-- The one thing dropped rather than forwarded. colorCodes.TIP is
+			-- used in exactly one way across the whole codebase: advice about
+			-- the desktop UI's keyboard shortcuts ("Press Ctrl+D", "Right
+			-- click this socket"). None of those keys do anything here, so
+			-- passing them through would be telling the user something
+			-- untrue about the application they are looking at.
+			tips = tips + 1
+		else
+			lines[#lines + 1] = {
+				text = strip(line.text),
+				tone = toneOf(line.text),
+				size = line.size or 16,
+				block = line.block or 1,
+				centre = line.center or nil,
+			}
+		end
+	end
+
+	return {
+		ready = true,
+		id = item.id,
+		name = strip(item.name or item.title or ""),
+		rarity = item.rarity or "NORMAL",
+		-- The slot this was rendered against, so the UI can say what the
+		-- delta beneath it is a delta against.
+		slot = slot and slot.slotName or nil,
+		lines = lines,
+		-- Reported rather than silently swallowed, so the count is visible
+		-- if PoB ever starts using that colour for something that matters.
+		droppedTips = tips,
+	}
+end
+
+--- Search PoB's unique and rare databases.
+---
+--- main.uniqueDB.list is keyed by name and holds a parsed Item each, built
+--- once at startup from Data/Uniques. Only a name match is offered: the real
+--- tab filters by league, slot, obtainability and six other axes, and all of
+--- that is UI state that would have to live somewhere on this side.
+function api.itemSearch(query, limit)
+	local needle = tostring(query or ""):lower()
+	local max = tonumber(limit) or 40
+	if #needle < 2 or not main then
+		return { ready = true, results = asArray({}), truncated = false }
+	end
+
+	local results, total = asArray({}), 0
+	for _, db in ipairs({ main.uniqueDB, main.rareDB }) do
+		for name, item in pairs(db and db.list or {}) do
+			if tostring(name):lower():find(needle, 1, true) and item.base then
+				total = total + 1
+				if #results < max then
+					local ok, primary = pcall(item.GetPrimarySlot, item)
+					results[#results + 1] = {
+						name = name,
+						base = strip(item.baseName or ""),
+						rarity = item.rarity or "NORMAL",
+						slot = ok and primary or nil,
+					}
+				end
+			end
+		end
+	end
+
+	table.sort(results, function(a, b) return a.name < b.name end)
+	return { ready = true, results = results, total = total, truncated = total > #results }
+end
+
 ------------------------------------------------------------------- commands
 
 local commands = {}
@@ -833,6 +1094,162 @@ function commands.toggleNode(build, value)
 
 	spec:AddUndoState()
 	build.buildFlag = true
+	return true
+end
+
+--------------------------------------------------------------- item commands
+
+--- Put an item in a slot, or take one out with id 0.
+---
+--- This is what the slot dropdown's own callback does, in its order:
+--- SetSelItemId, then repopulate every slot (equipping a two-hander empties
+--- the off-hand, and a jewel changes which sockets exist), then an undo
+--- state, then raise the recalculation flag.
+function commands.setSlotItem(build, value)
+	local tab = build.itemsTab
+	local slotName = type(value) == "table" and value.slot
+	local itemId = tonumber(type(value) == "table" and value.item) or 0
+	local slot = tab and tab.slots and slotName and tab.slots[slotName]
+	if not slot then
+		return nil, "no slot named " .. tostring(slotName)
+	end
+	if itemId ~= 0 and not (tab.items and tab.items[itemId]) then
+		return nil, "no item with id " .. tostring(itemId)
+	end
+	-- Asking PoB rather than trusting the caller: a dropdown built from a
+	-- stale /items is the obvious way for this to arrive wrong.
+	if itemId ~= 0 and not tab:IsItemValidForSlot(tab.items[itemId], slotName) then
+		return nil, "that item does not fit " .. slotName
+	end
+
+	slot:SetSelItemId(itemId)
+	tab:PopulateSlots()
+	tab:AddUndoState()
+	build.buildFlag = true
+	return true
+end
+
+--- Turn a flask on or off without unequipping it.
+function commands.setSlotActive(build, value)
+	local tab = build.itemsTab
+	local slotName = type(value) == "table" and value.slot
+	local slot = tab and tab.slots and slotName and tab.slots[slotName]
+	if not slot then
+		return nil, "no slot named " .. tostring(slotName)
+	end
+	slot.active = (type(value) == "table" and value.active) and true or false
+	if slot.controls and slot.controls.activate then
+		slot.controls.activate.state = slot.active
+	end
+	tab:AddUndoState()
+	build.buildFlag = true
+	return true
+end
+
+--- Add an item from PoB's own unique or rare database, and equip it.
+---
+--- Lifted from ItemDBControl:OnSelClick, including the weapon-set
+--- redirection: with the second set showing, an item whose primary slot is
+--- "Weapon 1" has to go to "Weapon 1 Swap", and a bridge that skipped that
+--- would silently equip into the set you are not looking at.
+function commands.addDbItem(build, value)
+	local tab = build.itemsTab
+	local name = type(value) == "table" and value.name or value
+	if type(name) ~= "string" then
+		return nil, "expected { name = ... }"
+	end
+
+	local source = (main.uniqueDB and main.uniqueDB.list and main.uniqueDB.list[name])
+		or (main.rareDB and main.rareDB.list and main.rareDB.list[name])
+	if not source or not source.raw then
+		return nil, "no database item named " .. name
+	end
+
+	local item = new("Item"):Item(source.raw)
+	item:NormaliseQuality()
+	tab:AddItem(item, true)
+
+	local slotName = item:GetPrimarySlot()
+	if slotName and tab.slots[slotName] then
+		if tab.slots[slotName].weaponSet == 1 and tab.activeItemSet.useSecondWeaponSet then
+			slotName = slotName .. " Swap"
+		end
+		tab.slots[slotName]:SetSelItemId(item.id)
+	end
+
+	tab:PopulateSlots()
+	tab:AddUndoState()
+	build.buildFlag = true
+	return true
+end
+
+--- Add an item from its in-game text, as pasting into PoB does.
+---
+--- CreateDisplayItemFromRaw leaves displayItem nil when the base is not one
+--- PoB knows, which is the only failure worth reporting: everything else it
+--- parses leniently and flags as unsupported on the item itself.
+function commands.addItemText(build, value)
+	local tab = build.itemsTab
+	local raw = type(value) == "table" and value.text or value
+	if type(raw) ~= "string" or raw:match("^%s*$") then
+		return nil, "expected { text = ... }"
+	end
+
+	tab:CreateDisplayItemFromRaw(raw, true)
+	if not tab.displayItem then
+		return nil, "that is not an item PoB recognises"
+	end
+	tab:AddDisplayItem()
+	return true
+end
+
+function commands.deleteItem(build, value)
+	local tab = build.itemsTab
+	local item = tab and tab.items and tab.items[tonumber(value) or 0]
+	if not item then
+		return nil, "no item with id " .. tostring(value)
+	end
+	tab:DeleteItem(item)
+	tab:PopulateSlots()
+	build.buildFlag = true
+	return true
+end
+
+function commands.setItemSet(build, value)
+	local tab = build.itemsTab
+	local id = tonumber(value)
+	if not tab or not id or not (tab.itemSets and tab.itemSets[id]) then
+		return nil, "no item set with id " .. tostring(value)
+	end
+	tab:SetActiveItemSet(id)
+	tab:AddUndoState()
+	build.buildFlag = true
+	return true
+end
+
+--- Switch between the two weapon sets.
+---
+--- The tab drives this from two buttons rather than a value, and each one
+--- does more than set the flag: PoB's own handlers are used so whatever else
+--- they do keeps happening.
+function commands.setWeaponSet(build, value)
+	local tab = build.itemsTab
+	local want = (tonumber(value) or 1) == 2
+	if not tab or not tab.activeItemSet then
+		return nil, "no item set"
+	end
+	if (tab.activeItemSet.useSecondWeaponSet and true or false) == want then
+		return true
+	end
+	local button = tab.controls and (want and tab.controls.weaponSwap2 or tab.controls.weaponSwap1)
+	if button and button.onClick then
+		button.onClick()
+	else
+		tab.activeItemSet.useSecondWeaponSet = want
+		tab:PopulateSlots()
+		tab:AddUndoState()
+		build.buildFlag = true
+	end
 	return true
 end
 

@@ -1,0 +1,414 @@
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-height: 0;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.barSpacer {
+  flex: 1;
+}
+
+/* Two columns where there is room, one where there is not — decided by the
+ * panel's own width, not the window's. A media query would be wrong here:
+ * this screen sits in a column beside a 290px sidebar, so the viewport is
+ * wide long before this is, and `auto-fit` asks the right question. */
+.columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.left,
+.right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.groupTitle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.count {
+  color: var(--text-disabled);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ slots */
+
+.slot {
+  display: grid;
+  /* minmax(0, 1fr) rather than 1fr: a grid track's default minimum is its
+   * content, and "Astramentis, Stellar Amulet" in a dropdown is enough to
+   * push the whole row past the panel and put a scrollbar under it. */
+  grid-template-columns: 92px auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* The dropdown fills its track and truncates, instead of sizing to the
+ * longest item name in the build. */
+.slotSelect {
+  min-width: 0;
+}
+
+.slotSelect > button {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}
+
+.slotSelect > button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The label column has no checkbox in it for most slots, so the flask
+ * checkbox sits in its own track rather than shifting the dropdown. */
+.slot > .flask {
+  justify-self: center;
+}
+
+.slotLabel {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.noFlask {
+  width: 13px;
+}
+
+.flask {
+  width: 13px;
+  height: 13px;
+  accent-color: var(--accent);
+}
+
+.inspect {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.inspect:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.inspect:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* -------------------------------------------------------------- item list */
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.item[data-selected='true'] {
+  background: var(--bg-hover);
+}
+
+.itemName {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-base);
+  text-align: left;
+  cursor: pointer;
+}
+
+.itemName:hover {
+  background: var(--bg-hover);
+}
+
+.equipped {
+  margin-left: auto;
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.delete {
+  padding: 0 var(--space-3);
+  background: transparent;
+  border: 0;
+  color: var(--text-disabled);
+  font: inherit;
+  font-size: var(--text-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.delete:hover {
+  color: var(--danger);
+}
+
+/* ----------------------------------------------------------------- search */
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-base);
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+.searchCount {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow: auto;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.result {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.result:hover {
+  background: var(--bg-hover);
+}
+
+.resultName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resultSlot {
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+/* ----------------------------------------------------------- item tooltip */
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* One block per section of PoB's tooltip: the item, then whatever equipping
+ * it would change. */
+.block {
+  padding: var(--space-5);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.block[data-rarity='normal'] { border-left-color: var(--rarity-normal); }
+.block[data-rarity='magic'] { border-left-color: var(--rarity-magic); }
+.block[data-rarity='rare'] { border-left-color: var(--rarity-rare); }
+.block[data-rarity='unique'] { border-left-color: var(--rarity-unique); }
+.block[data-rarity='relic'] { border-left-color: var(--rarity-relic); }
+
+.line {
+  font-size: var(--text-base);
+  line-height: 1.5;
+}
+
+.line[data-size='title'] {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.line[data-centre='true'] {
+  text-align: center;
+}
+
+.rule {
+  height: 0;
+  margin: var(--space-3) 0;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.against {
+  margin: 0;
+  color: var(--text-disabled);
+  font-size: var(--text-xs);
+}
+
+/* PoB's own colour names, mapped to this palette. The bridge classifies the
+ * engine's inline colour codes rather than passing hex through, so these are
+ * the same names the sidebar and Calcs board use. */
+.line[data-tone='dim'],
+.line[data-tone='disabled'] { color: var(--text-muted); }
+.line[data-tone='normal'] { color: var(--rarity-normal); }
+.line[data-tone='magic'] { color: var(--rarity-magic); }
+.line[data-tone='rare'] { color: var(--rarity-rare); }
+.line[data-tone='unique'] { color: var(--rarity-unique); }
+.line[data-tone='relic'] { color: var(--rarity-relic); }
+.line[data-tone='crafted'],
+.line[data-tone='enchanted'] { color: var(--rarity-crafted); }
+.line[data-tone='custom'] { color: var(--stat-custom); }
+.line[data-tone='source'] { color: var(--stat-source); }
+.line[data-tone='warning'] { color: var(--warning); }
+.line[data-tone='positive'] { color: var(--success); }
+.line[data-tone='negative'],
+.line[data-tone='unsupported'] { color: var(--danger); }
+.line[data-tone='fire'] { color: var(--dmg-fire); }
+.line[data-tone='cold'] { color: var(--dmg-cold); }
+.line[data-tone='lightning'] { color: var(--dmg-lightning); }
+.line[data-tone='chaos'] { color: var(--dmg-chaos); }
+
+.itemName[data-tone='normal'],
+.resultName[data-tone='normal'] { color: var(--rarity-normal); }
+.itemName[data-tone='magic'],
+.resultName[data-tone='magic'] { color: var(--rarity-magic); }
+.itemName[data-tone='rare'],
+.resultName[data-tone='rare'] { color: var(--rarity-rare); }
+.itemName[data-tone='unique'],
+.resultName[data-tone='unique'] { color: var(--rarity-unique); }
+.itemName[data-tone='relic'],
+.resultName[data-tone='relic'] { color: var(--rarity-relic); }
+
+/* ------------------------------------------------------------------ other */
+
+.paste {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.pasteBox {
+  width: 100%;
+  padding: var(--space-4);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+/* An engine refusal is an answer, not an error: "that item does not fit
+ * Boots" is PoB telling you a rule. */
+.refusal {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-raised);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.dismiss {
+  margin-left: auto;
+  padding: 0 var(--space-2);
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.hint {
+  margin: 0;
+  max-width: 52ch;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.empty {
+  padding: var(--space-6);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}

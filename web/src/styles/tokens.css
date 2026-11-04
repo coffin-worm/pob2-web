@@ -108,6 +108,20 @@
   --stat-source: #6cc5c5;
   --stat-custom: #5ad6a8;
 
+  /* Item rarities. Fixed identities the player already knows, like the
+   * damage types, and read as a set — but again tuned for this background
+   * rather than copied: PoB's unique brown (#AF6025) is close to unreadable
+   * at 12px on anything lighter than black, and its rare yellow is the same
+   * hue as the warning amber above. */
+  --rarity-normal: #c8ccd4;
+  --rarity-magic: #8fa6ff;
+  --rarity-rare: #e3d26a;
+  --rarity-unique: #d2894a;
+  --rarity-relic: #6fc98a;
+  /* Crafted and enchanted share one colour in PoB, and the distinction is
+   * not one this screen makes. */
+  --rarity-crafted: #a9cfe8;
+
   /* -------------------------------------------------------------- effect */
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow: 0 4px 12px rgb(0 0 0 / 0.45);

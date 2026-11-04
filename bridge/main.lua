@@ -198,6 +198,30 @@ routes["GET /calcs"] = function()
 	return 200, calcs
 end
 
+--- The items screen: slots, the item list and the item sets.
+routes["GET /items"] = function()
+	local started = os.clock()
+	local items = api.items(currentBuild())
+	items.engineError = engineError()
+	items.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, items
+end
+
+--- One item as PoB would draw it. Given ?slot= it also carries the
+--- "Equipping this item will..." comparison, which is a full recalculation
+--- against that slot -- so it is a route of its own, fetched on demand.
+routes["GET /item"] = function(_, query)
+	local started = os.clock()
+	local detail = api.itemDetail(currentBuild(), query.id, query.slot)
+	detail.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, detail
+end
+
+--- PoB's unique and rare databases, by name.
+routes["GET /items/search"] = function(_, query)
+	return 200, api.itemSearch(query.q, query.limit)
+end
+
 routes["POST /action"] = function(payload)
 	if type(payload) ~= "table" or not payload.action then
 		return 400, { error = "expected { action = ..., value = ... }" }
@@ -255,13 +279,24 @@ routes["GET /paths"] = function()
 	}
 end
 
+--- Percent-decoding, because item names carry spaces and apostrophes.
+local function urlDecode(text)
+	return (tostring(text or ""):gsub("+", " "):gsub("%%(%x%x)", function(hex)
+		return string.char(tonumber(hex, 16))
+	end))
+end
+
 local function handler(method, path, payload)
-	-- Query strings are not used by any route; drop them before matching.
-	local route = routes[method .. " " .. (path:match("^([^?]*)") or path)]
-	if not route then
+	local route, rest = path:match("^([^?]*)%??(.*)$")
+	local fn = routes[method .. " " .. (route or path)]
+	if not fn then
 		return 404, { error = "no route for " .. method .. " " .. path }
 	end
-	return route(payload)
+	local query = {}
+	for key, value in tostring(rest or ""):gmatch("([^&=?]+)=([^&]*)") do
+		query[urlDecode(key)] = urlDecode(value)
+	end
+	return fn(payload, query)
 end
 
 ------------------------------------------------------------- love callbacks
@@ -286,7 +321,8 @@ function love.load()
 	end
 	server = srv
 	log("listening on http://127.0.0.1:%d", server.port)
-	log("  GET /health   GET /state   GET /stats   GET /calcs   GET /paths")
+	log("  GET /health /state /stats /calcs /paths")
+	log("  GET /tree /tree/alloc   GET /items /item /items/search")
 	log("  POST /action  POST /build/new  POST /build/open")
 end
 

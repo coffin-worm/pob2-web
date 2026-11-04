@@ -1,9 +1,9 @@
 # PoB web UI — header prototype
 
 A prototype of Path of Building's UI as a web app, intended to run in
-WebView2 against the existing Lua calc engine. Four screens so far: the top
-bar, the stat sidebar, the Calcs tab and the passive tree, all driven by the
-real engine.
+WebView2 against the existing Lua calc engine. Five screens so far: the top
+bar, the stat sidebar, the passive tree, the Items tab and the Calcs tab,
+all driven by the real engine.
 
 ```bash
 npm install
@@ -277,6 +277,108 @@ gives spirit". It is a linear scan per keystroke, under a millisecond.
   8 MB. Over loopback that is nothing; over a network it would want a
   smaller tier.
 
+## The Items tab
+
+The cheapest screen so far, and for one reason: PoB already knows how to
+draw an item.
+
+`ItemsTab:AddItemTooltip` lays one out in full — the rarity header, the
+base, quality and requirements, implicits above explicits, every mod in its
+own colour, the unsupported ones called out, the flavour text — and given a
+slot it also runs the comparison that produces "Equipping this item will
+give you: +182 Effective Hit Pool (+19.2%)". That is hundreds of lines of
+game knowledge about mod formatting and about what a stat delta means.
+
+It builds all of it into a `Tooltip`, whose `lines` are
+`{size, text, block, separatorImage}` — the same shape as the `statBox.list`
+the sidebar already reads. So the bridge builds a tooltip, reads the lines,
+classifies the colour codes into names, and sends them. There is no item
+formatter on the web side at all.
+
+| | |
+|---|---|
+| Slots, the item list and the sets | 3.8 kB, **0 ms** in the engine |
+| One item, with its slot comparison | 2.0 kB, **3 ms** |
+| Searching every unique and rare by name | 60 of them, **42 ms** |
+
+(The wall-clock figures from the browser are 13–44 ms. Most of that is the
+bridge's own 1/30 s poll tick, not work.)
+
+### One line is dropped, and only one
+
+`colorCodes.TIP` is used in exactly one way across the whole codebase:
+advice about the desktop UI's keyboard shortcuts. "Tip: Press Ctrl+D in the
+Items tab to disable the display of stat differences." None of those keys do
+anything here, so forwarding them would be telling the user something untrue
+about the application in front of them. Lines in that colour are dropped and
+the count is reported as `droppedTips`, so it is visible rather than silent
+if PoB ever starts using it for something that matters.
+
+### What the slots know that a list of slot names could not
+
+PoB has nineteen equipment slots and up to six jewel sockets hanging off
+each piece that can carry them, and which of them exist at any moment is
+build state:
+
+- the third ring appears only behind an `AdditionalRingSlot` flag on the
+  mod database;
+- the weapon slots swap for their `Swap` twins with the active weapon set;
+- a jewel socket on the tree exists only while its passive is allocated;
+- the sockets on a piece of gear exist only up to that item's
+  `jewelSocketCount` — equipping Tabula Rasa adds six.
+
+So the slot list is asked for, not declared. Two of PoB's own passes have to
+be run first, for the same reason the Calcs selector needed one:
+`PopulateSlots` rebuilds the per-slot item lists, and `UpdateSockets`
+decides which sockets are live. Neither runs headless on its own, and
+without the second every socket is reported as available regardless of the
+tree.
+
+Which items may go in a slot is `IsItemValidForSlot` — a real rule about
+two-handers, jewel rarities and sinister sockets — so the dropdowns are the
+lists PoB built. Equipping checks it again on the way in, and a refusal
+comes back as a sentence: *that item does not fit Boots*.
+
+### Getting items in
+
+Three ways, all of them PoB's:
+
+- **Its own databases.** `main.uniqueDB.list` and `main.rareDB.list` are
+  every unique and rare the game has, parsed at startup. Searching by name
+  and adding one follows `ItemDBControl:OnSelClick` exactly, including the
+  weapon-set redirection — with the second set showing, an item whose
+  primary slot is "Weapon 1" has to go to "Weapon 1 Swap", and skipping that
+  would quietly equip into the set you are not looking at.
+- **Pasted item text**, through `CreateDisplayItemFromRaw`, which is what
+  pasting into the real tab does. It leaves `displayItem` nil when the base
+  is not one PoB knows, and that is the only failure worth reporting:
+  everything else it parses leniently and marks unsupported on the item.
+- **Auto-equip**, which is `AddItem`'s own behaviour.
+
+### What this screen decides for itself
+
+Three things, all presentation. The slots are grouped — weapons, armour,
+jewellery, charms and flasks, jewels — where PoB draws nineteen dropdowns in
+one column; the order inside each group is still the engine's. Rarity
+colours are tuned for this background rather than copied, for the same
+reason as the damage types: PoB's unique brown is close to unreadable at
+12px on anything lighter than black. And the layout switches between one
+column and two on the width of the *panel*, not the window — a media query
+would be wrong here, because this screen sits beside a 290px sidebar and the
+viewport is wide long before the panel is.
+
+### What it does not do
+
+- **No item editor.** The real tab can roll, craft, enchant, corrupt and
+  anoint; this one equips, inspects and deletes. That panel is most of
+  `ItemsTab.lua`'s 4,586 lines and is a screen in its own right.
+- **No item sets beyond switching between them**, and no shared item list.
+- **No drag and drop**, which is how the real tab moves items between slots.
+- **No variant or league filters** on the database search. The real one
+  filters by league, slot, type, obtainability and requirements; this
+  matches on name.
+- **No socketed-jewel radius preview**, the same gap the tree has.
+
 ## The Calcs tab, and a prediction that was wrong
 
 This file used to say the Calcs tab "was the original argument for this
@@ -402,10 +504,11 @@ merely empty.
 
 ## Known gaps
 
-- **Four screens of perhaps a dozen.** Items, skills, configuration and the
+- **Five screens of perhaps a dozen.** Skills, configuration, notes and the
   build list are unbuilt. None of them looks harder than what is here.
 - **The tree's own gaps** — the notable glow, path preview, multiple-choice
-  nodes, socketed jewels — are listed with the tree above.
+  nodes, socketed jewels — are listed with the tree above, and the Items
+  tab's are listed with it.
 - **Nothing is virtualised, and on this evidence nothing needs to be.** See
   below — this was the opposite of what this file predicted.
 - **Dialogs are not drawn.** The UI reports that the engine is waiting on

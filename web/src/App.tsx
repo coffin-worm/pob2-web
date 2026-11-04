@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Header } from './header/Header';
 import { Sidebar } from './sidebar/Sidebar';
 import { CalcsView } from './calcs/CalcsView';
+import { ItemsView } from './items/ItemsView';
 import { TreeView } from './tree/TreeView';
 import { EngineStatus } from './pob/EngineStatus';
 import { Segmented } from './ui/Segmented';
@@ -11,7 +12,7 @@ import { useCalcsStore } from './pob/calcsStore';
 import { useTreeStore } from './pob/treeStore';
 import styles from './App.module.css';
 
-type Tab = 'tree' | 'calcs';
+type Tab = 'tree' | 'items' | 'calcs';
 
 export default function App() {
   const state = useBridgeStore();
@@ -45,6 +46,7 @@ export default function App() {
             onChange={(value) => setTab(value as Tab)}
             options={[
               { value: 'tree', label: 'Tree', title: 'The passive tree' },
+              { value: 'items', label: 'Items', title: 'Equipment and the item list' },
               { value: 'calcs', label: 'Calcs', title: 'Calculation breakdown' },
             ]}
           />
@@ -54,6 +56,14 @@ export default function App() {
           <div className={styles.panel} hidden={tab !== 'tree'}>
             <TreeView />
           </div>
+          {/* Items is unmounted when hidden, unlike the other two: it holds
+              no camera and no large payload, and keeping it mounted would
+              keep it polling the engine for a screen nobody is looking at. */}
+          {tab === 'items' && (
+            <div className={styles.panel}>
+              <ItemsView />
+            </div>
+          )}
           <div className={styles.panel} hidden={tab !== 'calcs'}>
             <CalcsView />
           </div>

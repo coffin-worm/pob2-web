@@ -320,3 +320,96 @@ export type StatsSnapshot =
       skills: NamedOption[];
       engineError?: string | null;
     };
+
+/* ------------------------------------------------------------- the items */
+
+/** One of PoB's equipment slots, as it currently stands. */
+export interface ItemSlot {
+  /** The engine's own name, and the key every command uses. */
+  name: string;
+  /** What PoB labels it — the two weapon sets share labels, not names. */
+  label: string;
+  /** 0 when empty. */
+  itemId: number;
+  /** "None" plus every item PoB considers valid for this slot. */
+  options: { id: number; name: string; rarity?: StatTone }[];
+  /** Flasks are the only slots that can be equipped but switched off. */
+  flask?: boolean;
+  active?: boolean;
+  /** A jewel socket on the passive tree rather than a piece of equipment. */
+  socket?: boolean;
+  /** For a socket hanging off a piece of gear, the gear's slot name. */
+  jewel?: string;
+  /** 1 or 2 on the weapon slots, absent elsewhere. */
+  weaponSet?: number;
+}
+
+export interface ItemSummary {
+  id: number;
+  name: string;
+  base: string;
+  /** NORMAL | MAGIC | RARE | UNIQUE | RELIC */
+  rarity: string;
+  /** The slot it is equipped in, if any. */
+  equipped?: string;
+}
+
+export type ItemsSnapshot =
+  | { ready: false; engineError?: string | null }
+  | {
+      ready: true;
+      slots: ItemSlot[];
+      /** In PoB's own order: by the slot an item belongs in, then by where
+       * it is equipped. */
+      items: ItemSummary[];
+      sets: { id: number; name: string }[];
+      setId: number;
+      weaponSet: number;
+      buildMs: number;
+      engineError?: string | null;
+    };
+
+/**
+ * One line of PoB's own item tooltip.
+ *
+ * `block` separates the item from the "Equipping this item will..."
+ * comparison beneath it; everything in block 1 is the item itself.
+ */
+export interface ItemLine {
+  text?: string;
+  tone?: StatTone;
+  size?: number;
+  block: number;
+  centre?: boolean;
+  separator?: boolean;
+}
+
+export type ItemDetail =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      id: number;
+      name: string;
+      rarity: string;
+      /** The slot the comparison was run against, if one was asked for. */
+      slot?: string;
+      lines: ItemLine[];
+      /** Desktop keyboard hints the bridge dropped. */
+      droppedTips: number;
+      buildMs: number;
+    };
+
+export interface ItemSearchResult {
+  name: string;
+  base: string;
+  rarity: string;
+  /** Where PoB would equip it. */
+  slot?: string;
+}
+
+export interface ItemSearchSnapshot {
+  ready: boolean;
+  results: ItemSearchResult[];
+  total?: number;
+  truncated?: boolean;
+}

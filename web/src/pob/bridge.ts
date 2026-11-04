@@ -1,6 +1,9 @@
 import type {
   BridgeSnapshot,
   CalcsSnapshot,
+  ItemDetail,
+  ItemSearchSnapshot,
+  ItemsSnapshot,
   StatsSnapshot,
   TreeAllocSnapshot,
   TreeSnapshot,
@@ -63,6 +66,23 @@ export const bridge = {
 
   /** What is allocated on it. Small, and changes on every click. */
   treeAlloc: () => request<TreeAllocSnapshot>('/tree/alloc'),
+
+  /** Slots, the item list and the item sets. */
+  items: () => request<ItemsSnapshot>('/items'),
+
+  /**
+   * One item as PoB would draw it. With a slot it also carries the
+   * "Equipping this item will..." comparison, which is a full recalculation
+   * against that slot — hence a route of its own, fetched on demand.
+   */
+  item: (id: number, slot?: string) =>
+    request<ItemDetail>(
+      `/item?id=${id}` + (slot ? `&slot=${encodeURIComponent(slot)}` : ''),
+    ),
+
+  /** PoB's unique and rare databases, by name. */
+  itemSearch: (query: string) =>
+    request<ItemSearchSnapshot>(`/items/search?q=${encodeURIComponent(query)}`),
 
   /** Ask the engine to run one of api.lua's commands. */
   act: (action: string, value?: unknown) =>
