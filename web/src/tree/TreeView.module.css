@@ -27,29 +27,84 @@
   cursor: pointer;
 }
 
-/* A label that follows the cursor rather than a tooltip that waits for it:
- * on a tree this dense, pointing at a node is the question. */
-.label {
+/* A tooltip that follows the cursor rather than one that waits for it: on a
+ * tree this dense, pointing at a node is the question. */
+.tip {
   position: absolute;
   z-index: 2;
-  max-width: 280px;
-  padding: var(--space-2) var(--space-3);
+  width: 320px;
+  padding: var(--space-3) var(--space-4);
   background: var(--bg-overlay);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow);
   color: var(--text-primary);
   font-size: var(--text-sm);
-  line-height: 1.4;
+  line-height: 1.45;
   pointer-events: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.labelType {
+.tipName {
+  font-weight: 600;
+}
+
+.tipMeta {
+  margin-top: 2px;
   color: var(--text-muted);
   font-size: var(--text-xs);
+}
+
+/* PoB's own stat lines, one per row, in the engine's order. */
+.tipStats {
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--stat-source, var(--text-secondary));
+}
+
+.tipStats li + li {
+  margin-top: 2px;
+}
+
+.tipFlavour {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-style: italic;
+}
+
+.search {
+  position: absolute;
+  z-index: 2;
+  top: var(--space-4);
+  left: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.searchInput {
+  width: 240px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--border-active, var(--border));
+}
+
+.searchCount {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .hud {
@@ -78,4 +133,8 @@
   padding: var(--space-6);
   color: var(--text-muted);
   font-size: var(--text-sm);
+}
+
+.hudWarn {
+  color: var(--stat-negative, #f05050);
 }

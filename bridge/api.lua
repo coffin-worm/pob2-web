@@ -230,32 +230,85 @@ end
 
 -------------------------------------------------------------- the tree
 
---- The passive tree's geometry: where every node is and what it joins to.
+--- One node's drawn size. PoB keeps two boxes per node: the frame around it
+--- and the icon inside, and they differ by type (a keystone's frame is 120
+--- against an icon of 82). GetNodeTargetSize has already decided both.
+local function nodeSizes(node)
+	local target = node.targetSize or {}
+	local frame = target.overlay
+	return target.width or 0, (frame and frame.width) or target.width or 0
+end
+
+--- The passive tree's geometry and artwork: where every node is, what it
+--- joins to, which sprite it wears, and what it does.
 ---
 --- Positions are PoB's. It resolves each node's group, orbit and orbit index
 --- into node.x/node.y once at load (PassiveTree.lua:574), so there is no
 --- orbit trigonometry to repeat here -- which is just as well, since getting
 --- it subtly wrong would be invisible until the tree looked faintly bent.
 ---
---- Big enough to be worth fetching once: this does not change while a build
---- is open, only when the tree version does. The allocation on top of it is
---- a separate, small route.
+--- Art is PoB's too, by name: node.icon and node.overlay[state] are asset
+--- names the renderer looks up in its texture atlases, and web/tools has a
+--- script that unpacks the same atlases into one the browser can read. The
+--- names are the contract between the two, so nothing here has an opinion
+--- about which picture a notable gets.
+---
+--- Big enough to be worth fetching once: none of this changes while a build
+--- is open, only when the tree version does. Allocation and the backdrops
+--- that follow the class are a separate, small route.
 function api.tree(build)
 	local spec = build and build.spec
 	local treeNodes = spec and spec.nodes
-	if not treeNodes then
+	local tree = spec and spec.tree
+	if not treeNodes or not tree then
 		return { ready = false }
 	end
 
-	local nodes, edges = asArray({}), asArray({})
-	local seen = {}
+	local nodes = asArray({})
 	local minX, minY, maxX, maxY
+
+	-- 4546 nodes draw from 576 icons and about 210 frame sets, and the names
+	-- are long asset paths. Sending each node an index into a palette instead
+	-- of its own copy of "Art/2DArt/SkillIcons/passives/..." takes the
+	-- payload from 1.7 MB to under 700 kB, and lets the renderer resolve each
+	-- sprite to an atlas rect once rather than once per node.
+	local icons, iconIndex = asArray({}), {}
+	local frameSets, frameIndex = asArray({}), {}
+
+	local function internIcon(name)
+		if not name or name == "" then return nil end
+		if not iconIndex[name] then
+			icons[#icons + 1] = name
+			iconIndex[name] = #icons
+		end
+		return iconIndex[name]
+	end
+
+	local function internFrames(overlay)
+		if not overlay or not overlay.unalloc then return nil end
+		local key = (overlay.alloc or "") .. "|" .. (overlay.path or "") .. "|" .. overlay.unalloc
+		if not frameIndex[key] then
+			frameSets[#frameSets + 1] = {
+				alloc = overlay.alloc,
+				path = overlay.path,
+				unalloc = overlay.unalloc,
+			}
+			frameIndex[key] = #frameSets
+		end
+		return frameIndex[key]
+	end
 
 	for id, node in pairs(treeNodes) do
 		-- OnlyImage nodes are decoration with no meaning, and a node with no
 		-- position is not on the tree (cluster jewel notables, mostly).
 		if node.x and node.y and node.type ~= "OnlyImage" then
 			local x, y = math_floor(node.x + 0.5), math_floor(node.y + 0.5)
+			local iconSize, frameSize = nodeSizes(node)
+
+			local stats = asArray({})
+			for _, line in ipairs(node.sd or {}) do
+				stats[#stats + 1] = strip(line)
+			end
 
 			nodes[#nodes + 1] = {
 				id = id,
@@ -266,6 +319,21 @@ function api.tree(build)
 				-- Ascendancy nodes live in their own distant groups; PoB
 				-- draws them as a separate overlay rather than in place.
 				ascendancy = node.ascendancyName or nil,
+				icon = internIcon(node.icon),
+				-- Three sprites per node, one per allocation state. PoB
+				-- resolves these in ProcessNode, taking the node's own
+				-- nodeOverlay when it has one (ascendancy frames do) and the
+				-- per-type default otherwise.
+				frames = internFrames(node.overlay),
+				iconSize = iconSize,
+				frameSize = frameSize,
+				stats = stats,
+				-- A string on this tree, a list of lines on older ones.
+				flavour = node.flavourText
+					and strip(type(node.flavourText) == "table"
+						and table.concat(node.flavourText, "\n")
+						or node.flavourText)
+					or nil,
 			}
 
 			if not node.ascendancyName then
@@ -274,17 +342,47 @@ function api.tree(build)
 				maxX = (not maxX or x > maxX) and x or maxX
 				maxY = (not maxY or y > maxY) and y or maxY
 			end
+		end
+	end
 
-			-- linkedId is symmetric, so each edge would arrive twice.
-			for _, otherId in ipairs(node.linkedId or {}) do
-				local a, b = id, otherId
-				if a > b then a, b = b, a end
-				local key = a .. ":" .. b
-				local other = treeNodes[otherId]
-				if not seen[key] and other and other.x and other.type ~= "OnlyImage" then
-					seen[key] = true
-					edges[#edges + 1] = { a, b }
+	-- PoB's own connector list, not the links. The two are not the same: it
+	-- drops the links it does not draw (between an ascendancy and the tree
+	-- proper, and out of a class start), and it knows which connections curve.
+	--
+	-- A curve is an arc of an orbit, and BuildArc puts that orbit's centre in
+	-- the first vertex of the quad it builds. Both endpoints are on the
+	-- circle through it by construction, so centre plus the two node
+	-- positions is the whole arc -- no radius or sweep to re-derive, and
+	-- nothing to get subtly wrong. `arcErrors` below is that claim checked.
+	--
+	-- Connectors wider than 90 degrees arrive as two, because PoB's arc
+	-- texture only covers 90. That is a fact about the texture, not about the
+	-- tree, so the pair collapses back into the one arc it describes.
+	local connectors, seen, arcErrors = asArray({}), {}, 0
+	for _, connector in ipairs(tree.connectors or {}) do
+		local a, b = connector.nodeId1, connector.nodeId2
+		if a and b then
+			if a > b then a, b = b, a end
+			local key = a .. ":" .. b
+			if not seen[key] then
+				seen[key] = true
+				local entry = { a, b }
+				if connector.type ~= "LineConnector" then
+					local vert = connector.vert and connector.vert.Normal
+					local n1, n2 = treeNodes[a], treeNodes[b]
+					if vert and n1 and n2 then
+						local cx, cy = vert[1], vert[2]
+						local r1 = math.sqrt((n1.x - cx) ^ 2 + (n1.y - cy) ^ 2)
+						local r2 = math.sqrt((n2.x - cx) ^ 2 + (n2.y - cy) ^ 2)
+						if math.abs(r1 - r2) > 1 then
+							arcErrors = arcErrors + 1
+						else
+							entry[3] = math_floor(cx + 0.5)
+							entry[4] = math_floor(cy + 0.5)
+						end
+					end
 				end
+				connectors[#connectors + 1] = entry
 			end
 		end
 	end
@@ -292,8 +390,15 @@ function api.tree(build)
 	return {
 		ready = true,
 		nodes = nodes,
-		edges = edges,
+		connectors = connectors,
+		-- Palettes the nodes' `icon` and `frames` index into, 1-based.
+		icons = icons,
+		frameSets = frameSets,
 		bounds = { minX = minX or 0, minY = minY or 0, maxX = maxX or 0, maxY = maxY or 0 },
+		-- Arcs whose two endpoints did not land on one circle about the
+		-- centre PoB gave. Should be zero; if it is not, those connections
+		-- fell back to straight lines and the tree is drawing a lie.
+		arcErrors = arcErrors,
 	}
 end
 
@@ -323,7 +428,88 @@ function api.treeAlloc(build)
 		reachable = reachable,
 		classId = spec.curClassId or 0,
 		ascendClassId = spec.curAscendClassId or 0,
+		backdrop = api.treeBackdrop(spec),
 	}
+end
+
+--- Where the painted backdrops go, for the class this spec is currently on.
+---
+--- These follow the class and the ascendancy rather than the tree, which is
+--- why they ride with the allocation instead of with the geometry. PoB picks
+--- the ascendancy's artwork over the class's whenever one is chosen, draws
+--- the tree's own centrepiece on top, and turns the lit half of it to face
+--- the class's start node.
+--- PoB's DrawAsset draws an asset from -width to +width about its anchor
+--- (PassiveTreeView.lua:1386), so the declared width is a half-extent and
+--- the picture covers twice it. Doubling here rather than in the renderer
+--- keeps that a fact about PoB, stated once, instead of a magic 2 in the
+--- drawing code.
+local function backdropOf(record)
+	if not record or not record.image then
+		return nil
+	end
+	return {
+		image = record.image,
+		x = math_floor((record.x or 0) + 0.5),
+		y = math_floor((record.y or 0) + 0.5),
+		width = (record.width or 0) * 2,
+		height = (record.height or 0) * 2,
+	}
+end
+
+function api.treeBackdrop(spec)
+	local tree = spec and spec.tree
+	local class = tree and tree.classes and tree.classes[spec.curClassId]
+	local background = class and class.background
+	if not background then
+		return nil
+	end
+
+	local chosen = background
+	local ascend = class.classes and class.classes[spec.curAscendClassId or 0]
+	if ascend and ascend.background then
+		chosen = ascend.background
+	end
+
+	local backdrop = backdropOf(chosen)
+	backdrop.x, backdrop.y = math_floor((background.x or 0) + 0.5), math_floor((background.y or 0) + 0.5)
+
+	-- The centrepiece is one image with a lit overlay, and the overlay is
+	-- rotated to point at the class's start node. PoB computes the angle at
+	-- draw time; it depends only on the start node, so it is reported rather
+	-- than left for the UI to work out which node that is.
+	local startNode = spec.nodes and class.startNodeId and spec.nodes[class.startNodeId]
+	if background.bg then
+		backdrop.centre = {
+			image = "BGTree",
+			width = (background.bg.width or 0) * 2,
+			height = (background.bg.height or 0) * 2,
+		}
+	end
+	if background.active and startNode then
+		backdrop.active = {
+			image = "BGTreeActive",
+			width = (background.active.width or 0) * 2,
+			height = (background.active.height or 0) * 2,
+			angle = math.pi / 2 + math.atan2(startNode.y - background.y, startNode.x - background.x),
+		}
+	end
+
+	-- The ascendancy clusters sit thousands of units away in their own
+	-- groups, each on its own painted disc.
+	local ascendancies = asArray({})
+	for name, data in pairs(tree.ascendNameMap or {}) do
+		local record = data.ascendClass and data.ascendClass.background
+		local entry = backdropOf(record)
+		if entry then
+			entry.name = name
+			entry.current = (name == spec.curAscendClassBaseName) or nil
+			ascendancies[#ascendancies + 1] = entry
+		end
+	end
+	backdrop.ascendancies = ascendancies
+
+	return backdrop
 end
 
 ------------------------------------------------------------ the calcs tab

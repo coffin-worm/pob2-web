@@ -163,6 +163,53 @@ export interface TreeNode {
   name: string;
   /** Set on ascendancy nodes, which live in their own distant groups. */
   ascendancy?: string;
+  /** 1-based index into TreeSnapshot.icons. Absent when the node has no art. */
+  icon?: number;
+  /** 1-based index into TreeSnapshot.frameSets. */
+  frames?: number;
+  /** Tree units. The icon sits inside the frame, so these differ by type. */
+  iconSize: number;
+  frameSize: number;
+  /** PoB's own stat lines for this node, colour codes stripped. */
+  stats: string[];
+  /** Keystones carry one; nothing else does. */
+  flavour?: string;
+}
+
+/** The three sprites a node wears, one per allocation state. */
+export interface TreeFrameSet {
+  alloc: string;
+  path: string;
+  unalloc: string;
+}
+
+/**
+ * A connector between two nodes.
+ *
+ * `[a, b]` is a straight line. `[a, b, cx, cy]` is an arc of the orbit
+ * centred at (cx, cy) — both endpoints lie on that circle by construction,
+ * which the bridge checks before sending it.
+ */
+export type TreeConnector = [number, number] | [number, number, number, number];
+
+/** A painted backdrop: one image, centred on a point in tree space. */
+export interface TreeBackdropImage {
+  image: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  name?: string;
+  current?: boolean;
+}
+
+export interface TreeBackdrop extends TreeBackdropImage {
+  /** The tree's own centrepiece, drawn over the class artwork. */
+  centre?: { image: string; width: number; height: number };
+  /** The lit half of it, turned to face the class's start node. */
+  active?: { image: string; width: number; height: number; angle: number };
+  /** Every ascendancy's disc, each in its own distant corner. */
+  ascendancies: TreeBackdropImage[];
 }
 
 export interface TreeBounds {
@@ -177,9 +224,18 @@ export type TreeSnapshot =
   | {
       ready: true;
       nodes: TreeNode[];
-      /** Node id pairs, deduplicated — PoB's linkedId is symmetric. */
-      edges: [number, number][];
+      /** PoB's own connector list: the links it actually draws. */
+      connectors: TreeConnector[];
+      /** Art-name palettes the nodes index into, 1-based. */
+      icons: string[];
+      frameSets: TreeFrameSet[];
       bounds: TreeBounds;
+      /**
+       * Arcs whose endpoints did not land on one circle about the centre PoB
+       * gave. Zero in a healthy tree; anything else fell back to a straight
+       * line and the tree is drawing a lie.
+       */
+      arcErrors: number;
       buildMs: number;
     };
 
@@ -192,6 +248,8 @@ export type TreeAllocSnapshot =
       reachable: number[];
       classId: number;
       ascendClassId: number;
+      /** Follows the class rather than the tree, so it rides with this. */
+      backdrop: TreeBackdrop | null;
     };
 
 /**

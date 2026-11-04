@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Extracted passive-tree artwork (npm run tree-art)
+public/tree-art/

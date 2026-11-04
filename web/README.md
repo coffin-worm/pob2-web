@@ -77,6 +77,12 @@ A few behaviours worth knowing, all of which cost something to get wrong:
 - **No LÖVE, no engine.** The dev server still comes up and says so in the
   terminal and on the page. `POB_LOVE` points at `lovec.exe` if it is
   somewhere unusual.
+- **The tree's artwork is built on first run.** `plugins/tree-art.ts`
+  unpacks it from the game's own textures, which takes about twenty seconds
+  and is not waited on: the server comes up at once, the tree draws circles
+  until it lands, and a reload picks it up. It needs Python 3.14+ and
+  Pillow; without them the circles are what you get, the HUD says
+  `no artwork`, and `npm run tree-art` shows the real error.
 
 `VITE_POB_BRIDGE` set to a full URL talks to an engine directly instead,
 bypassing the proxy; the engine sends CORS headers for exactly that case.
@@ -147,48 +153,129 @@ three. It did not.
 
 | | |
 |---|---|
-| Nodes / edges in the tree | 4546 / 5187 |
-| Drawn (ascendancy excluded) | 4115 / 4749 |
-| Geometry payload, fetched once | 424 kB |
-| Engine time to build it | 35 ms |
-| **Draw time per frame** | **1.2 ms** measured in isolation, **1.8–2.0 ms** in the app |
-| **Hit-test, every mouse move** | **0.041 ms** |
-
-That is roughly eight times the headroom needed for 60fps, at full zoom-out
-with nothing culled. The node count was the surprise: I had assumed ~1500,
-and it is three times that.
+| Nodes / connectors | 4546 / 5149 (2773 arcs, 2376 lines) |
+| Geometry payload, fetched once | 1.03 MB, 2.5 ms to parse |
+| Engine time to build it | 14 ms |
+| Artwork, fetched once | 2.8 MB atlas, 145 ms to decode |
+| **Draw time per frame** | **0.4–0.9 ms** zoomed in, **1.9–2.2 ms** with the whole tree on screen |
+| **Hit-test, every mouse move** | **0.059 ms** over all 4546 |
 
 **Canvas, not SVG**, and not as a taste: ten thousand SVG elements is ten
 thousand things for the browser to lay out and hit-test on every pan. Canvas
-draws the whole tree as five batched paths — two `stroke` calls for the
-edges and three `fill` calls for the nodes, by state — instead of ten
-thousand draw calls. Hit-testing is a linear scan this code does itself, and
-at 0.041 ms there is no case for a spatial index that could fall out of step
-with the data.
+draws every connector as two batched `Path2D` strokes, and hit-testing is a
+linear scan this code does itself — at 0.059 ms there is no case for a
+spatial index that could fall out of step with the data.
 
-Positions are PoB's. It resolves each node's group, orbit and orbit index
-into `node.x`/`node.y` once at tree load, so there is no orbit trigonometry
-repeated here — which matters, because getting it subtly wrong would be
-invisible until the tree looked faintly bent.
+### The art is the game's, decoded once
+
+The thing that looked expensive here was node art, and the reason is that
+PoB does not ship sprite sheets in any form a browser can read. It ships
+zstd-compressed DDS **texture arrays** — one file per cell size, each
+holding up to 354 array slices of BC1 or BC7 block-compressed pixels, with
+`tree.json`'s `ddsCoords` naming the slices. That is exactly right for a
+renderer that uploads them to the GPU and exactly useless to a canvas.
+
+`web/tools/tree_art.py` unpacks them once. It needs no third-party packages
+beyond Pillow: zstd is in Python 3.14's standard library as
+`compression.zstd`, and Pillow already decodes both BC1 and BC7. The only
+hand-written part is splitting the array — Pillow opens slice 0 and offers
+no API for the rest, so each slice's mip chain is cut out of the body and
+wrapped in a one-slice DDS header, which keeps the actual block decoding in
+Pillow where it belongs.
+
+| | |
+|---|---|
+| Source textures | 92 MB in `src/TreeData/0_5` |
+| Sprites extracted | 685, into one 4085×1774 atlas |
+| Atlas | 2.8 MB WebP |
+| Painted backdrops | 37 files, 8.4 MB, fetched only when on screen |
+| Extraction | ~20 s, once |
+
+Three choices in there are worth stating. The atlas holds only the 685
+sprites the tree actually references, because the files also carry PoE1
+leftovers — legion jewel art, anointment oils — and those are the physically
+largest sprites in the set. It is stored at ¾ scale, because every sprite is
+drawn into a box PoB chose and those boxes are all well under the source art
+(a 128px icon lands in a 37–54px node), which turns 11.6M pixels of atlas
+into 6.5M with nothing visibly lost at the deepest zoom this view allows.
+And it is WebP rather than PNG — 2.8 MB against 9.8 MB — which is safe here
+because WebP keeps alpha lossless even in lossy mode, and these sprites are
+cut-outs.
+
+The output is gitignored. The dev server builds it on first run, and if
+Python is missing the tree falls back to circles and says so in the HUD.
+
+### Curved connectors, and a check that they are not lies
+
+Most of the tree's connections are arcs of an orbit, not straight lines, and
+an arc drawn almost right is the kind of error that is invisible until the
+tree looks faintly bent. So none of it is re-derived.
+
+PoB builds a connector list of its own, and it is not the same as the links:
+it drops the ones it does not draw — between an ascendancy and the tree
+proper, and out of a class start — and it knows which connections curve.
+For an arc it puts the orbit's centre in the first vertex of the quad it
+builds. Both endpoints lie on the circle through that centre by
+construction, so centre plus the two node positions is the whole arc: no
+radius, no sweep, nothing to get subtly wrong.
+
+That claim is checked rather than assumed. The bridge measures both radii
+for every arc before sending it, counts the ones that disagree by more than
+a unit, and reports the count as `arcErrors`; a connector that fails falls
+back to a straight line, and the HUD says so. **It is 0 across all 2773
+arcs.**
+
+PoB emits connectors wider than 90° as two, because its arc *texture* only
+covers 90°. That is a fact about the texture and not about the tree, so the
+pair collapses back into the one arc it describes.
+
+### The rest of it
+
+Positions are PoB's, resolved from group/orbit/orbitIndex at tree load.
+Which sprite a node wears is the asset name PoB resolved for it
+(`node.icon`, `node.overlay[state]`), forwarded untouched — so neither the
+bridge nor the extractor has an opinion about which picture a notable gets.
+The sizes it is drawn at are `node.targetSize`. Tooltips are `node.sd` and
+the keystone flavour text. The backdrops are `class.background` and the
+ascendancy discs, and the rotation of the lit centrepiece is the angle to
+the class's start node, which the bridge reports so the UI does not have to
+know which node that is.
 
 Allocation is PoB's too. A click sends `toggleNode`, and `AllocNode` walks
 the node's own path, so clicking something several nodes away allocates the
 route to it exactly as the desktop app does. Reachability is `node.path`: a
 node PoB cannot path to is refused with a reason rather than quietly doing
-nothing. Verified end to end by clicking a node in the browser — 48 → 49
-allocated, the header moving 44/123 to 45/123, and the build going unsaved.
+nothing. Verified by clicking in the browser — 28 → 30 allocated for one
+click two nodes out, the header moving 26/123 to 28/123, and the sidebar's
+Mana Regen going 23.5 to 29.4 off the engine's own recalculation.
+
+Two things are local decisions rather than the engine's, and both are
+presentation. Below a scale of 0.06 the nodes are drawn as circles instead
+of sprites, because a 54-unit frame is about three pixels there — two
+scaled blits to paint something no bigger than the dot that replaces them.
+And unallocated art is drawn at half alpha, so a crowded cluster reads as a
+path rather than as a field of rings; PoB tints instead.
+
+Search covers stat text as well as names, because that is how the question
+is usually asked — not "where is Heavy Armour" but "where is anything that
+gives spirit". It is a linear scan per keystroke, under a millisecond.
 
 ### What the tree still lacks
 
-- **Node art.** PoB's sprite sheets are most of `TreeData/0_5`'s 88 MB.
-  Nodes are circles sized by type here, which is enough to navigate and
-  nothing like enough to ship.
-- **Stat tooltips.** Hovering names the node and says whether it is
-  allocated or reachable; it does not yet show what it does.
-- **The ascendancy overlay.** Those 431 nodes live in their own groups
-  thousands of units away, which is why PoB draws them separately. They are
-  excluded rather than dragged into a view they do not belong in.
-- Masteries, jewel sockets, attribute swapping, search and path previews.
+- **The glow behind allocated notables** (`activeEffectImage`). It is 60
+  slices of 784×776 — 146 MB of pixels for pure decoration — so the
+  extractor skips that atlas outright.
+- **Path preview.** PoB dims the route a click would allocate before you
+  click it. Hovering here rings the node and names it, nothing more.
+- **Attribute and multiple-choice nodes.** 371 nodes carry `options`; the
+  variant for the current class is what the engine reports, and switching
+  between them needs a modifier-key gesture that has no equivalent here yet.
+- **Jewel sockets** draw their frame but not a socketed jewel or its radius.
+- Compare mode, the node power heat map, and the ascendancies that replace
+  one another.
+- At full zoom-out every ascendancy disc is on screen, so all 23 download —
+  8 MB. Over loopback that is nothing; over a network it would want a
+  smaller tier.
 
 ## The Calcs tab, and a prediction that was wrong
 
@@ -317,6 +404,8 @@ merely empty.
 
 - **Four screens of perhaps a dozen.** Items, skills, configuration and the
   build list are unbuilt. None of them looks harder than what is here.
+- **The tree's own gaps** — the notable glow, path preview, multiple-choice
+  nodes, socketed jewels — are listed with the tree above.
 - **Nothing is virtualised, and on this evidence nothing needs to be.** See
   below — this was the opposite of what this file predicted.
 - **Dialogs are not drawn.** The UI reports that the engine is waiting on

@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tree-art": "python tools/tree_art.py --tree-data ../src/TreeData --out public/tree-art"
   },
   "dependencies": {
     "@radix-ui/react-select": "^2.4.1",
