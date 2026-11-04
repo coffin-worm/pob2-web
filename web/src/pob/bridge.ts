@@ -1,6 +1,8 @@
 import type {
   BridgeSnapshot,
   BuildCode,
+  BuildsSnapshot,
+  BuildSort,
   CodeInspection,
   CalcsSnapshot,
   ConfigSnapshot,
@@ -136,6 +138,10 @@ export const bridge = {
       method: 'POST',
       body: JSON.stringify({ json }),
     }),
+
+  /** The builds folder, as PoB's own scanner sees it. */
+  builds: (sort?: BuildSort) =>
+    request<BuildsSnapshot>('/builds' + (sort ? `?sort=${sort}` : '')),
 
   /** Ask the engine to run one of api.lua's commands. */
   act: (action: string, value?: unknown) =>

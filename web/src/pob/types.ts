@@ -572,3 +572,38 @@ export type CodeInspection =
 export type BuildCode =
   | { ready: false; error?: string }
   | { ready: true; code: string; codeBytes: number; xmlBytes: number };
+
+/* ------------------------------------------------------- the build list */
+
+export type BuildSort = 'NAME' | 'CLASS' | 'EDITED' | 'LEVEL';
+
+export interface BuildEntry {
+  kind: 'build' | 'folder';
+  name: string;
+  /** The folder it sits in, "" for the root. Folders carry their parent. */
+  subPath: string;
+  /** Unix seconds. */
+  modified?: number;
+  /** Builds only. */
+  fileName?: string;
+  path?: string;
+  level?: number;
+  class?: string;
+  ascendancy?: string;
+  /** Set on the build currently loaded. */
+  open?: boolean;
+}
+
+export type BuildsSnapshot =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      entries: BuildEntry[];
+      /** Where PoB is keeping them, which is worth showing once. */
+      buildPath: string;
+      sort: BuildSort;
+      /** Absent when the open build has never been saved. */
+      openPath?: string;
+      unsaved: boolean;
+      buildMs: number;
+    };

@@ -1419,6 +1419,87 @@ function api.buildCode(build)
 	return { ready = true, code = code, codeBytes = #code, xmlBytes = #xml }
 end
 
+------------------------------------------------------------- the build list
+
+--- PoB's own builds-folder scanner.
+---
+--- Modules/BuildListHelpers is already UI-free -- it is shared by the
+--- startup list and the Compare tab's folder import -- so the scan, the
+--- header read and the sort are all the engine's. It reads the class,
+--- ascendancy and level out of the first 2 kB of each file rather than
+--- loading the build, which is what makes listing a folder cheap.
+local buildListHelpers
+local function loadBuildList()
+	if buildListHelpers == nil then
+		local ok, result = pcall(require, "Modules.BuildListHelpers")
+		buildListHelpers = ok and result or false
+	end
+	return buildListHelpers or nil
+end
+
+local SORT_MODES = { NAME = true, CLASS = true, EDITED = true, LEVEL = true }
+
+--- Everything in the builds folder, with the open build marked.
+---
+--- Folders come back flattened, each carrying its own subPath, because the
+--- scanner recurses and the UI can nest them again if it wants to. The
+--- alternative -- one request per folder -- would be a round trip per
+--- expand for a tree that is usually a dozen entries.
+function api.builds(build, sortMode)
+	local helpers = loadBuildList()
+	if not helpers or not main or not main.buildPath then
+		return { ready = false, error = "the engine has no builds folder" }
+	end
+
+	local ok, list = pcall(helpers.ScanFolder, "")
+	if not ok then
+		return { ready = false, error = tostring(list) }
+	end
+
+	sortMode = SORT_MODES[tostring(sortMode or ""):upper()] and tostring(sortMode):upper() or "EDITED"
+	pcall(helpers.SortList, list, sortMode)
+
+	local open = build and build.dbFileName or nil
+	local entries = asArray({})
+	for _, entry in ipairs(list) do
+		if entry.folderName then
+			entries[#entries + 1] = {
+				kind = "folder",
+				name = strip(entry.folderName),
+				subPath = entry.subPath or "",
+				modified = entry.modified,
+			}
+		else
+			entries[#entries + 1] = {
+				kind = "build",
+				name = strip(entry.buildName or entry.fileName or ""),
+				fileName = entry.fileName,
+				subPath = entry.subPath or "",
+				path = entry.fullFileName,
+				modified = entry.modified,
+				level = entry.level,
+				class = entry.className,
+				-- "None" is how an unchosen ascendancy is stored.
+				ascendancy = entry.ascendClassName ~= "None" and entry.ascendClassName or nil,
+				-- The one currently loaded, so the list can say so rather
+				-- than making the user remember.
+				open = open and entry.fullFileName == open or nil,
+			}
+		end
+	end
+
+	return {
+		ready = true,
+		entries = entries,
+		buildPath = main.buildPath,
+		sort = sortMode,
+		-- Where the open build lives, or nil when it has never been saved.
+		openPath = open or nil,
+		unsaved = build and build.unsaved and true or false,
+	}
+end
+
+
 ------------------------------------------------------------------- commands
 
 local commands = {}
@@ -2049,6 +2130,106 @@ function commands.deleteCustomModBlock(build, value)
 	tab:AddUndoState()
 	tab:BuildModList()
 	build.buildFlag = true
+	return true
+end
+
+----------------------------------------------------------- build commands
+
+--- The characters Windows will not take in a file name, which is also what
+--- PoB's Save As box strips.
+local function safeName(name)
+	return (tostring(name or ""):gsub("[\\/:%*%?\"<>|%c]", "-"):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+--- Save the open build to the file it came from.
+function commands.saveBuild(build)
+	if not build.dbFileName then
+		return nil, "this build has never been saved; give it a name first"
+	end
+	local ok, err = pcall(build.SaveDBFile, build)
+	if not ok then
+		return nil, tostring(err)
+	end
+	return true
+end
+
+--- Save it under a new name, which is also how a new build first lands on
+--- disk. Follows OpenSaveAsPopup: build the path from main.buildPath and
+--- the chosen folder, set the three fields together, then write.
+function commands.saveBuildAs(build, value)
+	local name = safeName(type(value) == "table" and value.name)
+	if name == "" then
+		return nil, "a build needs a name"
+	end
+	local subPath = tostring(type(value) == "table" and value.folder or "")
+	if subPath ~= "" and not subPath:match("/$") then
+		subPath = subPath .. "/"
+	end
+
+	local path = main.buildPath .. subPath .. name .. ".xml"
+	if not (type(value) == "table" and value.overwrite) then
+		-- PoB's own box disables Save when the name is taken rather than
+		-- asking; refusing with the reason is the same answer.
+		local existing = io.open(path, "r")
+		if existing then
+			existing:close()
+			return nil, "there is already a build called " .. name
+		end
+	end
+
+	build.dbFileName = path
+	build.buildName = name
+	build.dbFileSubPath = subPath
+	local ok, err = pcall(build.SaveDBFile, build)
+	if not ok then
+		return nil, tostring(err)
+	end
+	return true
+end
+
+--- Delete a build file.
+---
+--- Refuses the open build: PoB closes it first, and deleting the file out
+--- from under a loaded build leaves the UI pointing at nothing.
+function commands.deleteBuild(build, value)
+	local path = type(value) == "table" and value.path or value
+	if type(path) ~= "string" or path == "" then
+		return nil, "expected { path = ... }"
+	end
+	-- Written as a comparison, not `not a == b`: that parses as
+	-- `(not a) == b` and would let any path through.
+	if path:sub(1, #main.buildPath) ~= main.buildPath then
+		return nil, "that is not inside the builds folder"
+	end
+	if build and build.dbFileName == path then
+		return nil, "that build is open; open another one first"
+	end
+	local existing = io.open(path, "r")
+	if not existing then
+		return nil, "there is no build at " .. path
+	end
+	existing:close()
+
+	local ok, err = os.remove(path)
+	if not ok then
+		return nil, tostring(err)
+	end
+	return true
+end
+
+function commands.newBuildFolder(build, value)
+	local name = safeName(type(value) == "table" and value.name)
+	if name == "" then
+		return nil, "a folder needs a name"
+	end
+	local subPath = tostring(type(value) == "table" and value.folder or "")
+	if subPath ~= "" and not subPath:match("/$") then
+		subPath = subPath .. "/"
+	end
+	local ok, err = MakeDir(main.buildPath .. subPath .. name)
+	if not ok then
+		return nil, tostring(err)
+	end
 	return true
 end
 

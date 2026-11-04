@@ -299,14 +299,28 @@ routes["POST /build/open"] = function(payload)
 
 	local name = tostring(path):match("([^/\\]+)%.xml$") or "Imported build"
 	-- "~~temp~~" is reserved: Build.lua:345 deletes the file behind a build
-	-- with that name, and on this path dbFileName is false, so os.remove gets
-	-- a boolean and the build mode dies inside PoB's own error handler.
+	-- with that name, and without a real dbFileName os.remove gets a
+	-- boolean and the build mode dies inside PoB's own error handler.
 	if name == "~~temp~~" then
 		name = "Imported build"
 	end
-	loadBuildFromXML(xml, name)
+	-- SetMode directly rather than HeadlessWrapper's loadBuildFromXML,
+	-- which passes `false` for the file name. A build loaded that way has
+	-- its contents but no file behind it, so Save has nothing to write to
+	-- and the build list cannot tell which of its entries is the open one.
+	-- The path is what makes this an opened file rather than pasted text.
+	__mainObject__.main:SetMode("BUILD", path, name, xml)
+	runCallback("OnFrame")
 	settle(3)
 	return 200, api.snapshot(currentBuild())
+end
+
+--- The builds folder, as PoB's own scanner sees it.
+routes["GET /builds"] = function(_, query)
+	local started = os.clock()
+	local builds = api.builds(currentBuild(), query.sort)
+	builds.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, builds
 end
 
 --- Where PoB keeps the user's builds, so the UI can offer something real to
@@ -413,6 +427,33 @@ function love.load()
 		log("zlib NOT available (%s); build codes will not work", tostring(zerr))
 	end
 
+	-- The filesystem is stubbed too, and unlike zlib it is read during
+	-- startup: main:Init asks GetUserPath() for where the builds live, and
+	-- gets "". So the real calls go in and then PoB is told to redo that
+	-- decision through its own ChangeUserPath, which creates the folders
+	-- and reloads settings from them.
+	--
+	-- ignoreBuild, because the build already open is not what this is
+	-- about and reloading settings should not disturb it.
+	local fsStubbed = type(NewFileSearch) == "function" and NewFileSearch("*") == nil
+	local okFs, fs = pcall(function()
+		return dofile(POB_BRIDGE .. "fs.lua").install(fsStubbed)
+	end)
+	if okFs and fs then
+		local userPath = fs.userPath()
+		if userPath and main and main.ChangeUserPath then
+			local target = userPath .. "/Path of Building (PoE2)/"
+			local okPath, perr = pcall(main.ChangeUserPath, main, target, true)
+			if okPath then
+				log("builds at %s", main.buildPath)
+			else
+				log("could not set the user path: %s", tostring(perr))
+			end
+		end
+	else
+		log("filesystem NOT available (%s); the build list will be empty", tostring(fs))
+	end
+
 	api = dofile(POB_BRIDGE .. "api.lua")
 
 	local Server = dofile(POB_BRIDGE .. "server.lua")
@@ -428,6 +469,7 @@ function love.load()
 	log("  GET /tree /tree/alloc   GET /items /item /items/search")
 	log("  GET /skills /skills/group /gem /gems/search   GET /config")
 	log("  GET /code /code/inspect   POST /code/import /code/character")
+	log("  GET /builds")
 	log("  POST /action  POST /build/new  POST /build/open")
 end
 

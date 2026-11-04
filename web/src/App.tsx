@@ -6,6 +6,7 @@ import { ItemsView } from './items/ItemsView';
 import { SkillsView } from './skills/SkillsView';
 import { ConfigView } from './config/ConfigView';
 import { PortView } from './port/PortView';
+import { BuildsView } from './builds/BuildsView';
 import { TreeView } from './tree/TreeView';
 import { EngineStatus } from './pob/EngineStatus';
 import { Segmented } from './ui/Segmented';
@@ -15,7 +16,7 @@ import { useCalcsStore } from './pob/calcsStore';
 import { useTreeStore } from './pob/treeStore';
 import styles from './App.module.css';
 
-type Tab = 'tree' | 'items' | 'skills' | 'config' | 'calcs' | 'port';
+type Tab = 'tree' | 'items' | 'skills' | 'config' | 'calcs' | 'port' | 'builds';
 
 export default function App() {
   const state = useBridgeStore();
@@ -54,6 +55,7 @@ export default function App() {
               { value: 'config', label: 'Config', title: 'Everything the engine has to be told' },
               { value: 'calcs', label: 'Calcs', title: 'Calculation breakdown' },
               { value: 'port', label: 'Import', title: 'Build codes in and out' },
+              { value: 'builds', label: 'Builds', title: 'Open, save and manage build files' },
             ]}
           />
           {/* Both are kept mounted: the tree holds 420 kB of geometry and a
@@ -86,6 +88,11 @@ export default function App() {
           {tab === 'port' && (
             <div className={styles.panel}>
               <PortView />
+            </div>
+          )}
+          {tab === 'builds' && (
+            <div className={styles.panel}>
+              <BuildsView />
             </div>
           )}
         </main>

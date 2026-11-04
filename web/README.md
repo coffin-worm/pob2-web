@@ -1,10 +1,10 @@
 # PoB web UI — header prototype
 
 A prototype of Path of Building's UI as a web app, intended to run in
-WebView2 against the existing Lua calc engine. Eight screens so far: the
+WebView2 against the existing Lua calc engine. Nine screens so far: the
 top bar, the stat sidebar, the passive tree, the Items tab, the Skills tab,
-the Configuration tab, the Calcs tab and import/export, all driven by the
-real engine.
+the Configuration tab, the Calcs tab, import/export and the build list, all
+driven by the real engine.
 
 ```bash
 npm install
@@ -640,6 +640,77 @@ that looks fine.
   wrapper only, and build codes are always zlib — but saying so beats
   appearing to support a format that would come back as a length error.
 
+## The build list, and the filesystem that was missing
+
+The same shape as the zlib problem, one layer further down.
+
+PoB's `Modules/BuildListHelpers` is already UI-free — it is shared by the
+startup list and the Compare tab's folder import — and it does the whole
+job: scan the folder, read each build's class, ascendancy and level out of
+the first 2 kB of the file rather than loading it, sort with folders first
+and a natural ordering. Exactly the kind of thing worth calling rather than
+rewriting.
+
+It is built entirely on `NewFileSearch`, which the headless wrapper stubs
+to return nothing. So it did not fail — it reported an empty folder.
+
+`bridge/fs.lua` supplies `NewFileSearch`, `GetUserPath`, `MakeDir`,
+`RemoveDir` and the working-directory pair through LuaJIT's FFI onto the
+Win32 calls, and installs them over the stubs. Unlike zlib this is read
+*during* startup — `main:Init` asks `GetUserPath()` where the builds live
+and gets `""` — so after installing them the bridge asks PoB to redo that
+decision through its own `main:ChangeUserPath`, which creates the folders
+and reloads settings from them.
+
+```
+[bridge] zlib 1.3.1 bound over the headless stubs
+[bridge] builds at C:/Users/…/Documents/Path of Building (PoE2)/Builds/
+```
+
+That is the folder the desktop app uses, so builds saved here show up
+there and the other way round. `POB_USER_PATH` overrides it.
+
+The file search is enumerated eagerly rather than lazily, which is a
+deliberate difference from the real host: PoB's scanner recurses into
+subfolders *while iterating*, and an OS search handle held open across that
+is a good way to end up locking a directory someone is trying to rename.
+
+### A gap this exposed
+
+`POST /build/open` has been loading builds since the bridge existed, and it
+was doing it through HeadlessWrapper's `loadBuildFromXML`, which passes
+`false` for the file name. A build loaded that way has all its contents and
+no file behind it — so Save had nothing to write to, and the list could not
+tell which of its entries was the open one. Nothing had noticed, because
+until there was a build list there was nothing to notice it with. It calls
+`SetMode("BUILD", path, name, xml)` now.
+
+### What it refuses, and why
+
+- **Deleting the open build.** PoB closes it first; deleting the file out
+  from under a loaded build leaves the UI pointing at nothing.
+- **Deleting anything outside the builds folder**, checked by prefix. That
+  check was written as `not a == b` first, which parses as `(not a) == b`
+  and would have let every path through — the second Lua precedence trap of
+  the day, after `and`/`or`.
+- **Saving over an existing name.** PoB's Save As box greys out its own
+  button; refusing with the reason is the same answer.
+
+Deleting a build file cannot be undone, so the × only arms the row; the
+second click is a button that says what it does.
+
+### What it does not do
+
+- **No renaming or moving.** PoB has `MoveFolder` and `CopyFolder`, both
+  built on the same file search, so they would work — they are just not
+  wired up.
+- **No nested folder creation** beyond the top level, and no folder
+  deletion.
+- **Windows only.** The FFI calls are Win32, which the dev host already
+  was: it is started through a Windows path to `lovec.exe` and stopped with
+  `taskkill`. A different host implements this against `dirent` and `stat`,
+  or simply keeps the real SimpleGraphic implementations.
+
 ## The bridge
 
 I had this wrong. The earlier note here said there is no standalone LuaJIT
@@ -715,8 +786,8 @@ merely empty.
 
 ## Known gaps
 
-- **Eight screens of perhaps a dozen.** Notes, the build list and the
-  compare view are unbuilt. None of them looks harder than what is here.
+- **Nine screens of perhaps a dozen.** Notes and the compare view are
+  unbuilt. None of them looks harder than what is here.
 - **Each screen's own gaps** are listed with that screen above: the tree's
   notable glow and path preview, the Items tab's missing item editor, the
   Skills tab's gem defaults, the Config tab's per-option comparison.
@@ -725,10 +796,8 @@ merely empty.
 - **Dialogs are not drawn.** The UI reports that the engine is waiting on
   one and can dismiss it, but cannot answer it — so a class change that
   would reset an allocated tree currently cannot be confirmed from here.
-- **No build list.** Builds are opened by absolute path through
-  `POST /build/open`; `GetUserPath` is stubbed headless, so `/paths` reports
-  nothing useful and there is no directory listing. Import/export is how a
-  build gets in and out for now.
+- **No renaming or moving builds**, though PoB's own `MoveFolder` would
+  work now that the file search does.
 - **Rename is in-memory.** `setBuildName` marks the build dirty; it does not
   rename the file, because in PoB the name *is* the file name and renaming
   happens inside Save As.
