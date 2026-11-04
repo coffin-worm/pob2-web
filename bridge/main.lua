@@ -217,6 +217,13 @@ routes["GET /item"] = function(_, query)
 	return 200, detail
 end
 
+--- What is editable about one item: its text, its modifier rolls and its
+--- variant. The item's appearance comes from /item, which is PoB's own
+--- tooltip and already knows how to draw the result.
+routes["GET /item/edit"] = function(_, query)
+	return 200, api.itemEdit(currentBuild(), query.id)
+end
+
 --- PoB's unique and rare databases, by name.
 routes["GET /items/search"] = function(_, query)
 	return 200, api.itemSearch(query.q, query.limit)

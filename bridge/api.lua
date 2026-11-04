@@ -1673,6 +1673,64 @@ function api.compare(build)
 	}
 end
 
+--------------------------------------------------------- editing an item
+
+--- What is editable about one item.
+---
+--- Three things, which between them cover what the desktop tab's editor
+--- panel is for:
+---
+--- * the raw text, which is the escape hatch. PoB's items are defined by
+---   their text and parsed back from it, so editing that covers crafting,
+---   custom modifiers, quality, corruption and anything else there is no
+---   control for.
+--- * the modifier ranges. A unique's "(10-20) to maximum Life" is a roll,
+---   and `rangeLineList` holds one entry per such line with its position
+---   between the bounds. This is the control people actually use.
+--- * the variant, for uniques that have more than one version.
+---
+--- The item's appearance is not here: the panel reads it from /item, which
+--- is PoB's own tooltip and already knows how to draw the result.
+function api.itemEdit(build, itemId)
+	local tab = build and build.itemsTab
+	local item = tab and tab.items and tab.items[tonumber(itemId) or 0]
+	if not item then
+		return { ready = false }
+	end
+
+	local ranges = asArray({})
+	for index, entry in ipairs(item.rangeLineList or {}) do
+		ranges[#ranges + 1] = {
+			index = index,
+			line = strip(entry.line or ""),
+			-- 0 is the bottom of the roll, 1 the top.
+			range = entry.range or 0,
+		}
+	end
+
+	local variants = asArray({})
+	for index, name in ipairs(item.variantList or {}) do
+		variants[#variants + 1] = { index = index, name = strip(tostring(name)) }
+	end
+
+	local ok, raw = pcall(item.BuildRaw, item)
+
+	return {
+		ready = true,
+		id = item.id,
+		name = strip(item.name or item.title or ""),
+		rarity = item.rarity or "NORMAL",
+		raw = ok and raw or nil,
+		ranges = ranges,
+		variants = variants,
+		variant = item.variant,
+		-- Variant groups are a second mechanism, where several dropdowns
+		-- each pick from their own set. Reported so the UI can say the
+		-- simple control does not apply rather than quietly mis-setting it.
+		variantGroups = item.HasVariantGroups and item:HasVariantGroups() or nil,
+	}
+end
+
 ------------------------------------------------------------------- commands
 
 local commands = {}
@@ -2473,6 +2531,98 @@ function commands.removeCompare(build, value)
 	tab:RemoveBuild(index)
 	pcall(tab.UpdateBuildSelector, tab)
 	return true
+end
+
+------------------------------------------------------- item edit commands
+
+--- Everything an item edit ends with. Mutating the item is the save: the
+--- table in itemsTab.items is the one the build holds, so there is nothing
+--- to add back. PopulateSlots is what notices if the item stopped fitting
+--- the slot it was in.
+local function commitItem(tab, item, build)
+	local ok, err = pcall(item.BuildAndParseRaw, item)
+	if not ok then
+		return nil, "that item would not parse: " .. tostring(err)
+	end
+	tab:PopulateSlots()
+	tab:AddUndoState()
+	build.buildFlag = true
+	return true
+end
+
+local function itemFor(build, value)
+	local tab = build.itemsTab
+	local id = tonumber(type(value) == "table" and value.item) or 0
+	return tab, tab and tab.items and tab.items[id]
+end
+
+--- Replace an item's text and reparse it.
+---
+--- ParseRaw on the item already in the build keeps its id, so whatever it
+--- was equipped in stays equipped -- unless the new text is a different
+--- base, in which case PopulateSlots takes it out, which is the engine's
+--- call and the right one.
+function commands.setItemText(build, value)
+	local tab, item = itemFor(build, value)
+	if not item then
+		return nil, "no item with id " .. tostring(type(value) == "table" and value.item)
+	end
+	local text = type(value) == "table" and value.text
+	if type(text) ~= "string" or text:match("^%s*$") then
+		return nil, "expected { item = ..., text = ... }"
+	end
+
+	-- Parsed into a throwaway first. ParseRaw on the live item would leave
+	-- it half-rewritten if the text turns out not to be an item, and the
+	-- build holds that table.
+	local probe = new("Item"):Item(text)
+	if not probe.base then
+		return nil, "that is not an item PoB recognises"
+	end
+
+	local ok, err = pcall(item.ParseRaw, item, text)
+	if not ok then
+		return nil, "that item would not parse: " .. tostring(err)
+	end
+	tab:PopulateSlots()
+	tab:AddUndoState()
+	build.buildFlag = true
+	return true
+end
+
+--- Move one modifier's roll between its bounds. 0 is the lowest the line
+--- can roll, 1 the highest; PoB's own slider is the same number.
+function commands.setItemRange(build, value)
+	local tab, item = itemFor(build, value)
+	local index = tonumber(type(value) == "table" and value.line) or 0
+	local entry = item and item.rangeLineList and item.rangeLineList[index]
+	if not entry then
+		return nil, "no adjustable modifier at that position"
+	end
+	local range = tonumber(type(value) == "table" and value.range)
+	if not range then
+		return nil, "expected { item = ..., line = ..., range = 0..1 }"
+	end
+	entry.range = math.max(0, math.min(1, range))
+	return commitItem(tab, item, build)
+end
+
+function commands.setItemVariant(build, value)
+	local tab, item = itemFor(build, value)
+	if not item then
+		return nil, "no such item"
+	end
+	if item.HasVariantGroups and item:HasVariantGroups() then
+		-- Grouped variants are several independent choices with their own
+		-- ids; setting `variant` would pick the wrong thing silently.
+		return nil, "that item uses variant groups, which this editor does not set yet"
+	end
+	local index = tonumber(type(value) == "table" and value.variant) or 0
+	if not (item.variantList and item.variantList[index]) then
+		return nil, "no variant " .. tostring(index)
+	end
+	item.variant = index
+	return commitItem(tab, item, build)
 end
 
 function commands.dismissPopup(build)

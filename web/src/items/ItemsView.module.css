@@ -399,6 +399,23 @@
   cursor: pointer;
 }
 
+.editToggle {
+  align-self: flex-start;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.editToggle:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
 .hint {
   margin: 0;
   max-width: 52ch;

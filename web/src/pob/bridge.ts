@@ -8,6 +8,7 @@ import type {
   CalcsSnapshot,
   ConfigSnapshot,
   ItemDetail,
+  ItemEdit,
   ItemSearchSnapshot,
   ItemsSnapshot,
   GemSearchSnapshot,
@@ -88,6 +89,9 @@ export const bridge = {
     request<ItemDetail>(
       `/item?id=${id}` + (slot ? `&slot=${encodeURIComponent(slot)}` : ''),
     ),
+
+  /** What is editable about one item: text, modifier rolls, variant. */
+  itemEdit: (id: number) => request<ItemEdit>(`/item/edit?id=${id}`),
 
   /** PoB's unique and rare databases, by name. */
   itemSearch: (query: string) =>

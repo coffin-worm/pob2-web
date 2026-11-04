@@ -368,11 +368,48 @@ column and two on the width of the *panel*, not the window — a media query
 would be wrong here, because this screen sits beside a 290px sidebar and the
 viewport is wide long before the panel is.
 
+### Editing an item, rather than replacing it
+
+Three things, which between them are what the desktop tab's editor panel
+is for:
+
+- **The modifier rolls.** A unique's `+(30-50) to Evasion Rating` is a
+  range, and PoB keeps one `rangeLineList` entry per such line holding its
+  position between the bounds. Moving it is the control people actually
+  use. The engine recalculates the whole build from it and rewrites the
+  item's own text to match.
+- **The variant**, for uniques with more than one version. Items whose
+  variants come from several independent groups are refused with that as
+  the reason, rather than having the wrong one set quietly.
+- **The raw text**, which is the escape hatch. A PoB item *is* its text —
+  it is parsed back from it — so this covers crafting, custom modifiers,
+  quality and corruption without a control for each.
+
+| | |
+|---|---|
+| The editable payload | 668 B |
+| Goldrim as text | 422 characters, 2 adjustable rolls |
+
+Editing is in place: the table in `itemsTab.items` is the one the build
+holds, so mutating it *is* the save and the item keeps the slot it was
+equipped in. If the new text is a different base, `PopulateSlots` takes it
+out of that slot — the engine's call, and the right one.
+
+New text is parsed into a throwaway item first. `ParseRaw` on the live one
+would leave it half-rewritten if the text turns out not to be an item, and
+the build is holding that table. Verified: pasting `hello` comes back with
+*that is not an item PoB recognises* and Goldrim is untouched.
+
+Verified in the browser: dragging the evasion roll to its maximum took the
+sidebar's Evasion rating from 113 to 137 and rewrote the item's own
+`Evasion:` line from 106 to 130; adding `+200 to maximum Life` to the text
+took Total Life from 91 to 301.
+
 ### What it does not do
 
-- **No item editor.** The real tab can roll, craft, enchant, corrupt and
-  anoint; this one equips, inspects and deletes. That panel is most of
-  `ItemsTab.lua`'s 4,586 lines and is a screen in its own right.
+- **No crafting interface.** The real tab has affix pickers, a mod
+  browser, enchantment and corruption menus. All of it is reachable
+  through the text box, none of it is reachable by pointing.
 - **No item sets beyond switching between them**, and no shared item list.
 - **No drag and drop**, which is how the real tab moves items between slots.
 - **No variant or league filters** on the database search. The real one
@@ -851,9 +888,9 @@ merely empty.
 - **Ten screens of perhaps a dozen.** Notes and the party/minion views are
   unbuilt. None of them looks harder than what is here.
 - **Each screen's own gaps** are listed with that screen above: the tree's
-  notable glow and path preview, the Items tab's missing item editor, the
-  Skills tab's gem defaults, the Config tab's per-option comparison, and
-  the compare view's tree/items/skills diffs.
+  notable glow and path preview, the Items tab's missing crafting
+  interface, the Skills tab's gem defaults, the Config tab's per-option
+  comparison, and the compare view's tree/items/skills diffs.
 - **One screen copies rather than calls.** The compare view transcribes
   `CompareTab:DrawStatList`, because that logic exists only inside a draw
   function. It is the only place in this UI that will not track upstream

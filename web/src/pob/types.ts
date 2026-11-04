@@ -652,3 +652,30 @@ export type CompareSnapshot =
       rows?: CompareRow[];
       buildMs: number;
     };
+
+/* ----------------------------------------------------- editing an item */
+
+export interface ItemRange {
+  index: number;
+  /** The modifier as written, with its bounds: "+(30-50) to Evasion". */
+  line: string;
+  /** 0 is the bottom of the roll, 1 the top. PoB's own slider value. */
+  range: number;
+}
+
+export type ItemEdit =
+  | { ready: false }
+  | {
+      ready: true;
+      id: number;
+      name: string;
+      rarity: string;
+      /** The item as text. Editing this covers everything else. */
+      raw?: string;
+      ranges: ItemRange[];
+      variants: { index: number; name: string }[];
+      variant?: number;
+      /** Items whose variants are several independent choices; the simple
+       * variant control does not apply to them. */
+      variantGroups?: boolean;
+    };

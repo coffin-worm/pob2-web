@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import { bridge } from './bridge';
-import type { Connection, ItemDetail, ItemSearchResult, ItemsSnapshot } from './types';
+import type {
+  Connection,
+  ItemDetail,
+  ItemEdit,
+  ItemSearchResult,
+  ItemsSnapshot,
+} from './types';
 
 /**
  * The items screen.
@@ -20,6 +26,8 @@ interface ItemsStore {
   selectedSlot: string | null;
   detail: ItemDetail | null;
   detailLoading: boolean;
+  /** The editable side of the selected item, fetched alongside it. */
+  edit: ItemEdit | null;
 
   query: string;
   results: ItemSearchResult[];
@@ -65,6 +73,7 @@ export const useItemsStore = create<ItemsStore>((set, get) => {
     selectedSlot: null,
     detail: null,
     detailLoading: false,
+    edit: null,
     query: '',
     results: [],
     searchTotal: 0,
@@ -74,16 +83,22 @@ export const useItemsStore = create<ItemsStore>((set, get) => {
 
     select: async (id, slot) => {
       if (id === null) {
-        set({ selectedId: null, selectedSlot: null, detail: null });
+        set({ selectedId: null, selectedSlot: null, detail: null, edit: null });
         return;
       }
       set({ selectedId: id, selectedSlot: slot ?? null, detailLoading: true });
       try {
-        const detail = await bridge.item(id, slot ?? undefined);
-        // Another selection may have landed while this was in flight.
-        if (get().selectedId === id) set({ detail });
+        // Both together: the tooltip is what the item looks like and the
+        // edit payload is what can be changed about it, and the panel
+        // shows them side by side.
+        const [detail, edit] = await Promise.all([
+          bridge.item(id, slot ?? undefined),
+          bridge.itemEdit(id),
+        ]);
+        // Another selection may have landed while these were in flight.
+        if (get().selectedId === id) set({ detail, edit });
       } catch {
-        if (get().selectedId === id) set({ detail: { ready: false } });
+        if (get().selectedId === id) set({ detail: { ready: false }, edit: null });
       } finally {
         if (get().selectedId === id) set({ detailLoading: false });
       }

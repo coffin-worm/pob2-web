@@ -4,6 +4,7 @@ import { useItemsStore } from '../pob/itemsStore';
 import { Select } from '../ui/Select';
 import { Segmented } from '../ui/Segmented';
 import { Button } from '../ui/Button';
+import { ItemEditor } from './ItemEditor';
 import type { ItemLine, ItemSlot } from '../pob/types';
 import styles from './ItemsView.module.css';
 
@@ -86,6 +87,7 @@ export function ItemsView() {
   const selectedSlot = useItemsStore((s) => s.selectedSlot);
   const detail = useItemsStore((s) => s.detail);
   const detailLoading = useItemsStore((s) => s.detailLoading);
+  const edit = useItemsStore((s) => s.edit);
   const query = useItemsStore((s) => s.query);
   const results = useItemsStore((s) => s.results);
   const searchTotal = useItemsStore((s) => s.searchTotal);
@@ -98,6 +100,7 @@ export function ItemsView() {
   const [refusal, setRefusal] = useState<string | null>(null);
   const [paste, setPaste] = useState('');
   const [showPaste, setShowPaste] = useState(false);
+  const [editing, setEditing] = useState(false);
   const debounce = useRef<number | undefined>(undefined);
   const detailRef = useRef<HTMLDivElement>(null);
 
@@ -349,6 +352,32 @@ export function ItemsView() {
               ))}
             {detail?.ready && selectedSlot && (
               <p className={styles.against}>compared against {selectedSlot}</p>
+            )}
+            {/* The editor sits under the item it edits, so a change and
+                its effect are in the same place. The disclosure is held
+                here rather than inside it, because the editor remounts
+                whenever the item's text changes. */}
+            {detail?.ready && edit?.ready && (
+              <button
+                className={styles.editToggle}
+                onClick={() => setEditing((open) => !open)}
+                aria-expanded={editing}
+              >
+                {editing ? 'Done editing' : 'Edit this item'}
+              </button>
+            )}
+            {detail?.ready && edit?.ready && editing && (
+              <ItemEditor
+                key={edit.raw}
+                edit={edit}
+                onRange={(line, range) =>
+                  void run('setItemRange', { item: detail.id, line, range })
+                }
+                onVariant={(variant) =>
+                  void run('setItemVariant', { item: detail.id, variant })
+                }
+                onText={(text) => void run('setItemText', { item: detail.id, text })}
+              />
             )}
           </div>
         </div>
