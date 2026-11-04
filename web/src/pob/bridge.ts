@@ -18,6 +18,7 @@ import type {
   TreeAllocSnapshot,
   TreePathPreview,
   TreeSnapshot,
+  WhatIf,
 } from './types';
 
 /**
@@ -154,6 +155,19 @@ export const bridge = {
 
   /** The current build against the active comparison, stat by stat. */
   compare: () => request<CompareSnapshot>('/compare'),
+
+  /**
+   * What flipping one configuration option would do, without doing it.
+   * A value is needed for anything that is not a checkbox.
+   */
+  configWhatIf: (name: string, value?: string | number | boolean) =>
+    request<WhatIf>(
+      `/config/whatif?var=${encodeURIComponent(name)}` +
+        (value === undefined ? '' : `&value=${encodeURIComponent(String(value))}`),
+    ),
+
+  /** The same for turning a socket group off, or on. */
+  socketGroupWhatIf: (group: number) => request<WhatIf>(`/skills/whatif?group=${group}`),
 
   /** Ask the engine to run one of api.lua's commands. */
   act: (action: string, value?: unknown) =>

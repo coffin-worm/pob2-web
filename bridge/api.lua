@@ -1838,6 +1838,140 @@ function api.itemEdit(build, itemId)
 	}
 end
 
+----------------------------------------------------------------- what if
+
+--- Run the build again with something changed, and report the difference.
+---
+--- PoB does this behind the tooltips on its checkboxes: it flips the
+--- setting, rebuilds the mod list, runs the misc calculator, flips back,
+--- and compares. The result is "Enabling this will give you: +12% more
+--- DPS", which is the only thing that makes a list of seventy options
+--- navigable.
+---
+--- `apply` makes the change and returns a function that undoes it. Both
+--- run inside this pcall, so a change that throws halfway is still put
+--- back -- the build the user is looking at must not be left holding a
+--- setting nobody chose.
+local function whatIf(build, apply, header)
+	local calcsTab = build and build.calcsTab
+	if not calcsTab or not calcsTab.GetMiscCalculator then
+		return { ready = false, error = "the engine has no calculator yet" }
+	end
+	local calcFunc, calcBase = calcsTab:GetMiscCalculator()
+	if not calcFunc or not calcBase then
+		return { ready = false, error = "the engine has not finished its first calculation" }
+	end
+
+	-- buildFlag is restored by hand: the rebuilds below set it, and
+	-- leaving it set would make the UI think the build had changed.
+	local buildFlag = build.buildFlag
+	local undo
+	local ok, result = pcall(function()
+		undo = apply()
+		return calcFunc()
+	end)
+	if undo then
+		pcall(undo)
+	end
+	build.buildFlag = buildFlag
+
+	if not ok then
+		return { ready = false, error = tostring(result) }
+	end
+
+	local tooltip = new("Tooltip"):Tooltip()
+	-- The comparison can fail where the change removes the thing being
+	-- compared -- turning off the only socket group leaves no main skill,
+	-- and buildMode's own AddStatComparesToTooltip reaches straight
+	-- through it. Reported, because "it broke" and "nothing moved" look
+	-- identical from an empty list and only one of them is fine.
+	local compared, compareErr = pcall(
+		build.AddStatComparesToTooltip, build, tooltip, calcBase, result, header or ""
+	)
+	if not compared then
+		return { ready = false, error = "the comparison failed: " .. tostring(compareErr) }
+	end
+
+	local lines, tips = tooltipLines(tooltip)
+	return {
+		ready = true,
+		lines = lines,
+		droppedTips = tips,
+		-- Nothing moved. Worth saying outright rather than showing an
+		-- empty panel that looks like it failed to load.
+		unchanged = #lines == 0 or nil,
+	}
+end
+
+--- What flipping one configuration option would do.
+---
+--- Only the checkboxes, unless a value is given: for a list or a count
+--- there is no "the other way round", and guessing one would answer a
+--- question nobody asked.
+function api.configWhatIf(build, name, value)
+	local tab = build and build.configTab
+	local varList = loadConfigOptions()
+	if not tab or not varList then
+		return { ready = false, error = "no configuration" }
+	end
+
+	local varData
+	for _, entry in ipairs(varList) do
+		if entry.var == name then
+			varData = entry
+			break
+		end
+	end
+	if not varData then
+		return { ready = false, error = "no configuration option called " .. tostring(name) }
+	end
+
+	local set = tab.configSets[tab.activeConfigSetId]
+	local current = set.input[name]
+	local target
+	if value ~= nil then
+		target = value
+	elseif varData.type == "check" then
+		target = not current
+	else
+		return { ready = false, error = "only checkboxes can be flipped without a value" }
+	end
+
+	local header = (varData.type == "check" and not current)
+		and "^7Enabling this will give you:"
+		or "^7Disabling this will give you:"
+
+	return whatIf(build, function()
+		set.input[name] = target
+		tab:BuildModList()
+		return function()
+			set.input[name] = current
+			tab:BuildModList()
+		end
+	end, header)
+end
+
+--- What turning one socket group off, or on, would do.
+function api.socketGroupWhatIf(build, groupIndex)
+	local tab = build and build.skillsTab
+	local group = tab and tab.socketGroupList and tab.socketGroupList[tonumber(groupIndex) or 0]
+	if not group then
+		return { ready = false, error = "no socket group " .. tostring(groupIndex) }
+	end
+
+	local current = group.enabled ~= false
+	local header = current
+		and "^7Disabling this group will give you:"
+		or "^7Enabling this group will give you:"
+
+	return whatIf(build, function()
+		group.enabled = not current
+		return function()
+			group.enabled = current
+		end
+	end, header)
+end
+
 ------------------------------------------------------------------- commands
 
 local commands = {}

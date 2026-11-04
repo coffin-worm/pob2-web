@@ -274,6 +274,25 @@ routes["GET /config"] = function()
 	return 200, config
 end
 
+--- What flipping one configuration option would do, without doing it.
+routes["GET /config/whatif"] = function(_, query)
+	local started = os.clock()
+	local value = query.value
+	if value == "true" then value = true elseif value == "false" then value = false
+	elseif value ~= nil and tonumber(value) then value = tonumber(value) end
+	local result = api.configWhatIf(currentBuild(), query.var, value)
+	result.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, result
+end
+
+--- The same for a socket group.
+routes["GET /skills/whatif"] = function(_, query)
+	local started = os.clock()
+	local result = api.socketGroupWhatIf(currentBuild(), query.group)
+	result.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, result
+end
+
 routes["POST /action"] = function(payload)
 	if type(payload) ~= "table" or not payload.action then
 		return 400, { error = "expected { action = ..., value = ... }" }
@@ -488,6 +507,7 @@ function love.load()
 	log("  GET /health /state /stats /calcs /paths")
 	log("  GET /tree /tree/alloc   GET /items /item /items/search")
 	log("  GET /skills /skills/group /gem /gems/search   GET /config")
+	log("  GET /config/whatif /skills/whatif")
 	log("  GET /code /code/inspect   POST /code/import /code/character")
 	log("  GET /builds /compare")
 	log("  POST /action  POST /build/new  POST /build/open")

@@ -4,6 +4,8 @@ import { useConfigStore } from '../pob/configStore';
 import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
 import { NumberField } from '../ui/NumberField';
+import { WhatIf } from '../ui/WhatIf';
+import { bridge } from '../pob/bridge';
 import type { ConfigOption } from '../pob/types';
 import styles from './ConfigView.module.css';
 
@@ -40,14 +42,20 @@ function Option({
 
   if (option.type === 'check') {
     return (
-      <label className={styles.check} title={title} data-changed={option.changed || undefined}>
+      <div className={styles.check} title={title} data-changed={option.changed || undefined}>
         <input
+          id={`cfg-${option.var}`}
           type="checkbox"
           checked={option.value === true}
           onChange={(e) => onSet(e.target.checked)}
         />
-        <span className={styles.label}>{option.label}</span>
-      </label>
+        <label className={styles.label} htmlFor={`cfg-${option.var}`}>
+          {option.label}
+        </label>
+        {/* Only the checkboxes: for a list or a count there is no "the
+            other way round" to compare against. */}
+        <WhatIf label={option.label} ask={() => bridge.configWhatIf(option.var)} />
+      </div>
     );
   }
 

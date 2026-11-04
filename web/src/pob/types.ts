@@ -712,3 +712,22 @@ export type TreePathPreview =
       allocated?: boolean;
       reachable?: boolean;
     };
+
+/* --------------------------------------------------------------- what if */
+
+/**
+ * What the build would look like with one thing changed.
+ *
+ * PoB's own comparison lines, from the same mechanism behind its checkbox
+ * tooltips: flip the setting, rerun the calculator, compare, flip back.
+ */
+export type WhatIf =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      lines: ItemLine[];
+      droppedTips: number;
+      /** Set when the change moves nothing at all. */
+      unchanged?: boolean;
+      buildMs: number;
+    };

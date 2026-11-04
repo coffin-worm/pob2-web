@@ -4,6 +4,8 @@ import { useSkillsStore } from '../pob/skillsStore';
 import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
 import { NumberField } from '../ui/NumberField';
+import { WhatIf } from '../ui/WhatIf';
+import { bridge } from '../pob/bridge';
 import type { ItemLine } from '../pob/types';
 import styles from './SkillsView.module.css';
 
@@ -180,6 +182,12 @@ export function SkillsView() {
                     >
                       Set as main
                     </Button>
+                    {/* What turning this group off would cost, asked of
+                        the engine the same way the config options are. */}
+                    <WhatIf
+                      label={`the ${entry.label} group`}
+                      ask={() => bridge.socketGroupWhatIf(entry.index)}
+                    />
                     <Button
                       variant="ghost"
                       disabled={Boolean(entry.source)}

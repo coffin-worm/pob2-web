@@ -562,6 +562,43 @@ the rest come back in a `duplicates` list, and the screen says so rather
 than quietly dropping one. Should be exactly one entry; anything else is
 news.
 
+### What would this change?
+
+Seventy options and no way to tell which matter. Clicking the **±** on any
+checkbox answers it:
+
+```
+Enabling this will give you:
+  +0.17 Cast Rate (+20.0%)
+  +25.0 Hit DPS (+20.0%)
+  +17.33 Mana Cost per second (+20.0%)   ← in red
+  +10.0% Movement Speed Modifier
+```
+
+That red line is the point. More mana cost is not an improvement, and
+knowing which direction is better is `lowerIsBetter` on the stat — PoB's
+judgement, not a sign test.
+
+The mechanism is PoB's own, from behind the tooltips on its checkboxes:
+flip the setting, rebuild the mod list, run the misc calculator, flip back,
+compare. 5–11 ms. The same helper answers "what would turning this socket
+group off cost?" on the Skills tab, because it is the same question.
+
+Two things it was worth being careful about. **The build must come back
+exactly as it was** — the change and its undo both run inside one pcall, so
+a failure halfway still restores, and `buildFlag` is put back by hand
+because the rebuilds set it. Checked by running twenty-five what-ifs in a
+row and diffing the whole stat sidebar before and after: nothing moved,
+same `outputRevision`, same unsaved flag.
+
+And **"nothing moves" has to be distinguishable from "it broke"**. The
+first version swallowed a failed comparison into an empty list, which
+looks identical. It reports the failure now — which is how I found out
+that disabling a socket group genuinely moves nothing on a build with no
+gear, rather than the comparison being broken. I had assumed the latter;
+disabling the group for real and watching the numbers not move is what
+settled it.
+
 ### Custom modifiers
 
 Free text, parsed exactly as an item's mods are — which is how a build
@@ -571,9 +608,9 @@ has, and this does not, is the mod browser that helps you write one.
 
 ### What it does not do
 
-- **No per-option comparison.** PoB's checkbox tooltips run the whole
-  calculation with the option flipped and show what would change. The route
-  for that is the one the Items tab already uses; it is not wired up here.
+- **Only the checkboxes answer "what would this change?"** For a list or a
+  count there is no "the other way round", so the question needs a value
+  the UI does not ask for yet.
 - **No config sets beyond switching between them.**
 - **No mod browser** for the custom modifier blocks.
 - **The filter is local**, over the options already fetched. PoB's own

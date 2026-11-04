@@ -1,0 +1,61 @@
+/* Small and quiet until reached for: it sits on every row of a long list,
+ * and a list of seventy affordances is a list of none. */
+.ask {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-disabled);
+  font: inherit;
+  font-size: var(--text-xs);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ask:hover,
+.ask[aria-expanded='true'] {
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.result {
+  /* Drops onto its own line under whatever it was asked about, in either
+   * kind of parent: grid-column for the config rows, flex-basis for the
+   * socket group's wrapping button row. */
+  grid-column: 1 / -1;
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: var(--space-2) 0 var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-sunken);
+  border-left: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.line {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+/* The engine's own verdict on whether a change is an improvement. */
+.line[data-tone='positive'] { color: var(--success); }
+.line[data-tone='negative'] { color: var(--danger); }
+.line[data-tone='normal'] { color: var(--text-secondary); }
+.line[data-tone='dim'] { color: var(--text-muted); }
+
+.note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.cost {
+  margin: var(--space-2) 0 0;
+  color: var(--text-disabled);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}

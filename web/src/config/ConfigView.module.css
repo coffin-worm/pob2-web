@@ -110,7 +110,12 @@
 }
 
 .check {
-  grid-template-columns: auto minmax(0, 1fr);
+  /* The what-if button sits in its own track so the labels still line up
+   * down the column. */
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.check .label {
   cursor: pointer;
 }
 
