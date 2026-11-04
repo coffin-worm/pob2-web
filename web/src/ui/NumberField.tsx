@@ -10,6 +10,9 @@ interface Props {
   label?: string;
   disabled?: boolean;
   width?: number;
+  /** For fields whose meaning is carried by a neighbouring column rather
+   * than by a visible label of their own. */
+  'aria-label'?: string;
 }
 
 /**
@@ -29,6 +32,7 @@ export function NumberField({
   label,
   disabled,
   width,
+  'aria-label': ariaLabel,
 }: Props) {
   // Held as text while editing so a half-typed value does not get clamped
   // out from under the caret -- typing "100" would otherwise snap at "1".
@@ -66,7 +70,7 @@ export function NumberField({
         value={draft}
         disabled={disabled}
         inputMode="numeric"
-        aria-label={label}
+        aria-label={ariaLabel ?? label}
         onFocus={(e) => {
           focused.current = true;
           e.target.select();

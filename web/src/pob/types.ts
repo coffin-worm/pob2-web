@@ -413,3 +413,81 @@ export interface ItemSearchSnapshot {
   total?: number;
   truncated?: boolean;
 }
+
+/* ------------------------------------------------------------ the skills */
+
+/** One socket group in the list. */
+export interface SocketGroup {
+  index: number;
+  /** PoB's own label: the group's name, or the skills in it. */
+  label: string;
+  /** The group's own name, which is the editable one. */
+  name: string;
+  slot?: string;
+  enabled: boolean;
+  fullDPS?: boolean;
+  main?: boolean;
+  /** Set when an item or passive granted the group, which makes it
+   * read-only — PoB rebuilds it on every pass. */
+  source?: string;
+  gemCount: number;
+  /** The active skills the group currently grants. */
+  skills: string[];
+}
+
+export interface GemInstance {
+  index: number;
+  name: string;
+  level: number;
+  quality: number;
+  enabled: boolean;
+  count: number;
+  /** strength | dexterity | intelligence, from the granted effect. */
+  tone?: StatTone;
+  support?: boolean;
+  tags?: string;
+  maxLevel?: number;
+  /** Set when the build cannot use this gem, with PoB's reason. */
+  error?: string;
+}
+
+export type SkillsSnapshot =
+  | { ready: false; engineError?: string | null }
+  | {
+      ready: true;
+      groups: SocketGroup[];
+      sets: { id: number; name: string }[];
+      setId: number;
+      mainGroup: number;
+      /** The expanded group, when one was asked for. */
+      selected?: number;
+      gems?: GemInstance[];
+      buildMs: number;
+      engineError?: string | null;
+    };
+
+/** PoB's own gem or socket-group tooltip. Same line model as the items. */
+export type SkillDetail =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      name?: string;
+      lines: ItemLine[];
+      droppedTips: number;
+      buildMs: number;
+    };
+
+export interface GemSearchResult {
+  id: string;
+  name: string;
+  support?: boolean;
+  tags?: string;
+  maxLevel?: number;
+}
+
+export interface GemSearchSnapshot {
+  ready: boolean;
+  results: GemSearchResult[];
+  total?: number;
+  truncated?: boolean;
+}

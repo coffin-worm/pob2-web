@@ -3,6 +3,7 @@ import { Header } from './header/Header';
 import { Sidebar } from './sidebar/Sidebar';
 import { CalcsView } from './calcs/CalcsView';
 import { ItemsView } from './items/ItemsView';
+import { SkillsView } from './skills/SkillsView';
 import { TreeView } from './tree/TreeView';
 import { EngineStatus } from './pob/EngineStatus';
 import { Segmented } from './ui/Segmented';
@@ -12,7 +13,7 @@ import { useCalcsStore } from './pob/calcsStore';
 import { useTreeStore } from './pob/treeStore';
 import styles from './App.module.css';
 
-type Tab = 'tree' | 'items' | 'calcs';
+type Tab = 'tree' | 'items' | 'skills' | 'calcs';
 
 export default function App() {
   const state = useBridgeStore();
@@ -47,6 +48,7 @@ export default function App() {
             options={[
               { value: 'tree', label: 'Tree', title: 'The passive tree' },
               { value: 'items', label: 'Items', title: 'Equipment and the item list' },
+              { value: 'skills', label: 'Skills', title: 'Socket groups and gems' },
               { value: 'calcs', label: 'Calcs', title: 'Calculation breakdown' },
             ]}
           />
@@ -62,6 +64,11 @@ export default function App() {
           {tab === 'items' && (
             <div className={styles.panel}>
               <ItemsView />
+            </div>
+          )}
+          {tab === 'skills' && (
+            <div className={styles.panel}>
+              <SkillsView />
             </div>
           )}
           <div className={styles.panel} hidden={tab !== 'calcs'}>

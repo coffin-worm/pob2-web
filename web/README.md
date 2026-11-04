@@ -1,9 +1,9 @@
 # PoB web UI — header prototype
 
 A prototype of Path of Building's UI as a web app, intended to run in
-WebView2 against the existing Lua calc engine. Five screens so far: the top
-bar, the stat sidebar, the passive tree, the Items tab and the Calcs tab,
-all driven by the real engine.
+WebView2 against the existing Lua calc engine. Six screens so far: the top
+bar, the stat sidebar, the passive tree, the Items tab, the Skills tab and
+the Calcs tab, all driven by the real engine.
 
 ```bash
 npm install
@@ -379,6 +379,70 @@ viewport is wide long before the panel is.
   matches on name.
 - **No socketed-jewel radius preview**, the same gap the tree has.
 
+## The Skills tab
+
+Socket groups and the gems in them, and the third screen in a row where the
+engine does the describing.
+
+A group's label is `displayLabel`, which PoB builds during the calculation
+pass out of the group's own name or the skills it actually grants. What a
+group does is `AddSocketGroupTooltip`. What a gem does is
+`GemTooltip.AddGemTooltip`, which resolves a granted effect's levels and
+stat sets at this gem's current level and quality — the tags, the tier, the
+mana cost, the cast time, the requirements, and the damage per effect.
+Reproducing any of that would mean reproducing how gem levels work.
+
+All three are Tooltips, so all three come back through the same reader the
+Items tab uses. That reader is now shared: one function turns
+`tooltip.lines` into the UI's line model, and three screens call it.
+
+| | |
+|---|---|
+| The group list | 199 B, **0 ms** |
+| A group expanded with its gems | 660 B, **0 ms** |
+| What a group does | 340 B, **0 ms** |
+| One gem, at its level and quality | 2.0 kB, **1 ms** |
+| Searching every gem by name | 38 hits, **43 ms** |
+
+The first gem tooltip of a session cost **293 ms** and every one after it
+1 ms, because that first call is what forces the gem's level data to
+resolve. Worth knowing before concluding the route is slow from one
+measurement.
+
+### Flags instead of a decorated string
+
+PoB's list control builds each row by appending `(Disabled)`, `(Active)`
+and `(FullDPS)` to the label in three different colours. That is a string
+the UI would have to take apart again, so the bridge sends the four facts —
+`enabled`, `main`, `fullDPS`, `source` — and they become badges.
+
+`source` is the one that matters for behaviour, not just display: a group
+granted by an item or a passive is rebuilt on every calculation pass, so
+deleting it only makes it come back. The command refuses it with the reason
+— *that group comes from Tabula Rasa and cannot be deleted* — rather than
+letting the UI offer something that cannot work.
+
+### Leading spaces, and why they are trimmed
+
+The gem tooltip indents its first lines by twelve or eighteen spaces. Those
+are `iconNameIndent` and `iconTagIndent`: a hole PoB leaves in the text for
+the gem icon it draws on top. Nothing draws an icon there here, and HTML
+collapses leading whitespace anyway, so keeping them would have produced a
+ragged left edge for no reason. They are trimmed, and the separators still
+carry the grouping.
+
+### What it does not do
+
+- **No gem-level defaults.** The real tab has "default gem level" and
+  "default quality" settings and a DPS-sorted gem picker; a new gem here
+  arrives at its natural maximum level and zero quality.
+- **No alternate quality, corruption or legacy gems.**
+- **No weapon-set gating per group.** PoE2 lets a socket group apply to one
+  weapon set or both (`set1`/`set2`); those are read but not yet editable.
+- **No group count, no explode sources, no minion skill selection.**
+- **No copy and paste of socket groups**, which the real tab does with
+  Ctrl+C and Ctrl+V.
+
 ## The Calcs tab, and a prediction that was wrong
 
 This file used to say the Calcs tab "was the original argument for this
@@ -504,11 +568,12 @@ merely empty.
 
 ## Known gaps
 
-- **Five screens of perhaps a dozen.** Skills, configuration, notes and the
-  build list are unbuilt. None of them looks harder than what is here.
-- **The tree's own gaps** — the notable glow, path preview, multiple-choice
-  nodes, socketed jewels — are listed with the tree above, and the Items
-  tab's are listed with it.
+- **Six screens of perhaps a dozen.** Configuration, notes, the build list
+  and the import/export screens are unbuilt. None of them looks harder than
+  what is here.
+- **Each screen's own gaps** are listed with that screen above: the tree's
+  notable glow and path preview, the Items tab's missing item editor, the
+  Skills tab's gem defaults and weapon-set gating.
 - **Nothing is virtualised, and on this evidence nothing needs to be.** See
   below — this was the opposite of what this file predicted.
 - **Dialogs are not drawn.** The UI reports that the engine is waiting on

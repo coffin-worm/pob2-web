@@ -222,6 +222,37 @@ routes["GET /items/search"] = function(_, query)
 	return 200, api.itemSearch(query.q, query.limit)
 end
 
+--- The skills screen. `group` selects the socket group to expand into its
+--- gem list; without it only the group list comes back.
+routes["GET /skills"] = function(_, query)
+	local started = os.clock()
+	local skills = api.skills(currentBuild(), query.group)
+	skills.engineError = engineError()
+	skills.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, skills
+end
+
+--- What a socket group actually does, as PoB describes it.
+routes["GET /skills/group"] = function(_, query)
+	local started = os.clock()
+	local detail = api.socketGroupDetail(currentBuild(), query.index)
+	detail.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, detail
+end
+
+--- One gem as PoB would draw it, at its current level and quality.
+routes["GET /gem"] = function(_, query)
+	local started = os.clock()
+	local detail = api.gemDetail(currentBuild(), query.group, query.gem)
+	detail.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, detail
+end
+
+--- Every gem the game has, by name.
+routes["GET /gems/search"] = function(_, query)
+	return 200, api.gemSearch(query.q, query.limit)
+end
+
 routes["POST /action"] = function(payload)
 	if type(payload) ~= "table" or not payload.action then
 		return 400, { error = "expected { action = ..., value = ... }" }
@@ -323,6 +354,7 @@ function love.load()
 	log("listening on http://127.0.0.1:%d", server.port)
 	log("  GET /health /state /stats /calcs /paths")
 	log("  GET /tree /tree/alloc   GET /items /item /items/search")
+	log("  GET /skills /skills/group /gem /gems/search")
 	log("  POST /action  POST /build/new  POST /build/open")
 end
 

@@ -4,6 +4,9 @@ import type {
   ItemDetail,
   ItemSearchSnapshot,
   ItemsSnapshot,
+  GemSearchSnapshot,
+  SkillDetail,
+  SkillsSnapshot,
   StatsSnapshot,
   TreeAllocSnapshot,
   TreeSnapshot,
@@ -83,6 +86,24 @@ export const bridge = {
   /** PoB's unique and rare databases, by name. */
   itemSearch: (query: string) =>
     request<ItemSearchSnapshot>(`/items/search?q=${encodeURIComponent(query)}`),
+
+  /**
+   * Socket groups, and the gems in one of them. `group` is what expands a
+   * group into its gem list; without it only the group list comes back.
+   */
+  skills: (group?: number) =>
+    request<SkillsSnapshot>('/skills' + (group ? `?group=${group}` : '')),
+
+  /** What a socket group does, as PoB describes it. */
+  socketGroup: (index: number) => request<SkillDetail>(`/skills/group?index=${index}`),
+
+  /** One gem as PoB would draw it, at its current level and quality. */
+  gem: (group: number, gem: number) =>
+    request<SkillDetail>(`/gem?group=${group}&gem=${gem}`),
+
+  /** Every gem the game has, by name. */
+  gemSearch: (query: string) =>
+    request<GemSearchSnapshot>(`/gems/search?q=${encodeURIComponent(query)}`),
 
   /** Ask the engine to run one of api.lua's commands. */
   act: (action: string, value?: unknown) =>

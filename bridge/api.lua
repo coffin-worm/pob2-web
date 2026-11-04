@@ -820,6 +820,42 @@ function api.items(build)
 	}
 end
 
+--- Read a Tooltip's lines as the UI's line model.
+---
+--- Shared by the item and gem panels, because PoB builds all of them the
+--- same way: a Tooltip is a list of {size, text, block, separatorImage},
+--- `block` separating the thing itself from whatever comparison follows it.
+---
+--- colorCodes.TIP is dropped and counted. It is used in exactly one way
+--- across the codebase -- advice about the desktop UI's keyboard shortcuts,
+--- "Press Ctrl+D", "Right click this socket" -- and none of those keys do
+--- anything here, so forwarding them would tell the user something untrue
+--- about the application in front of them.
+local function tooltipLines(tooltip)
+	local lines, tips = asArray({}), 0
+	for _, line in ipairs(tooltip.lines or {}) do
+		if line.separatorImage or not line.text then
+			lines[#lines + 1] = { separator = true, block = line.block or 1 }
+		elseif toneOf(line.text) == "tip" then
+			tips = tips + 1
+		else
+			-- Leading spaces are trimmed. In the gem tooltip they are
+			-- `iconNameIndent` and `iconTagIndent`: a hole PoB leaves for
+			-- the gem icon it draws over the text. Nothing draws an icon
+			-- there here, and HTML collapses the spaces anyway, so keeping
+			-- them would be a ragged left edge for no reason.
+			lines[#lines + 1] = {
+				text = (strip(line.text):gsub("^%s+", ""):gsub("%s+$", "")),
+				tone = toneOf(line.text),
+				size = line.size or 16,
+				block = line.block or 1,
+				centre = line.center or nil,
+			}
+		end
+	end
+	return lines, tips
+end
+
 --- One item, as PoB itself would draw it.
 ---
 --- This is the whole reason the items screen is cheap. AddItemTooltip
@@ -846,30 +882,7 @@ function api.itemDetail(build, itemId, slotName)
 		return { ready = false, error = tostring(err) }
 	end
 
-	local lines, tips = asArray({}), 0
-	for _, line in ipairs(tooltip.lines or {}) do
-		if line.separatorImage or not line.text then
-			-- A rule between sections. PoB draws it as a rarity-coloured
-			-- image; here it is just a rule, and the rarity is on the item.
-			lines[#lines + 1] = { separator = true, block = line.block or 1 }
-		elseif toneOf(line.text) == "tip" then
-			-- The one thing dropped rather than forwarded. colorCodes.TIP is
-			-- used in exactly one way across the whole codebase: advice about
-			-- the desktop UI's keyboard shortcuts ("Press Ctrl+D", "Right
-			-- click this socket"). None of those keys do anything here, so
-			-- passing them through would be telling the user something
-			-- untrue about the application they are looking at.
-			tips = tips + 1
-		else
-			lines[#lines + 1] = {
-				text = strip(line.text),
-				tone = toneOf(line.text),
-				size = line.size or 16,
-				block = line.block or 1,
-				centre = line.center or nil,
-			}
-		end
-	end
+	local lines, tips = tooltipLines(tooltip)
 
 	return {
 		ready = true,
@@ -913,6 +926,219 @@ function api.itemSearch(query, limit)
 						slot = ok and primary or nil,
 					}
 				end
+			end
+		end
+	end
+
+	table.sort(results, function(a, b) return a.name < b.name end)
+	return { ready = true, results = results, total = total, truncated = total > #results }
+end
+
+------------------------------------------------------------ the skills tab
+
+--- One gem in a socket group, as the editor needs it.
+---
+--- ProcessSocketGroup has already resolved gemId into gemData, set the
+--- colour from the granted effect's attribute, and recorded errMsg for a
+--- gem the build cannot actually use. All of that is read rather than
+--- recomputed: which gems are valid is a game rule with a lot of history in
+--- it.
+local function gemSummary(index, gem)
+	local data = gem.gemData
+	local effect = gem.grantedEffect or (data and data.grantedEffect)
+	return {
+		index = index,
+		name = strip(gem.nameSpec or (data and data.name) or ""),
+		level = gem.level or 1,
+		quality = gem.quality or 0,
+		enabled = gem.enabled ~= false,
+		count = gem.count or 1,
+		-- PoB colours a gem by its attribute: red, green or blue.
+		tone = toneOf(gem.color or ""),
+		support = effect and effect.support and true or nil,
+		tags = data and data.tagString ~= "" and strip(data.tagString) or nil,
+		maxLevel = data and data.naturalMaxLevel or nil,
+		-- Set when the gem cannot be used -- a support that supports
+		-- nothing here, a name that matched two gems, an active skill that
+		-- is hidden from the side bar.
+		error = gem.errMsg and strip(gem.errMsg) or nil,
+	}
+end
+
+--- One socket group in the list.
+---
+--- `displayLabel` is PoB's, built during the calculation pass out of the
+--- group's own label or the names of the active skills in it. The list
+--- control decorates it with "(Disabled)", "(Active)" and "(FullDPS)" in
+--- colour; those travel as flags instead, so the UI can draw badges rather
+--- than parse a string back apart.
+local function groupSummary(tab, index, group)
+	local skills = asArray({})
+	for _, skill in ipairs(group.displaySkillList or {}) do
+		local effect = skill.activeEffect and skill.activeEffect.grantedEffect
+		skills[#skills + 1] = strip((effect and effect.name) or "?")
+	end
+
+	local source = nil
+	local single = group.sourceItem or group.sourceNode
+	if single then
+		source = strip(single.name or single.dn or "")
+	elseif group.source then
+		source = strip(tostring(group.source))
+	end
+
+	return {
+		index = index,
+		label = strip(group.displayLabel or group.label or "?"),
+		-- The group's own name, which is what is editable; displayLabel
+		-- falls back to the skill names when this is empty.
+		name = strip(group.label or ""),
+		slot = group.slot or nil,
+		enabled = group.enabled ~= false,
+		fullDPS = group.includeInFullDPS and true or nil,
+		main = tab.build.mainSocketGroup == index or nil,
+		-- Groups granted by an item or a passive cannot be deleted or
+		-- renamed; PoB rebuilds them on every pass.
+		source = source,
+		gemCount = #(group.gemList or {}),
+		skills = skills,
+	}
+end
+
+--- The skills screen: socket groups, and the gems in the one being edited.
+---
+--- ProcessSocketGroup is run over the group being edited for the same
+--- reason the items screen runs PopulateSlots: it is what resolves each
+--- gem's id into its data, and nothing runs it headless.
+function api.skills(build, groupIndex)
+	local tab = build and build.skillsTab
+	if not tab or not tab.socketGroupList then
+		return { ready = false }
+	end
+
+	local groups = asArray({})
+	for index, group in ipairs(tab.socketGroupList) do
+		groups[#groups + 1] = groupSummary(tab, index, group)
+	end
+
+	local sets = asArray({})
+	for _, id in ipairs(tab.skillSetOrderList or {}) do
+		local set = tab.skillSets and tab.skillSets[id]
+		if set then
+			sets[#sets + 1] = { id = id, name = strip(set.title or "Default") }
+		end
+	end
+
+	local selected, gems = nil, nil
+	local group = groupIndex and tab.socketGroupList[tonumber(groupIndex) or 0]
+	if group then
+		pcall(tab.ProcessSocketGroup, tab, group)
+		selected = tonumber(groupIndex)
+		gems = asArray({})
+		for index, gem in ipairs(group.gemList or {}) do
+			gems[#gems + 1] = gemSummary(index, gem)
+		end
+	end
+
+	return {
+		ready = true,
+		groups = groups,
+		sets = sets,
+		setId = tab.activeSkillSetId or 0,
+		mainGroup = build.mainSocketGroup or 0,
+		selected = selected,
+		gems = gems,
+	}
+end
+
+--- What a socket group actually does, as PoB describes it.
+---
+--- AddSocketGroupTooltip walks the group's active skills and their effect
+--- lists, naming each gem with its level and quality in the attribute's own
+--- colour, and names the item or passive that granted the group. It also
+--- resolves deferred default attacks first, which is why the engine's own
+--- entry point is used rather than the display list directly.
+function api.socketGroupDetail(build, groupIndex)
+	local tab = build and build.skillsTab
+	local group = tab and tab.socketGroupList and tab.socketGroupList[tonumber(groupIndex) or 0]
+	if not group then
+		return { ready = false }
+	end
+
+	local tooltip = new("Tooltip"):Tooltip()
+	local ok, err = pcall(tab.AddSocketGroupTooltip, tab, tooltip, group)
+	if not ok then
+		return { ready = false, error = tostring(err) }
+	end
+
+	local lines, tips = tooltipLines(tooltip)
+	return { ready = true, index = tonumber(groupIndex), lines = lines, droppedTips = tips }
+end
+
+--- One gem, as PoB itself would draw it.
+---
+--- Everything the gem panel shows comes from GemTooltip.AddGemTooltip: the
+--- tags, the requirements at this level, the stat lines for the current
+--- level and quality, and the quality bonus. Reproducing any of that would
+--- mean reproducing how a granted effect's levels and stat sets resolve.
+function api.gemDetail(build, groupIndex, gemIndex)
+	local tab = build and build.skillsTab
+	local group = tab and tab.socketGroupList and tab.socketGroupList[tonumber(groupIndex) or 0]
+	local gem = group and group.gemList and group.gemList[tonumber(gemIndex) or 0]
+	if not gem then
+		return { ready = false }
+	end
+	if not gem.gemData then
+		-- A gem the build cannot resolve has no tooltip to draw, and its
+		-- own error message is the useful thing to say.
+		return { ready = false, error = gem.errMsg and strip(gem.errMsg) or "that gem is not resolved" }
+	end
+
+	local gemTooltip = LoadModule("Classes/GemTooltip")
+	local tooltip = new("Tooltip"):Tooltip()
+	local ok, err = pcall(gemTooltip.AddGemTooltip, tooltip, build, gem, {})
+	if not ok then
+		return { ready = false, error = tostring(err) }
+	end
+
+	local lines, tips = tooltipLines(tooltip)
+	return {
+		ready = true,
+		group = tonumber(groupIndex),
+		gem = tonumber(gemIndex),
+		name = strip(gem.nameSpec or ""),
+		lines = lines,
+		droppedTips = tips,
+	}
+end
+
+--- Search every gem the game has, by name.
+---
+--- data.gems is keyed by the metadata path and holds the parsed gem, so the
+--- id that comes back here is what addGem takes. Supports and actives are
+--- distinguished because that is the first thing you want to know about a
+--- gem you are looking for.
+function api.gemSearch(query, limit)
+	local needle = tostring(query or ""):lower()
+	local max = tonumber(limit) or 40
+	if #needle < 2 or not data or not data.gems then
+		return { ready = true, results = asArray({}), total = 0 }
+	end
+
+	local results, total = asArray({}), 0
+	for gemId, gem in pairs(data.gems) do
+		local name = gem.name
+		if name and tostring(name):lower():find(needle, 1, true) then
+			total = total + 1
+			if #results < max then
+				local effect = gem.grantedEffect
+				results[#results + 1] = {
+					id = gemId,
+					name = strip(name),
+					support = effect and effect.support and true or nil,
+					tags = gem.tagString ~= "" and strip(gem.tagString) or nil,
+					maxLevel = gem.naturalMaxLevel or nil,
+				}
 			end
 		end
 	end
@@ -1250,6 +1476,151 @@ function commands.setWeaponSet(build, value)
 		tab:AddUndoState()
 		build.buildFlag = true
 	end
+	return true
+end
+
+-------------------------------------------------------------- gem commands
+
+local function socketGroupAt(build, index)
+	local tab = build.skillsTab
+	local group = tab and tab.socketGroupList and tab.socketGroupList[tonumber(index) or 0]
+	return tab, group
+end
+
+--- What every gem and group edit does once the change is made. PoB's own
+--- controls all end this way: reprocess the group, record undo, recalculate.
+local function commitGroup(tab, group, build)
+	if group then
+		pcall(tab.ProcessSocketGroup, tab, group)
+	end
+	tab:AddUndoState()
+	build.buildFlag = true
+	return true
+end
+
+--- Add a gem to a socket group, from its id in PoB's gem data.
+---
+--- The instance is built exactly as the gem select control builds a new
+--- one, because the defaults are not arbitrary: a gem with no level or
+--- enableGlobal flags is not the same gem to the calculation engine.
+function commands.addGem(build, value)
+	local tab, group = socketGroupAt(build, type(value) == "table" and value.group)
+	if not group then
+		return nil, "no socket group " .. tostring(type(value) == "table" and value.group)
+	end
+	local gemId = type(value) == "table" and value.gem
+	local gemData = gemId and data.gems and data.gems[gemId]
+	if not gemData then
+		return nil, "no gem with id " .. tostring(gemId)
+	end
+
+	table.insert(group.gemList, {
+		nameSpec = gemData.name,
+		gemId = gemId,
+		-- The tab's own defaults, which the user can change there.
+		level = gemData.naturalMaxLevel or 1,
+		quality = tab.defaultGemQuality or 0,
+		enabled = true,
+		enableGlobal1 = true,
+		enableGlobal2 = true,
+		count = 1,
+		new = true,
+		corrupted = false,
+		corruptLevel = 0,
+	})
+	return commitGroup(tab, group, build)
+end
+
+--- Change one gem's level, quality, count or enabled flag.
+---
+--- Level is clamped to the gem's own natural maximum plus the usual five
+--- levels of corruption and gear, rather than to a number chosen here;
+--- quality to 23, which is PoB's own cap in the tab.
+function commands.setGem(build, value)
+	local tab, group = socketGroupAt(build, type(value) == "table" and value.group)
+	local gem = group and group.gemList and group.gemList[tonumber(type(value) == "table" and value.gem) or 0]
+	if not gem then
+		return nil, "no such gem"
+	end
+
+	if value.level ~= nil then
+		local ceiling = (gem.gemData and gem.gemData.naturalMaxLevel or 20) + 20
+		gem.level = math.max(1, math.min(ceiling, math.floor(tonumber(value.level) or 1)))
+	end
+	if value.quality ~= nil then
+		gem.quality = math.max(0, math.min(23, math.floor(tonumber(value.quality) or 0)))
+	end
+	if value.count ~= nil then
+		gem.count = math.max(1, math.floor(tonumber(value.count) or 1))
+	end
+	if value.enabled ~= nil then
+		gem.enabled = value.enabled and true or false
+	end
+	return commitGroup(tab, group, build)
+end
+
+function commands.deleteGem(build, value)
+	local tab, group = socketGroupAt(build, type(value) == "table" and value.group)
+	local index = tonumber(type(value) == "table" and value.gem) or 0
+	if not group or not group.gemList or not group.gemList[index] then
+		return nil, "no such gem"
+	end
+	table.remove(group.gemList, index)
+	return commitGroup(tab, group, build)
+end
+
+--- Add an empty socket group, as the list control's New button does.
+function commands.addSocketGroup(build)
+	local tab = build.skillsTab
+	if not tab then return nil, "no skills tab" end
+	table.insert(tab.socketGroupList, { label = "", enabled = true, gemList = {} })
+	return commitGroup(tab, nil, build)
+end
+
+function commands.deleteSocketGroup(build, value)
+	local tab, group = socketGroupAt(build, value)
+	if not group then
+		return nil, "no socket group " .. tostring(value)
+	end
+	-- Groups granted by an item or a passive are rebuilt on every pass, so
+	-- deleting one would only make it come back.
+	if group.source then
+		return nil, "that group comes from " .. tostring(group.source) .. " and cannot be deleted"
+	end
+	table.remove(tab.socketGroupList, tonumber(value))
+	return commitGroup(tab, nil, build)
+end
+
+function commands.setSocketGroupEnabled(build, value)
+	local tab, group = socketGroupAt(build, type(value) == "table" and value.group)
+	if not group then return nil, "no such socket group" end
+	group.enabled = (type(value) == "table" and value.enabled) and true or false
+	return commitGroup(tab, group, build)
+end
+
+function commands.setSocketGroupFullDPS(build, value)
+	local tab, group = socketGroupAt(build, type(value) == "table" and value.group)
+	if not group then return nil, "no such socket group" end
+	group.includeInFullDPS = (type(value) == "table" and value.fullDPS) and true or false
+	return commitGroup(tab, group, build)
+end
+
+function commands.setSocketGroupLabel(build, value)
+	local tab, group = socketGroupAt(build, type(value) == "table" and value.group)
+	if not group then return nil, "no such socket group" end
+	group.label = tostring(type(value) == "table" and value.label or "")
+	return commitGroup(tab, group, build)
+end
+
+function commands.setSkillSet(build, value)
+	local tab = build.skillsTab
+	local id = tonumber(value)
+	if not tab or not id or not (tab.skillSets and tab.skillSets[id]) then
+		return nil, "no skill set with id " .. tostring(value)
+	end
+	tab:SetActiveSkillSet(id)
+	tab:AddUndoState()
+	build.buildFlag = true
 	return true
 end
 
