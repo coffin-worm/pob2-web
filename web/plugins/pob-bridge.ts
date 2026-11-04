@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import type { Connect, Plugin, ViteDevServer } from 'vite';
+import type { Connect, Plugin, PreviewServer, ViteDevServer } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 /**
@@ -79,11 +79,16 @@ export function pobBridge(options: Options): Plugin {
   let ready: Promise<void> | null = null;
   let failure: string | null = null;
 
-  return {
-    name: 'pob-bridge',
-    apply: 'serve',
-
-    async configureServer(server: ViteDevServer) {
+  /**
+   * Start the engine and proxy to it, for whichever server is asking.
+   *
+   * Both the dev server and `vite preview` get this. The preview one
+   * matters more than it looks: it is the only way to run what actually
+   * ships, and without it a built app serves a UI with nothing behind it
+   * -- every request a 404, which reads as "the engine is broken" rather
+   * than "nobody wired this up".
+   */
+  const attach = async (server: ViteDevServer | PreviewServer) => {
       const log = server.config.logger;
 
       const start = async () => {
@@ -214,6 +219,14 @@ export function pobBridge(options: Options): Plugin {
       process.once('exit', shutdown);
       process.once('SIGINT', shutdown);
       process.once('SIGTERM', shutdown);
-    },
+  };
+
+  return {
+    name: 'pob-bridge',
+    // `serve` covers both `vite dev` and `vite preview`; the build itself
+    // has no server to attach to.
+    apply: 'serve',
+    configureServer: attach,
+    configurePreviewServer: attach,
   };
 }

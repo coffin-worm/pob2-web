@@ -56,6 +56,9 @@ cd C:/dev/pob2/web
 npm install && npm run dev
 ```
 
+…or `npm run build && npm run preview` to run what would actually ship.
+Both start the engine and proxy it; see below.
+
 That is the whole thing. `plugins/pob-bridge.ts` starts PoB's engine with
 the dev server, waits for it to report ready, and serves it under the dev
 server's own origin at `/bridge` — so the app makes same-origin requests and
@@ -916,6 +919,39 @@ Measuring depth per step is what separated the two.
 - **Dismiss without answering** closes the dialog without running any of
   its handlers, which is `ClosePopup` and is sometimes the only sensible
   answer. It is deliberately the least prominent button.
+
+## What ships
+
+Everything above was built and checked against `npm run dev`. That is not
+the same as checking it works, so:
+
+| | |
+|---|---|
+| JavaScript | 382 kB, **120 kB gzipped** |
+| CSS | 56 kB, **8.5 kB gzipped** |
+| Tree artwork | 11 MB, served as static files |
+| Build | 1.2 s, or 20 s the first time |
+
+Two things were wrong, and neither would have shown up in development.
+
+**The engine was only wired to the dev server.** `plugins/pob-bridge.ts`
+had a `configureServer` hook and nothing else, so `vite preview` — the only
+way to run the built app — served the UI with nothing behind it. Every
+request a 404, which reads as "the engine is broken" rather than "nobody
+wired this up". It has a `configurePreviewServer` now, the same function.
+
+**A build would have shipped a tree of circles.** The artwork extractor ran
+on first dev start and never on build, so a fresh checkout's `npm run
+build` produced a `dist/` with no `tree-art/` in it. It runs in
+`buildStart` now, and that one *does* block: a dev server coming up
+instantly while the art lands in the background is right, and a build
+quietly omitting part of what it is building is not.
+
+Checked by moving the artwork aside and building: 18.4 s in `buildStart`,
+11 MB of `dist/tree-art` afterwards. Then the built app in a browser —
+engine live, tree drawn, a config option toggled and the engine
+recalculating, and **no console errors at all**, which the dev server
+cannot say for itself with its proxy restarting under it.
 
 ## The bridge
 
