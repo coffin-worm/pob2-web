@@ -607,3 +607,48 @@ export type BuildsSnapshot =
       unsaved: boolean;
       buildMs: number;
     };
+
+/* ------------------------------------------------------- the comparison */
+
+export interface CompareBuild {
+  name: string;
+  class?: string;
+  ascendancy?: string;
+  level?: number;
+}
+
+export interface CompareEntry extends CompareBuild {
+  index: number;
+  label: string;
+  active?: boolean;
+}
+
+/** One stat on both builds, or a section break. */
+export interface CompareRow {
+  /** PoB's own section spacer, same as in the sidebar. */
+  gap?: boolean;
+  label?: string;
+  tone?: StatTone;
+  /** Formatted with the stat's own fmt, so these are strings. */
+  primary?: string;
+  compare?: string;
+  /** Absent when the two agree. */
+  diff?: string;
+  percent?: number;
+  /** Whether the difference is an improvement — more resistance is, more
+   * mana cost is not. The stat decides. */
+  better?: boolean;
+}
+
+export type CompareSnapshot =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      entries: CompareEntry[];
+      /** 0 when nothing is loaded to compare against. */
+      active: number;
+      primary?: CompareBuild;
+      compare?: CompareBuild;
+      rows?: CompareRow[];
+      buildMs: number;
+    };

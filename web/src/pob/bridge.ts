@@ -4,6 +4,7 @@ import type {
   BuildsSnapshot,
   BuildSort,
   CodeInspection,
+  CompareSnapshot,
   CalcsSnapshot,
   ConfigSnapshot,
   ItemDetail,
@@ -142,6 +143,9 @@ export const bridge = {
   /** The builds folder, as PoB's own scanner sees it. */
   builds: (sort?: BuildSort) =>
     request<BuildsSnapshot>('/builds' + (sort ? `?sort=${sort}` : '')),
+
+  /** The current build against the active comparison, stat by stat. */
+  compare: () => request<CompareSnapshot>('/compare'),
 
   /** Ask the engine to run one of api.lua's commands. */
   act: (action: string, value?: unknown) =>

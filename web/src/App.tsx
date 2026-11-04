@@ -7,6 +7,7 @@ import { SkillsView } from './skills/SkillsView';
 import { ConfigView } from './config/ConfigView';
 import { PortView } from './port/PortView';
 import { BuildsView } from './builds/BuildsView';
+import { CompareView } from './compare/CompareView';
 import { TreeView } from './tree/TreeView';
 import { EngineStatus } from './pob/EngineStatus';
 import { Segmented } from './ui/Segmented';
@@ -16,7 +17,7 @@ import { useCalcsStore } from './pob/calcsStore';
 import { useTreeStore } from './pob/treeStore';
 import styles from './App.module.css';
 
-type Tab = 'tree' | 'items' | 'skills' | 'config' | 'calcs' | 'port' | 'builds';
+type Tab = 'tree' | 'items' | 'skills' | 'config' | 'calcs' | 'port' | 'builds' | 'compare';
 
 export default function App() {
   const state = useBridgeStore();
@@ -54,6 +55,7 @@ export default function App() {
               { value: 'skills', label: 'Skills', title: 'Socket groups and gems' },
               { value: 'config', label: 'Config', title: 'Everything the engine has to be told' },
               { value: 'calcs', label: 'Calcs', title: 'Calculation breakdown' },
+              { value: 'compare', label: 'Compare', title: 'This build against another' },
               { value: 'port', label: 'Import', title: 'Build codes in and out' },
               { value: 'builds', label: 'Builds', title: 'Open, save and manage build files' },
             ]}
@@ -93,6 +95,11 @@ export default function App() {
           {tab === 'builds' && (
             <div className={styles.panel}>
               <BuildsView />
+            </div>
+          )}
+          {tab === 'compare' && (
+            <div className={styles.panel}>
+              <CompareView />
             </div>
           )}
         </main>

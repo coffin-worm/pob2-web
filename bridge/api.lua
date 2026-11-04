@@ -1500,6 +1500,179 @@ function api.builds(build, sortMode)
 end
 
 
+------------------------------------------------------------- the compare
+
+--- PoB's own skill-flag test, copied because it is file-local to
+--- CompareTab.lua. Sixteen mechanical lines; the alternative is to not
+--- filter, which would show every build every stat.
+local function matchFlags(reqFlags, notFlags, flags)
+	if type(reqFlags) == "string" then reqFlags = { reqFlags } end
+	if reqFlags then
+		for _, flag in ipairs(reqFlags) do
+			if not flags[flag] then return false end
+		end
+	end
+	if type(notFlags) == "string" then notFlags = { notFlags } end
+	if notFlags then
+		for _, flag in ipairs(notFlags) do
+			if flags[flag] then return false end
+		end
+	end
+	return true
+end
+
+local function skillFlags(actor)
+	return actor and actor.mainSkill and actor.mainSkill.activeEffect.statSet.skillFlags or {}
+end
+
+--- Format one stat the way PoB formats it: its own `fmt`, its own
+--- percentage/modifier multiplier, and its own thousands separators.
+local function formatStat(statData, value)
+	local multiplier = (statData.pc or statData.mod) and 100 or 1
+	return formatNumSep(string.format("%" .. (statData.fmt or "d"), value * multiplier))
+end
+
+--- A build against another, stat by stat.
+---
+--- This is the one screen where PoB's rules are reproduced rather than
+--- called. Every other panel in this UI reads something the engine already
+--- built -- a Tooltip, a statBox, a control's shown() -- but the
+--- side-by-side comparison exists only inside CompareTab:DrawStatList
+--- (line 3308), interleaved with the DrawString calls that put it on the
+--- screen. There is no data-only version to call.
+---
+--- So the control flow below is a transcription of that function, in its
+--- order, with its skips: the SkillDPS row that does not fit a two-column
+--- layout, hidden stats, stats neither build's active skill uses, table
+--- values, stats that are zero on both sides, and condFunc. Everything
+--- inside it is still the engine's -- statData.fmt, condFunc, lowerIsBetter,
+--- formatNumSep -- so what is duplicated is the sequence, not the rules.
+--- If DrawStatList changes, this has to follow; nothing will notice on its
+--- own, which is the cost of the one place I could not avoid it.
+function api.compare(build)
+	local tab = build and build.compareTab
+	if not tab then
+		return { ready = false, error = "this engine has no compare tab" }
+	end
+
+	local entries = asArray({})
+	for index, entry in ipairs(tab.compareEntries or {}) do
+		local spec = entry.spec
+		entries[#entries + 1] = {
+			index = index,
+			label = strip(entry.label or entry.buildName or ("Build " .. index)),
+			class = spec and spec.curClassName or nil,
+			ascendancy = spec and spec.curAscendClassName ~= "None" and spec.curAscendClassName or nil,
+			level = entry.characterLevel,
+			active = index == tab.activeCompareIndex or nil,
+		}
+	end
+
+	local active = tab.compareEntries and tab.compareEntries[tab.activeCompareIndex or 0]
+	if not active then
+		return { ready = true, entries = entries, active = 0 }
+	end
+
+	local primaryEnv = build.calcsTab and build.calcsTab.mainEnv
+	local compareEnv = active.calcsTab and active.calcsTab.mainEnv
+	local primaryOutput = build.calcsTab and build.calcsTab.mainOutput
+	local compareOutput = active:GetOutput()
+	if not primaryOutput or not compareOutput then
+		return { ready = true, entries = entries, active = tab.activeCompareIndex, rows = asArray({}) }
+	end
+
+	local primaryFlags = skillFlags(primaryEnv and primaryEnv.player)
+	local compareFlags = skillFlags(compareEnv and compareEnv.player)
+
+	local rows = asArray({})
+	for _, statData in ipairs(build.displayStats or {}) do
+		if not statData.stat and not statData.label then
+			-- An empty entry is a section break, the same as in the sidebar.
+			rows[#rows + 1] = { gap = true }
+		elseif statData.stat == "SkillDPS" or statData.hideStat then
+			-- SkillDPS is several rows per skill; PoB leaves it out of this
+			-- layout too.
+		elseif matchFlags(statData.flag, statData.notFlag, primaryFlags)
+			or matchFlags(statData.flag, statData.notFlag, compareFlags) then
+			if statData.stat then
+				local a = primaryOutput[statData.stat] or 0
+				local b = compareOutput[statData.stat] or 0
+				if statData.childStat then
+					a = type(a) == "table" and a[statData.childStat] or 0
+					b = type(b) == "table" and b[statData.childStat] or 0
+				end
+				if type(a) == "table" or type(b) == "table" then
+					a, b = 0, 0
+				end
+
+				local shown = (a ~= 0 or b ~= 0)
+					and (not statData.condFunc
+						or statData.condFunc(a, primaryOutput)
+						or statData.condFunc(b, compareOutput))
+
+				if shown then
+					local row = {
+						label = strip(statData.label or statData.stat),
+						tone = toneOf(statData.color or ""),
+						primary = formatStat(statData, a),
+						compare = formatStat(statData, b),
+					}
+					local diff = b - a
+					if diff > 0.001 or diff < -0.001 then
+						row.diff = formatNumSep(string.format(
+							"%+" .. (statData.fmt or "d"),
+							diff * ((statData.pc or statData.mod) and 100 or 1)
+						))
+						if a ~= 0 then
+							row.percent = b / a * 100 - 100
+						end
+						-- Which direction is an improvement is the stat's
+						-- own business: more resistance is good, more mana
+						-- cost is not.
+						row.better = ((statData.lowerIsBetter and diff < 0)
+							or (not statData.lowerIsBetter and diff > 0)) and true or false
+					end
+					rows[#rows + 1] = row
+				end
+			elseif statData.label and statData.condFunc then
+				-- A label with no number: "Chaos Resistance: Immune" is
+				-- either shown or it is not.
+				local onPrimary = statData.condFunc(primaryOutput)
+				local onCompare = statData.condFunc(compareOutput)
+				if onPrimary or onCompare then
+					rows[#rows + 1] = {
+						label = strip(statData.label),
+						tone = toneOf(statData.color or ""),
+						primary = onPrimary and strip(statData.val or "") or "–",
+						compare = onCompare and strip(statData.val or "") or "–",
+					}
+				end
+			end
+		end
+	end
+
+	return {
+		ready = true,
+		entries = entries,
+		active = tab.activeCompareIndex,
+		primary = {
+			name = strip(build.buildName or ""),
+			class = build.spec and build.spec.curClassName or nil,
+			ascendancy = build.spec and build.spec.curAscendClassName ~= "None"
+				and build.spec.curAscendClassName or nil,
+			level = build.characterLevel,
+		},
+		compare = {
+			name = strip(active.label or active.buildName or ""),
+			class = active.spec and active.spec.curClassName or nil,
+			ascendancy = active.spec and active.spec.curAscendClassName ~= "None"
+				and active.spec.curAscendClassName or nil,
+			level = active.characterLevel,
+		},
+		rows = rows,
+	}
+end
+
 ------------------------------------------------------------------- commands
 
 local commands = {}
@@ -2230,6 +2403,75 @@ function commands.newBuildFolder(build, value)
 	if not ok then
 		return nil, tostring(err)
 	end
+	return true
+end
+
+--------------------------------------------------------- compare commands
+
+--- Load another build to compare against, from a code or a saved file.
+---
+--- CompareTab:ImportBuild builds a CompareEntry -- PoB's own lightweight
+--- build wrapper, which loads the XML, creates the tabs and runs the
+--- calculation without any of the UI chrome -- and refuses if the result
+--- has no output, which is the check worth keeping.
+function commands.addCompare(build, value)
+	local tab = build.compareTab
+	if not tab then
+		return nil, "this engine has no compare tab"
+	end
+
+	local xml, label
+	if type(value) == "table" and value.path then
+		local file, ferr = io.open(value.path, "r")
+		if not file then
+			return nil, "cannot open: " .. tostring(ferr)
+		end
+		xml = file:read("*a")
+		file:close()
+		-- Slashes normalised first so the name match needs no character
+		-- class containing a backslash, which is a reliable way to get the
+		-- escaping wrong in a Lua string inside a Lua pattern.
+		local normalised = tostring(value.path):gsub("\\", "/")
+		label = normalised:match("([^/]+)%.xml$") or "Build"
+	elseif type(value) == "table" and value.code then
+		local decoded, err = api.decodeCode(value.code)
+		if not decoded then
+			return nil, tostring(err)
+		end
+		xml = decoded
+		local detail = api.inspectCode(value.code)
+		label = detail.valid and (detail.ascendancy or detail.class) or "Imported build"
+	else
+		return nil, "expected { code = ... } or { path = ... }"
+	end
+
+	if not tab:ImportBuild(xml, label) then
+		return nil, "that build loaded but produced no output"
+	end
+	-- UpdateBuildSelector touches the tab's own controls, which are not
+	-- laid out headless; the import itself has already happened.
+	pcall(tab.UpdateBuildSelector, tab)
+	return true
+end
+
+function commands.setCompare(build, value)
+	local tab = build.compareTab
+	local index = tonumber(value) or 0
+	if not tab or not tab.compareEntries or not tab.compareEntries[index] then
+		return nil, "no comparison build " .. tostring(value)
+	end
+	tab.activeCompareIndex = index
+	return true
+end
+
+function commands.removeCompare(build, value)
+	local tab = build.compareTab
+	local index = tonumber(value) or 0
+	if not tab or not tab.compareEntries or not tab.compareEntries[index] then
+		return nil, "no comparison build " .. tostring(value)
+	end
+	tab:RemoveBuild(index)
+	pcall(tab.UpdateBuildSelector, tab)
 	return true
 end
 

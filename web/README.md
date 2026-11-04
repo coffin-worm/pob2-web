@@ -1,10 +1,10 @@
 # PoB web UI — header prototype
 
 A prototype of Path of Building's UI as a web app, intended to run in
-WebView2 against the existing Lua calc engine. Nine screens so far: the
-top bar, the stat sidebar, the passive tree, the Items tab, the Skills tab,
-the Configuration tab, the Calcs tab, import/export and the build list, all
-driven by the real engine.
+WebView2 against the existing Lua calc engine. Ten screens so far: the top
+bar, the stat sidebar, the passive tree, the Items tab, the Skills tab, the
+Configuration tab, the Calcs tab, import/export, the build list and the
+compare view, all driven by the real engine.
 
 ```bash
 npm install
@@ -711,6 +711,68 @@ second click is a button that says what it does.
   `taskkill`. A different host implements this against `dirent` and `stat`,
   or simply keeps the real SimpleGraphic implementations.
 
+## The compare view, and the one place I copied rather than called
+
+A second build, side by side, stat by stat.
+
+The comparison build is a `CompareEntry` — PoB's own "lightweight Build
+wrapper for comparison: loads XML, creates tabs, and runs calculations
+without setting up the full UI chrome". So the right-hand column is a
+second live calculation rather than a stored snapshot of numbers, and
+`CompareTab:ImportBuild` builds it and refuses the result if it produced
+no output.
+
+| | |
+|---|---|
+| Payload | 3.3 kB, **0–2 ms** |
+| Rows | 27 stats across 47 entries, counting PoB's section breaks |
+| Differing | 13 of 27, for a build 22 levels apart from itself |
+
+### The exception
+
+Every other panel in this UI reads something the engine already built: a
+`Tooltip`, a `statBox.list`, a control's `shown()`, PoB's own
+`ScanFolder`. That has been the rule all the way through, and it is why
+these screens are small.
+
+This one breaks it. The side-by-side comparison exists exactly once in the
+codebase, inside `CompareTab:DrawStatList` (line 3308), interleaved with
+the `DrawString` calls that put it on the screen. There is no data-only
+version to call and no sensible way to fake a canvas.
+
+So the bridge transcribes that function: its order, and its skips — the
+`SkillDPS` row that does not fit a two-column layout, hidden stats, stats
+neither build's active skill uses, table-valued stats, stats that are zero
+on both sides, and `condFunc`. Everything *inside* the loop is still the
+engine's: `statData.fmt`, the percent/modifier multiplier, `formatNumSep`,
+`condFunc`, `lowerIsBetter`. What is duplicated is the sequence, not the
+rules. `matchFlags` is copied outright, because it is file-local to
+CompareTab.lua and sixteen mechanical lines.
+
+The cost is real and worth stating: **if `DrawStatList` changes, this has
+to follow, and nothing will notice on its own.** Every other screen in
+this UI gets upstream's changes for free. This one does not.
+
+### Reading the numbers
+
+The delta is `compare − primary`, and green means the comparison build is
+better *at that stat* — which is `lowerIsBetter`'s call, not a sign test,
+because more resistance is an improvement and more mana cost is not. So a
+green row is something you would gain by switching to the build on the
+right.
+
+### What it does not do
+
+- **Only the stat summary.** PoB's compare tab also diffs the passive
+  tree, the items slot by slot, the skills and the Calcs breakdown, each
+  with its own view. This is the summary panel.
+- **No "copy this to my build"**, which PoB offers for a spec, an item and
+  a jewel.
+- **No power report**, PoB's ranked list of which nodes contribute what.
+- **The comparison build cannot be edited here.** `CompareEntry` exposes
+  `SetActiveSpec`, `SetActiveItemSet` and `SetActiveSkillSet`, so changing
+  which of its sets is active would work; none of it is wired up.
+
 ## The bridge
 
 I had this wrong. The earlier note here said there is no standalone LuaJIT
@@ -786,11 +848,16 @@ merely empty.
 
 ## Known gaps
 
-- **Nine screens of perhaps a dozen.** Notes and the compare view are
+- **Ten screens of perhaps a dozen.** Notes and the party/minion views are
   unbuilt. None of them looks harder than what is here.
 - **Each screen's own gaps** are listed with that screen above: the tree's
   notable glow and path preview, the Items tab's missing item editor, the
-  Skills tab's gem defaults, the Config tab's per-option comparison.
+  Skills tab's gem defaults, the Config tab's per-option comparison, and
+  the compare view's tree/items/skills diffs.
+- **One screen copies rather than calls.** The compare view transcribes
+  `CompareTab:DrawStatList`, because that logic exists only inside a draw
+  function. It is the only place in this UI that will not track upstream
+  on its own.
 - **Nothing is virtualised, and on this evidence nothing needs to be.** See
   below — this was the opposite of what this file predicted.
 - **Dialogs are not drawn.** The UI reports that the engine is waiting on

@@ -315,6 +315,14 @@ routes["POST /build/open"] = function(payload)
 	return 200, api.snapshot(currentBuild())
 end
 
+--- The current build against the active comparison, stat by stat.
+routes["GET /compare"] = function()
+	local started = os.clock()
+	local compare = api.compare(currentBuild())
+	compare.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, compare
+end
+
 --- The builds folder, as PoB's own scanner sees it.
 routes["GET /builds"] = function(_, query)
 	local started = os.clock()
@@ -469,7 +477,7 @@ function love.load()
 	log("  GET /tree /tree/alloc   GET /items /item /items/search")
 	log("  GET /skills /skills/group /gem /gems/search   GET /config")
 	log("  GET /code /code/inspect   POST /code/import /code/character")
-	log("  GET /builds")
+	log("  GET /builds /compare")
 	log("  POST /action  POST /build/new  POST /build/open")
 end
 
