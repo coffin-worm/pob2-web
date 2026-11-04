@@ -17,7 +17,6 @@ export function EngineStatus() {
   const popup = useBridgeStore((s) => s.popup);
   const engineError = useBridgeStore((s) => s.engineError);
   const newBuild = useBridgeStore((s) => s.newBuild);
-  const dismiss = useBridgeStore((s) => s.dismissPopup);
   const dismissError = useBridgeStore((s) => s.dismissError);
 
   const title =
@@ -75,15 +74,12 @@ export function EngineStatus() {
         </div>
       )}
 
+      {/* The dialog itself is drawn by EngineDialog, over everything. This
+          line is what is left: the panel still accounts for the engine's
+          state, and the modal is where it is answered. */}
       {popup && (
         <div className={styles.popup}>
-          The engine is waiting on a dialog: <strong>{popup.title}</strong>.
-          PoB answers some commands with a modal rather than by doing the
-          thing — changing class with an allocated tree, Save As, or Back with
-          unsaved work. This UI does not draw dialogs yet.
-          <div className={styles.actions}>
-            <Button onClick={dismiss}>Dismiss</Button>
-          </div>
+          Waiting on <strong>{popup.title}</strong>.
         </div>
       )}
     </div>

@@ -157,17 +157,7 @@ function api.snapshot(build)
 		end
 	end
 
-	-- PoB answers some commands with a modal rather than by doing the thing --
-	-- changing class with an allocated tree, Save As, Back with unsaved work.
-	-- A headless bridge that ignored this would look like it had hung, so the
-	-- popup travels with the state and the UI can say what is being waited on.
-	local popup = nil
-	if main and main.popups and main.popups[1] then
-		-- Only the title travels. A popup's controls are a keyed table, not an
-		-- array, and its buttons mean nothing without the dialog drawn around
-		-- them; reporting the title is enough to say what is being waited on.
-		popup = { title = strip(main.popups[1].title or "Waiting") }
-	end
+	local popup = api.popup()
 
 	return {
 		ready = true,
@@ -192,6 +182,78 @@ function api.snapshot(build)
 
 		points = points,
 		popup = popup,
+	}
+end
+
+--- Whatever PoB is waiting on, as something answerable.
+---
+--- PoB answers some commands with a modal rather than by doing the thing:
+--- changing class with an allocated tree, Back with unsaved work, a build
+--- that failed to load. This used to travel as a title and nothing else,
+--- which told the user the engine was stuck without giving them any way
+--- out of it.
+---
+--- A popup's controls are one mixed table -- the array part is the message,
+--- one LabelControl per line, and the named keys are its buttons. Read that
+--- way it is general: any dialog PoB opens comes through, not only the ones
+--- anticipated here, and the buttons are answered by their own Click, which
+--- is the engine's guard for whether they can be pressed at all.
+---
+--- `enterControl` and `escapeControl` are the dialog's own idea of which
+--- button is the default and which is the way out.
+local function controlLabel(control)
+	local label = control and control.label
+	if type(label) == "function" then
+		local ok, result = pcall(label)
+		label = ok and result or nil
+	end
+	return type(label) == "string" and strip(label) or nil
+end
+
+function api.popup()
+	local popup = main and main.popups and main.popups[1]
+	if not popup then
+		return nil
+	end
+
+	local lines, buttons, needsInput = asArray({}), asArray({}), false
+	for key, control in pairs(popup.controls or {}) do
+		local class = control._className
+		if class == "ButtonControl" then
+			local ok, enabled = pcall(control.IsEnabled, control)
+			buttons[#buttons + 1] = {
+				key = tostring(key),
+				label = controlLabel(control) or tostring(key),
+				enabled = (not ok) or enabled ~= false,
+			}
+		elseif class == "LabelControl" then
+			local text = controlLabel(control)
+			if text and text ~= "" then
+				lines[#lines + 1] = text
+			end
+		elseif class ~= nil then
+			-- An edit box, a list, a dropdown: this dialog is asking for
+			-- something a yes or no cannot answer.
+			needsInput = true
+		end
+	end
+
+	-- Buttons come out of a keyed table, so their order is undefined;
+	-- sorted so the dialog does not shuffle between polls.
+	table.sort(buttons, function(a, b) return a.key < b.key end)
+
+	return {
+		title = strip(popup.title or "Waiting"),
+		lines = lines,
+		buttons = buttons,
+		defaultKey = type(popup.enterControl) == "string" and popup.enterControl or nil,
+		cancelKey = type(popup.escapeControl) == "string" and popup.escapeControl or nil,
+		-- True when answering it needs more than a button press. Said
+		-- rather than hidden, so the UI can offer the way out instead of
+		-- a button that would commit a default nobody chose.
+		needsInput = needsInput or nil,
+		-- PoB stacks them; answering one can reveal another.
+		depth = #main.popups,
 	}
 end
 
@@ -2623,6 +2685,43 @@ function commands.setItemVariant(build, value)
 	end
 	item.variant = index
 	return commitItem(tab, item, build)
+end
+
+--- Press one of the open dialog's buttons.
+---
+--- Through the control's own Click, which checks IsShown and IsEnabled
+--- first -- so a button the dialog has greyed out stays greyed out, and
+--- the handler behind it is PoB's, closing the popup and doing whatever it
+--- was going to do.
+function commands.answerPopup(build, value)
+	local popup = main and main.popups and main.popups[1]
+	if not popup then
+		return nil, "no dialog is open"
+	end
+	local key = type(value) == "table" and value.button or value
+	-- A confirm dialog's buttons are not all named: the three-button
+	-- layout t_inserts two of them, so their keys are integers while
+	-- `confirm` is a string. They come out of JSON as strings either way,
+	-- and in Lua t[4] and t["4"] are different keys -- which looks exactly
+	-- like a button that quietly does nothing.
+	local controls = popup.controls or {}
+	local control = (type(key) == "string" or type(key) == "number")
+		and (controls[key] or controls[tonumber(key) or false])
+	if not control or control._className ~= "ButtonControl" then
+		return nil, "this dialog has no button called " .. tostring(key)
+	end
+
+	local before = #main.popups
+	local ok, err = pcall(control.Click, control)
+	if not ok then
+		return nil, tostring(err)
+	end
+	-- Click does nothing at all when the button is disabled, which would
+	-- otherwise look like the answer was accepted and ignored.
+	if #main.popups == before and main.popups[1] == popup then
+		return nil, "that button is not available right now"
+	end
+	return true
 end
 
 function commands.dismissPopup(build)

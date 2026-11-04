@@ -10,6 +10,7 @@ import { BuildsView } from './builds/BuildsView';
 import { CompareView } from './compare/CompareView';
 import { TreeView } from './tree/TreeView';
 import { EngineStatus } from './pob/EngineStatus';
+import { EngineDialog } from './pob/EngineDialog';
 import { Segmented } from './ui/Segmented';
 import { startPolling, useBridgeStore } from './pob/bridgeStore';
 import { startStatsPolling } from './pob/statsStore';
@@ -40,6 +41,9 @@ export default function App() {
 
   return (
     <div className={styles.app}>
+      {/* Outside the column layout: a dialog the engine is waiting on
+          blocks every screen, not the one you happen to be looking at. */}
+      <EngineDialog />
       <Header {...state} />
       <div className={styles.columns}>
         <Sidebar />

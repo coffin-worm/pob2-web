@@ -95,8 +95,24 @@ export const LEVEL_MAX = 100;
  * Over a bridge that is invisible, so it travels with the state and the UI
  * can say what is being waited on instead of looking hung.
  */
+/**
+ * A dialog PoB is waiting on.
+ *
+ * Its controls are one mixed table: the array part is the message, one
+ * label per line, and the named keys are the buttons. Buttons from the
+ * array part have numeric keys, which arrive here as strings.
+ */
 export interface EnginePopup {
   title: string;
+  lines: string[];
+  buttons: { key: string; label: string; enabled: boolean }[];
+  /** The button Enter would press, and the one Escape would. */
+  defaultKey?: string;
+  cancelKey?: string;
+  /** Set when answering needs more than a button — a name, a folder. */
+  needsInput?: boolean;
+  /** PoB stacks dialogs; answering one can reveal another. */
+  depth: number;
 }
 
 /** Whether the engine is reachable. */

@@ -60,6 +60,8 @@ interface BridgeStore extends HeaderState, HeaderActions {
   newBuild(): Promise<void>;
   /** Close a modal the engine is blocked on, without answering it. */
   dismissPopup(): void;
+  /** Press one of the open dialog's buttons. */
+  answerPopup(key: string): void;
   /** Clear a recorded engine error. Does not repair the build. */
   dismissError(): Promise<void>;
 }
@@ -113,6 +115,9 @@ export const useBridgeStore = create<BridgeStore>((set) => {
     refresh: () => run(() => bridge.state()),
     newBuild: () => run(() => bridge.newBuild()),
     dismissPopup: command('dismissPopup'),
+    answerPopup: (key: string) => {
+      void run(() => bridge.act('answerPopup', { button: key }));
+    },
     dismissError: () =>
       run(async () => {
         await bridge.dismissError();

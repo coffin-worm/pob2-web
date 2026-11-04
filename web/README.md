@@ -810,6 +810,51 @@ right.
   `SetActiveSpec`, `SetActiveItemSet` and `SetActiveSkillSet`, so changing
   which of its sets is active would work; none of it is wired up.
 
+## Dialogs, and a key that was the wrong type
+
+PoB answers some commands with a modal rather than by doing the thing:
+changing class with an allocated tree, Back with unsaved work, a build that
+failed to load. The UI used to report that the engine was waiting and
+nothing more, which left **changing class — a basic operation — with no way
+through**.
+
+A popup's controls are one mixed table. The array part is the message, one
+`LabelControl` per line; the named keys are its buttons. Read that way it
+is general: any dialog PoB opens comes through, not only the ones
+anticipated here. `enterControl` and `escapeControl` say which button is
+the default and which is the way out, so Enter and Escape do what they do
+in the desktop app.
+
+Pressing one calls that control's own `Click`, which checks `IsShown` and
+`IsEnabled` first — so a button the dialog has greyed out stays greyed out,
+and the handler behind it is PoB's.
+
+### The bug worth keeping
+
+The first version worked for `Continue` and silently did nothing for
+`Cancel`.
+
+`OpenConfirmPopup`'s three-button layout `t_insert`s two of its buttons, so
+their keys are **integers** while `confirm` is a string. They all come out
+of JSON as strings, and in Lua `t[4]` and `t["4"]` are different keys. The
+lookup found nothing, and "no button called 4" is not a sentence anyone
+reads as a type error.
+
+It cost a detour through the wrong hypothesis — I assumed two dialogs were
+stacking, because a *second* `setClass` while the first dialog was still
+open really does open a second one, which is what the evidence looked like.
+Measuring depth per step is what separated the two.
+
+### What it does not do
+
+- **No fields.** A dialog with a text box or a list — Save As, New Folder —
+  is reported as needing input, and answering it uses whatever the engine
+  already had. The screens that need those have their own commands
+  (`saveBuildAs`, `newBuildFolder`) that skip the dialog entirely.
+- **Dismiss without answering** closes the dialog without running any of
+  its handlers, which is `ClosePopup` and is sometimes the only sensible
+  answer. It is deliberately the least prominent button.
+
 ## The bridge
 
 I had this wrong. The earlier note here said there is no standalone LuaJIT
@@ -897,9 +942,9 @@ merely empty.
   on its own.
 - **Nothing is virtualised, and on this evidence nothing needs to be.** See
   below — this was the opposite of what this file predicted.
-- **Dialogs are not drawn.** The UI reports that the engine is waiting on
-  one and can dismiss it, but cannot answer it — so a class change that
-  would reset an allocated tree currently cannot be confirmed from here.
+- **Dialogs that ask for typed input** — Save As wants a name and a folder
+  — can be answered here only with whatever the engine already had. Their
+  buttons work; their fields are not drawn.
 - **No renaming or moving builds**, though PoB's own `MoveFolder` would
   work now that the file search does.
 - **Rename is in-memory.** `setBuildName` marks the build dirty; it does not
