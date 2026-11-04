@@ -396,13 +396,32 @@ routes["POST /code/import"] = function(payload)
 	return 200, api.snapshot(currentBuild())
 end
 
---- Import a character straight from the game's API response, which the
---- user pastes. Nothing is fetched here either.
+--- Import a character from the game's API response.
+---
+--- The response arrives either pasted by hand or from the dev server's
+--- /poe/character, and in both cases it is whatever GGG sent, which wraps
+--- the character in a `character` key. PoB's own import path unwraps that
+--- (`ImportTab.lua:811`, `fullCharData = fullCharData.character`) but
+--- HeadlessWrapper's loadBuildFromJSON does not -- it hands the top level
+--- straight to the importers, which want `.equipment` and `.passives` on it.
+--- Fed the envelope, the import dies on a nil index and reports only that
+--- the JSON was not understood.
+---
+--- So the envelope is opened here if it is there. An already-unwrapped
+--- object is passed through untouched rather than re-encoded, which keeps
+--- the path that already worked byte-for-byte what it was.
 routes["POST /code/character"] = function(payload)
 	local json = type(payload) == "table" and payload.json
 	if type(json) ~= "string" or json:match("^%s*$") then
 		return 400, { error = "expected { json = ... }" }
 	end
+
+	local dkjson = require("dkjson")
+	local decoded = dkjson.decode(json)
+	if type(decoded) == "table" and type(decoded.character) == "table" then
+		json = dkjson.encode(decoded.character)
+	end
+
 	local ok, err = pcall(loadBuildFromJSON, json)
 	if not ok then
 		return 400, { error = "that is not a character export PoB understands: " .. tostring(err) }

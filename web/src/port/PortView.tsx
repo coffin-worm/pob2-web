@@ -3,6 +3,7 @@ import { bridge } from '../pob/bridge';
 import { useBridgeStore } from '../pob/bridgeStore';
 import { Button } from '../ui/Button';
 import type { BuildCode, CodeInspection } from '../pob/types';
+import { AccountImport } from './AccountImport';
 import styles from './PortView.module.css';
 
 /**
@@ -224,9 +225,11 @@ export function PortView() {
         )}
       </section>
 
+      <AccountImport />
+
       <section className={styles.panel}>
         <h3 className={styles.title}>
-          Import a character
+          Import a character by hand
           <button
             className={styles.disclosure}
             onClick={() => setShowCharacter((open) => !open)}
@@ -236,8 +239,9 @@ export function PortView() {
           </button>
         </h3>
         <p className={styles.hint}>
-          Paste the JSON the game's character API returns. Nothing is fetched here — that
-          request needs your session, and it is yours to make.
+          Paste the JSON the game's character API returns, if you already have it — the
+          whole response or just the character object inside it, either works. Signing in
+          above does the same thing without the copying.
         </p>
 
         {showCharacter && (

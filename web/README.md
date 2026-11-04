@@ -781,6 +781,85 @@ that looks fine.
   wrapper only, and build codes are always zlib — but saying so beats
   appearing to support a format that would come back as a length error.
 
+### Signing in, and the network that was missing
+
+The third of these. zlib was stubbed, the filesystem was stubbed, and so
+is the whole network layer: `LaunchSubScript` and `OpenURL` are empty
+functions in `src/_SimpleGraphic.def.lua`, and `launch:DownloadPage` is a
+Lua *source string* containing `require("lcurl.safe")` that it hands to
+the first of them. So `PoEAPI.lua` is intact and inert — `FetchAuthToken`
+builds a correct authorize URL and then never gets past its `if id then`.
+
+The first two gaps were filled from `bridge/`, over FFI, because the
+thing underneath (zlib1.dll, Win32 `FindFirstFileA`) was already on the
+machine and the engine was the only one who needed it. This one is
+different. The engine is not the only one who can make an HTTPS request —
+the dev server can, natively, with a TLS stack and a socket library it
+already has. Rebuilding curl and a subscript host in LuaJIT to avoid
+that would be work in service of symmetry rather than anything else.
+
+So the transport lives in `web/plugins/poe-account.ts`, and the import
+does not. The character JSON goes to `POST /code/character` exactly as
+GGG sent it, and `ImportItemsAndSkills` and `ImportPassiveTreeAndJewels`
+read it — the same rule as everywhere else here.
+
+Three constants are copied from PoB rather than chosen, because each one
+fails as something else when it is wrong:
+
+- **`client_id=pob`.** PoB's registered public client. A fork cannot mint
+  its own without GGG registering it, so this identifies itself as what
+  it is: a build of PoB.
+- **Redirect ports 49082, 49083, 49084**, with `redirect_uri` of
+  `http://localhost:<port>` and *no path* (`src/LaunchServer.lua:11`).
+  Those exact origins are what GGG has registered. An ephemeral port, or
+  a tidier `/callback`, earns `redirect_uri_mismatch` — which reads like
+  a broken client rather than a wrong URL.
+- **`Path of Building/<version>`** as the User-Agent, from `manifest.xml`,
+  as `Launch.lua:273` sends it.
+
+Signing in is an ordinary link to `/poe/signin`, which sets up PKCE and
+redirects. Not a scripted `window.open`: the navigation is then the
+user's own click, there is no popup-blocker gap, and the credentials are
+typed on GGG's page. The token lives in the dev server's memory — not on
+disk, not in the browser, not in a log — so a restart means signing in
+again. That is the right trade for a refresh token that can read someone's
+account, and it is why the browser is only ever told `authenticated: true`.
+
+### An envelope, and who opens it
+
+`/character/<name>` returns `{"character": {…}}`. PoB's own path unwraps
+that (`ImportTab.lua:811`) before importing, but `HeadlessWrapper.lua`'s
+`loadBuildFromJSON` hands the top level straight to the importers, which
+want `.equipment` and `.passives` on it. Fed the envelope, the import
+dies on a nil index and reports only that the JSON was not understood.
+
+So `POST /code/character` opens the envelope if it is there, and passes
+an already-unwrapped object through untouched rather than re-encoding it
+— which leaves the path that already worked byte-for-byte what it was.
+One place knows the shape, and it is the one next to the engine; the
+browser forwards bytes.
+
+Worth testing properly, since "both fail identically" is easy to mistake
+for a working unwrap. A stub character grown one field at a time fails at
+`ImportTab.lua` 1136, then 1245, then 948, then 961 — each deeper than the
+last — and the enveloped payload tracks the bare one at every step. Only
+the unwrap gets the enveloped one past the first.
+
+### What this part does not do
+
+- **No league or realm picker.** `poe2` is hardcoded, as `PoEAPI.lua`'s
+  own docstring says it always is.
+- **No rate-limit queue.** PoB has a real `TradeQueryRateLimiter`; this
+  passes a 429 back with GGG's `retry-after` and says how long to wait.
+  Fine for two endpoints a human drives, not fine for anything automated.
+- **Dev and preview only.** Like the bridge itself, it is a server-side
+  plugin under `apply: 'serve'`; a built app has no Node behind it.
+- **Not exercised end to end here.** Everything up to GGG's login is
+  verified — the redirect, the PKCE parameters, the port binding, a
+  forged `state` being refused, a stray probe not consuming the
+  sign-in — but completing a sign-in needs a real account, so the first
+  real character import is the first time that half runs.
+
 ## The build list, and the filesystem that was missing
 
 The same shape as the zlib problem, one layer further down.
