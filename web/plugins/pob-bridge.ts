@@ -78,6 +78,20 @@ export function pobBridge(options: Options): Plugin {
   let child: ChildProcess | null = null;
   let ready: Promise<void> | null = null;
   let failure: string | null = null;
+  /**
+   * Set when no amount of restarting will help, which is only ever LOVE
+   * being absent. Every other failure is worth another go, and separating
+   * the two is what stops a broken install from paying for a health check
+   * on every request.
+   */
+  let fatal = false;
+  /**
+   * The start in flight, if there is one.
+   *
+   * Several requests can discover a dead engine in the same tick, and they
+   * should queue behind one attempt rather than each spawning their own.
+   */
+  let starting: Promise<void> | null = null;
 
   /**
    * Start the engine and proxy to it, for whichever server is asking.
@@ -91,20 +105,19 @@ export function pobBridge(options: Options): Plugin {
   const attach = async (server: ViteDevServer | PreviewServer) => {
       const log = server.config.logger;
 
-      const start = async () => {
-        if (await isAlreadyRunning(port)) {
-          log.info(`[pob-bridge] reusing the engine already on :${port}`);
-          return;
-        }
-
+      const spawnEngine = async () => {
         const love = findLove();
         if (!love) {
           failure =
             'LOVE was not found. Install it, or set POB_LOVE to lovec.exe. ' +
             'The UI will load but the engine will be unreachable.';
+          fatal = true;
           log.warn(`[pob-bridge] ${failure}`);
           return;
         }
+
+        // Whatever went wrong last time is about to stop being true.
+        failure = null;
 
         // HeadlessWrapper.lua resolves its own dofiles against the working
         // directory, so this has to be src/ and not the bridge directory.
@@ -163,7 +176,42 @@ export function pobBridge(options: Options): Plugin {
         });
       };
 
-      ready = start();
+      /**
+       * Have an engine, starting one if there is not one already.
+       *
+       * Reuse used to be decided once, at startup, and that was a race the
+       * dev server lost regularly. Restarting Vite builds the new plugin
+       * instance before tearing the old one down, so the new instance asks
+       * ":49090, are you there?", gets a yes from the engine belonging to
+       * the instance that is about to die, writes "reusing the engine
+       * already on :49090", and then that engine is killed by the old
+       * instance's shutdown. Nothing is left running and the log says
+       * everything is fine.
+       *
+       * So reuse is no longer a decision anybody has to get right the
+       * first time. This is cheap to call, idempotent, and the proxy calls
+       * it again whenever a request cannot reach the engine.
+       */
+      const ensureEngine = (): Promise<void> => {
+        if (!starting) {
+          starting = (async () => {
+            // Our own child, still alive.
+            if (child && child.exitCode === null && child.signalCode === null) return;
+            // Somebody else's, still alive: an engine started by hand, or
+            // by a server instance on its way out that will outlive us.
+            if (await isAlreadyRunning(port)) {
+              log.info(`[pob-bridge] reusing the engine already on :${port}`);
+              return;
+            }
+            await spawnEngine();
+          })().finally(() => {
+            starting = null;
+          });
+        }
+        return starting;
+      };
+
+      ready = ensureEngine();
 
       // Requests arrive before the engine finishes booting: the browser is
       // usually faster, so they wait on it rather than failing.
@@ -179,6 +227,10 @@ export function pobBridge(options: Options): Plugin {
           res.end(JSON.stringify(body));
         };
 
+        // A recorded failure goes stale: an engine that exited is usually
+        // perfectly startable again, so the note about it is a reason to
+        // try once more rather than a reason to refuse.
+        if (failure && !fatal) await ensureEngine();
         if (failure) {
           reply(503, { error: failure });
           return;
@@ -191,22 +243,38 @@ export function pobBridge(options: Options): Plugin {
           body = Buffer.concat(chunks);
         }
 
-        try {
-          const upstream = await fetch(`http://127.0.0.1:${port}${req.url ?? '/'}`, {
+        const forward = () =>
+          fetch(`http://127.0.0.1:${port}${req.url ?? '/'}`, {
             method: req.method,
             headers: { 'content-type': 'application/json' },
             body,
           });
-          res.statusCode = upstream.status;
-          res.setHeader('content-type', 'application/json; charset=utf-8');
-          res.end(Buffer.from(await upstream.arrayBuffer()));
-        } catch (error) {
-          reply(502, {
-            error: `the engine stopped answering: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          });
+
+        let upstream: Response;
+        try {
+          upstream = await forward();
+        } catch {
+          // The engine was there when we last looked and is not now.
+          // Start one and send the request again, once. The body was
+          // buffered above, so the retry is a real retry and not a
+          // half-consumed stream.
+          log.warn(`[pob-bridge] nothing on :${port}; starting the engine again`);
+          try {
+            await ensureEngine();
+            upstream = await forward();
+          } catch (error) {
+            reply(502, {
+              error: `the engine stopped answering: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            });
+            return;
+          }
         }
+
+        res.statusCode = upstream.status;
+        res.setHeader('content-type', 'application/json; charset=utf-8');
+        res.end(Buffer.from(await upstream.arrayBuffer()));
       };
 
       server.middlewares.use(mount, proxy);
