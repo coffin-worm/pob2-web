@@ -1,3 +1,28 @@
+# pob2-web
+
+A web interface for [Path of Building 2](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2),
+built on its calculation engine rather than beside it.
+
+The engine is upstream's, and unmodified. Every commit here leaves `src/`
+byte-identical to the version it was branched from, and PoB's own spec suite
+runs green against it: 912 successes, 0 failures. What is new is everything
+under `web/` and `bridge/`: a React front end, and a small host that runs PoB
+headless and answers HTTP, so the browser can read what the engine computed
+and write back by calling the engine's own callbacks.
+
+So this is not a reskin. The passive tree, the item and skill screens, the
+configuration options and every number in the sidebar are PoB's, read out of
+the running engine rather than reimplemented.
+
+[`web/README.md`](web/README.md) covers how that works, and what it still
+cannot do.
+
+An unofficial personal project, not affiliated with the Path of Building
+Community. Anything broken here is mine rather than theirs, so report it
+here and not to them. Upstream's own README follows.
+
+---
+
 # Path of Building 2 Community
 ## Welcome to Path of Building 2, an offline build planner for Path of Exile 2!
 
