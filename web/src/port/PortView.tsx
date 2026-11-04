@@ -120,6 +120,11 @@ export function PortView() {
 
   return (
     <div className={styles.view}>
+      {/* First, because it is the way in that does not involve copying
+          anything by hand. The code box below is the fallback, not the
+          headline. */}
+      <AccountImport />
+
       <section className={styles.panel}>
         <h3 className={styles.title}>Import a build</h3>
         <p className={styles.hint}>
@@ -224,8 +229,6 @@ export function PortView() {
           />
         )}
       </section>
-
-      <AccountImport />
 
       <section className={styles.panel}>
         <h3 className={styles.title}>

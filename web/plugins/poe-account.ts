@@ -52,8 +52,16 @@ const API_HOST = 'https://api.pathofexile.com';
 const REALM = 'poe2';
 /** Registered with the OAuth client. Not ours to choose. */
 const REDIRECT_PORTS = [49082, 49083, 49084];
-/** Long enough to find a password manager, short enough to not sit open. */
-const SIGN_IN_WINDOW_MS = 180_000;
+/**
+ * How long the redirect server waits.
+ *
+ * PoB allows 60 seconds, which assumes an already-signed-in browser and one
+ * click. In practice there can be a login, a password manager and a
+ * Cloudflare challenge in the way, and a window that closes mid-challenge
+ * fails as "timed out" long after the user has stopped being able to tell
+ * what went wrong. An idle listener on a loopback port costs nothing.
+ */
+const SIGN_IN_WINDOW_MS = 600_000;
 
 interface Options {
   /** The PoB checkout, for reading manifest.xml. */
@@ -99,7 +107,15 @@ export function poeAccount(options: Options): Plugin {
 
   let token: Token | null = null;
   let pending: Pending | null = null;
-  /** The last thing that went wrong, for the UI to show once and clear. */
+  /**
+   * The last thing that went wrong.
+   *
+   * Deliberately *not* cleared when it is read. It was, and that made the
+   * failure it exists to report unreadable: the UI polls this twice a
+   * second while a sign-in is open, so whichever poll arrived first ate the
+   * message and the panel showed it for one frame. It is cleared when the
+   * next sign-in starts, which is the only moment it stops being true.
+   */
   let lastError: string | null = null;
 
   const clearPending = () => {
@@ -396,17 +412,25 @@ export function poeAccount(options: Options): Plugin {
               expiresAt: token?.expiresAt ?? null,
               error: lastError,
             });
-            // Shown once; a stale error under a working sign-in is worse
-            // than none.
-            lastError = null;
             return;
           }
 
           // A redirect rather than JSON, so the button can be an ordinary
           // link. The navigation is then the user's own click, with no
           // popup-blocker gap and no question about who initiated it.
+          //
+          // ?format=json hands back the URL instead, for copying into
+          // another browser. LaunchServer.lua puts it on the clipboard for
+          // the same reason, and the reason is a good one: the sign-in can
+          // be impossible in the browser that happens to be in front of
+          // you -- an embedded or automated one will loop a Cloudflare
+          // challenge forever -- while working first try in a normal one.
           case 'GET /signin': {
             const authUrl = await beginSignIn();
+            if (url.searchParams.get('format') === 'json') {
+              reply(200, { authUrl });
+              return;
+            }
             res.statusCode = 302;
             res.setHeader('location', authUrl);
             res.setHeader('cache-control', 'no-store');

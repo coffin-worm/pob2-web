@@ -68,16 +68,25 @@ export function AccountImport() {
   const [error, setError] = useState<string | null>(null);
   /** Set when the sign-in tab is opened, so the poll knows to watch. */
   const [waiting, setWaiting] = useState(false);
+  /** The sign-in URL, once asked for, to paste into another browser. */
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const poll = useRef<number | undefined>(undefined);
+  /**
+   * The error text the user has already dismissed.
+   *
+   * The server keeps reporting its last failure until the next sign-in --
+   * clearing it on read made it unreadable, since a poll would eat it --
+   * so dismissing has to be remembered here, or the next poll two seconds
+   * later puts it straight back.
+   */
+  const dismissed = useRef<string | null>(null);
 
   const refreshStatus = useCallback(async () => {
     try {
       const next = await getJson<Status>('/poe/status');
       setStatus(next);
-      // The server reports an error once and clears it, so it is surfaced
-      // here rather than left to be fetched again and lost.
-      if (next.error) setError(next.error);
+      if (next.error && next.error !== dismissed.current) setError(next.error);
       if (next.authenticated || next.error) setWaiting(false);
       return next;
     } catch (e) {
@@ -118,6 +127,27 @@ export function AccountImport() {
     }, 2000);
     return () => window.clearInterval(poll.current);
   }, [waiting, refreshStatus, listCharacters]);
+
+  /**
+   * Put the sign-in URL on the clipboard instead of following it.
+   *
+   * The browser showing this page is not always one that can complete a
+   * sign-in: an embedded or automated browser loops Cloudflare's challenge
+   * indefinitely, with no way through and nothing saying why. The redirect
+   * comes back to a loopback port, so any browser on the machine can
+   * finish the job and this one will see the result.
+   */
+  const copySignInLink = async () => {
+    setError(null);
+    try {
+      const { authUrl } = await getJson<{ authUrl: string }>('/poe/signin?format=json');
+      await navigator.clipboard.writeText(authUrl);
+      setLinkCopied(true);
+      setWaiting(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const signOut = async () => {
     setError(null);
@@ -186,6 +216,9 @@ export function AccountImport() {
             >
               Sign in at pathofexile.com
             </a>
+            <Button onClick={() => void copySignInLink()}>
+              {linkCopied ? 'Link copied' : 'Copy the link instead'}
+            </Button>
             {waiting && (
               <span className={styles.status}>
                 waiting for the sign-in tab…
@@ -199,6 +232,11 @@ export function AccountImport() {
             Asks for the scopes PoB asks for: profile, leagues, characters, trade.
             It identifies itself as PoB because it is a build of PoB — the OAuth client
             id is PoB's registered one.
+          </p>
+          <p className={styles.note}>
+            If the sign-in page gets stuck on “verify you are human”, copy the link and
+            open it in an ordinary browser window — embedded ones loop that check
+            forever. It comes back to this app either way.
           </p>
         </>
       )}
@@ -255,7 +293,14 @@ export function AccountImport() {
       {error && (
         <div className={styles.error} role="status">
           {error}
-          <button className={styles.dismiss} onClick={() => setError(null)} aria-label="Dismiss">
+          <button
+            className={styles.dismiss}
+            onClick={() => {
+              dismissed.current = error;
+              setError(null);
+            }}
+            aria-label="Dismiss"
+          >
             ×
           </button>
         </div>
