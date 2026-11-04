@@ -131,6 +131,8 @@ export function TreeView() {
   const allocated = useTreeStore((s) => s.allocated);
   const reachable = useTreeStore((s) => s.reachable);
   const backdrop = useTreeStore((s) => s.backdrop);
+  const preview = useTreeStore((s) => s.preview);
+  const previewPath = useTreeStore((s) => s.previewPath);
   const load = useTreeStore((s) => s.load);
   const toggle = useTreeStore((s) => s.toggle);
 
@@ -141,6 +143,7 @@ export function TreeView() {
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const hoverRef = useRef<TreeNode | null>(null);
   const matchRef = useRef<Set<number>>(new Set());
+  const previewRef = useRef<Set<number>>(new Set());
 
   const [hover, setHover] = useState<Hover | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -221,6 +224,15 @@ export function TreeView() {
   useEffect(() => {
     matchRef.current = matches;
   }, [matches]);
+
+  // The previewed route, as a set the draw loop can test per node without
+  // scanning a list. Memoised first so the effect below depends on one
+  // stable value rather than on a field reached through an optional chain.
+  const routeSet = useMemo(() => new Set(preview ? preview.path : []), [preview]);
+
+  useEffect(() => {
+    previewRef.current = routeSet;
+  }, [routeSet]);
 
   useEffect(() => {
     void load();
@@ -377,6 +389,37 @@ export function TreeView() {
       ctx.strokeStyle = '#c9a227';
       ctx.stroke(litPath);
 
+      // The route a click would take, over the connectors and under the
+      // nodes. Drawn from the same two shapes as everything else: a
+      // connector is on the route when both its ends are.
+      const route = previewRef.current;
+      if (route.size > 0) {
+        const routePath = new Path2D();
+        const onRoute = (a: TreeNode, b: TreeNode) =>
+          (route.has(a.id) || allocated.has(a.id)) &&
+          (route.has(b.id) || allocated.has(b.id)) &&
+          (route.has(a.id) || route.has(b.id));
+
+        for (const [a, b] of drawLines) {
+          if (!onRoute(a, b)) continue;
+          routePath.moveTo(a.x, a.y);
+          routePath.lineTo(b.x, b.y);
+        }
+        for (const { a, b, cx, cy, r } of drawArcs) {
+          if (!onRoute(a, b)) continue;
+          const from = Math.atan2(a.y - cy, a.x - cx);
+          const to = Math.atan2(b.y - cy, b.x - cx);
+          let delta = to - from;
+          while (delta > Math.PI) delta -= Math.PI * 2;
+          while (delta < -Math.PI) delta += Math.PI * 2;
+          routePath.moveTo(a.x, a.y);
+          routePath.arc(cx, cy, r, from, to, delta < 0);
+        }
+        ctx.lineWidth = CONNECTOR_WIDTH * 1.8;
+        ctx.strokeStyle = '#6ee7b7';
+        ctx.stroke(routePath);
+      }
+
       // -------------------------------------------------------------- nodes
       const sprites = art !== null && cam.scale >= SPRITE_SCALE;
       if (sprites !== lastMode) {
@@ -443,6 +486,19 @@ export function TreeView() {
         ctx.stroke(ring);
       }
 
+      if (route.size > 0) {
+        ctx.lineWidth = 5 / cam.scale;
+        ctx.strokeStyle = '#6ee7b7';
+        const ring = new Path2D();
+        for (const { node } of drawNodes) {
+          if (!route.has(node.id) || !visible(node.x, node.y)) continue;
+          const r = hitRadius(node) + 6 / cam.scale;
+          ring.moveTo(node.x + r, node.y);
+          ring.arc(node.x, node.y, r, 0, Math.PI * 2);
+        }
+        ctx.stroke(ring);
+      }
+
       const hovered = hoverRef.current;
       if (hovered) {
         ctx.lineWidth = 3 / cam.scale;
@@ -502,6 +558,9 @@ export function TreeView() {
     if (hoverRef.current) {
       hoverRef.current = null;
       setHover(null);
+      // The route goes with it. Leaving it drawn after the pointer has
+      // gone is a highlight with nothing explaining it.
+      void previewPath(null);
     }
   };
 
@@ -515,12 +574,14 @@ export function TreeView() {
     cam.scale = Math.max(cam.scale, 0.18);
   };
 
-  const stateOf = (node: TreeNode) =>
-    allocated.has(node.id)
-      ? 'allocated'
-      : reachable.has(node.id)
-        ? 'click to allocate'
-        : 'not reachable';
+  const stateOf = (node: TreeNode) => {
+    if (allocated.has(node.id)) return 'allocated';
+    const cost = reachable.get(node.id);
+    if (cost === undefined) return 'not reachable';
+    // The number people actually want from a tree: not "you can take
+    // this" but "this costs you four points".
+    return cost === 1 ? 'costs 1 point' : `costs ${cost} points`;
+  };
 
   return (
     <div className={styles.wrap} ref={wrapRef}>
@@ -560,6 +621,10 @@ export function TreeView() {
           if (found?.id !== hoverRef.current?.id) {
             hoverRef.current = found;
             const wrap = wrapRef.current;
+            // What this click would actually allocate. Asked of the
+            // engine, cached per node, and only when the node under the
+            // pointer changes -- not per mouse-move.
+            void previewPath(found && reachable.has(found.id) ? found.id : null);
             setHover(
               found
                 ? {

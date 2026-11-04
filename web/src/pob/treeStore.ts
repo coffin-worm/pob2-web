@@ -43,8 +43,19 @@ interface TreeStore {
 
   /** Allocation, refreshed on change. */
   allocated: Set<number>;
-  reachable: Set<number>;
+  /** Reachable node id to what clicking it would cost in new points. */
+  reachable: Map<number, number>;
   backdrop: TreeBackdrop | null;
+
+  /**
+   * The route a hovered node would allocate.
+   *
+   * Cached per node for as long as the allocation holds: the answer only
+   * changes when the tree does, and hovering back and forth across a
+   * cluster should not re-ask the engine for something it already said.
+   */
+  preview: { id: number; path: number[]; cost: number } | null;
+  previewPath(id: number | null): Promise<void>;
 
   load(): Promise<void>;
   refreshAlloc(): Promise<void>;
@@ -52,6 +63,8 @@ interface TreeStore {
 }
 
 export const useTreeStore = create<TreeStore>((set, get) => {
+  const pathCache = new Map<number, { path: number[]; cost: number }>();
+
   const refreshAlloc = async () => {
     try {
       const snapshot = await bridge.treeAlloc();
@@ -59,9 +72,12 @@ export const useTreeStore = create<TreeStore>((set, get) => {
       set({
         connection: 'live',
         allocated: new Set(snapshot.allocated),
-        reachable: new Set(snapshot.reachable),
+        reachable: new Map(snapshot.reachable),
         backdrop: snapshot.backdrop ?? null,
+        preview: null,
       });
+      // Every cached route is about the tree as it was.
+      pathCache.clear();
     } catch {
       set({ connection: 'offline' });
     }
@@ -79,8 +95,35 @@ export const useTreeStore = create<TreeStore>((set, get) => {
     arcErrors: 0,
     art: null,
     allocated: new Set(),
-    reachable: new Set(),
+    reachable: new Map(),
     backdrop: null,
+    preview: null,
+
+    previewPath: async (id) => {
+      if (id === null) {
+        if (get().preview) set({ preview: null });
+        return;
+      }
+      if (get().preview?.id === id) return;
+
+      const cached = pathCache.get(id);
+      if (cached) {
+        set({ preview: { id, ...cached } });
+        return;
+      }
+      try {
+        const result = await bridge.treePath(id);
+        if (!result.ready) return;
+        pathCache.set(id, { path: result.path, cost: result.cost });
+        // The pointer may have moved on while this was in flight.
+        if (get().reachable.has(id) || get().allocated.has(id)) {
+          set({ preview: { id, path: result.path, cost: result.cost } });
+        }
+      } catch {
+        // A route the engine will not give is not an error worth showing;
+        // the node simply gets no preview.
+      }
+    },
 
     load: async () => {
       if (get().loaded) return;

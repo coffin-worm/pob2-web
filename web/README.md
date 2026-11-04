@@ -261,13 +261,38 @@ Search covers stat text as well as names, because that is how the question
 is usually asked — not "where is Heavy Armour" but "where is anything that
 gives spirit". It is a linear scan per keystroke, under a millisecond.
 
+### What a click would cost
+
+Hovering a reachable node now says **costs 13 points** and draws the route
+the click would take.
+
+Two pieces, because they have different shapes. The cost is `pathDist`,
+the engine's own figure from the same search that built the path —
+allocated nodes weigh nothing, so it is the number of *new* points, not the
+length of the route. It rides with the allocation, one number per reachable
+node: that took `/tree/alloc` from 25 kB to 44 kB for 3,900 nodes, which
+buys an answer with no round trip on every mouse-move.
+
+The route itself is fetched per node, 150 bytes for an eighteen-node path,
+cached until the allocation changes. Every reachable node's route at once
+would be the whole tree several times over.
+
+**It asks for `GetEffectiveAllocationPath`, not `node.path`.** `AllocNode`
+calls the former, and the two differ exactly where it matters — a path
+running through a weapon-set branch, or one shortened by an Intuitive Leap
+style jewel. A preview built on the raw path would be right almost always
+and wrong on the builds that care.
+
+Checked rather than assumed: preview a node, allocate it, and compare.
+Predicted 4 points, cost 4, and every node in the previewed route came back
+allocated.
+
 ### What the tree still lacks
 
 - **The glow behind allocated notables** (`activeEffectImage`). It is 60
   slices of 784×776 — 146 MB of pixels for pure decoration — so the
   extractor skips that atlas outright.
-- **Path preview.** PoB dims the route a click would allocate before you
-  click it. Hovering here rings the node and names it, nothing more.
+- **Path preview.** Done — see below.
 - **Attribute and multiple-choice nodes.** 371 nodes carry `options`; the
   variant for the current class is what the engine reports, and switching
   between them needs a modifier-key gesture that has no equivalent here yet.

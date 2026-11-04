@@ -494,6 +494,44 @@ function api.tree(build)
 	}
 end
 
+--- The route a click would take, as the engine would take it.
+---
+--- GetEffectiveAllocationPath, not `node.path`: AllocNode calls the former,
+--- and the two differ exactly where it matters -- a path that runs through
+--- a weapon-set branch, or one shortened by an Intuitive Leap style jewel.
+--- A preview built on the raw path would be right almost always and wrong
+--- on the builds that care.
+---
+--- One node at a time, on demand. Every reachable node's route at once is
+--- the whole tree several times over.
+function api.treePath(build, nodeId)
+	local spec = build and build.spec
+	local node = spec and spec.nodes and spec.nodes[tonumber(nodeId) or 0]
+	if not node then
+		return { ready = false, error = "no node with id " .. tostring(nodeId) }
+	end
+	if node.alloc then
+		return { ready = true, id = node.id, path = asArray({}), cost = 0, allocated = true }
+	end
+	if not node.path or #node.path == 0 then
+		return { ready = true, id = node.id, path = asArray({}), cost = 0, reachable = false }
+	end
+
+	local ok, path = pcall(spec.GetEffectiveAllocationPath, spec, node)
+	if not ok or not path then
+		return { ready = false, error = "the engine would not path to that node" }
+	end
+
+	local ids, cost = asArray({}), 0
+	for _, pathNode in ipairs(path) do
+		ids[#ids + 1] = pathNode.id
+		if not pathNode.alloc then
+			cost = cost + 1
+		end
+	end
+	return { ready = true, id = node.id, path = ids, cost = cost }
+end
+
 --- What is allocated, and what could be. Small, and changes on every click.
 ---
 --- `path` is PoB's own reachability answer, rebuilt by
@@ -510,7 +548,14 @@ function api.treeAlloc(build)
 		if node.alloc then
 			allocated[#allocated + 1] = id
 		elseif node.path and #node.path > 0 then
-			reachable[#reachable + 1] = id
+			-- Each reachable node travels with what clicking it would
+			-- cost. pathDist is PoB's own figure from the same search that
+			-- built the path: nodes already allocated weigh nothing, so it
+			-- is the number of new points, not the length of the route.
+			-- Sent with the allocation rather than asked for on hover,
+			-- because a round trip per mouse-move is not a thing worth
+			-- building to answer a number the engine already has.
+			reachable[#reachable + 1] = asArray({ id, node.pathDist or #node.path })
 		end
 	end
 

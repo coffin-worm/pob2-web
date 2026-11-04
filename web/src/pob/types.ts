@@ -260,8 +260,12 @@ export type TreeAllocSnapshot =
   | {
       ready: true;
       allocated: number[];
-      /** Nodes PoB can path to from the allocated tree, so clickable. */
-      reachable: number[];
+      /**
+       * Nodes PoB can path to from the allocated tree, so clickable, each
+       * with what clicking it would cost in new points. The cost is the
+       * engine's `pathDist` from the same search that built the path.
+       */
+      reachable: [number, number][];
       classId: number;
       ascendClassId: number;
       /** Follows the class rather than the tree, so it rides with this. */
@@ -694,4 +698,17 @@ export type ItemEdit =
       /** Items whose variants are several independent choices; the simple
        * variant control does not apply to them. */
       variantGroups?: boolean;
+    };
+
+/** The route a click would take, as the engine would take it. */
+export type TreePathPreview =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      id: number;
+      /** Node ids, target first. Empty when already allocated. */
+      path: number[];
+      cost: number;
+      allocated?: boolean;
+      reachable?: boolean;
     };

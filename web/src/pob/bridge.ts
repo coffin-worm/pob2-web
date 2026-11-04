@@ -16,6 +16,7 @@ import type {
   SkillsSnapshot,
   StatsSnapshot,
   TreeAllocSnapshot,
+  TreePathPreview,
   TreeSnapshot,
 } from './types';
 
@@ -73,6 +74,9 @@ export const bridge = {
 
   /** The tree's geometry. ~420 kB, fetched once — it does not change. */
   tree: () => request<TreeSnapshot>('/tree'),
+
+  /** The route a click on one node would allocate, and what it costs. */
+  treePath: (node: number) => request<TreePathPreview>(`/tree/path?node=${node}`),
 
   /** What is allocated on it. Small, and changes on every click. */
   treeAlloc: () => request<TreeAllocSnapshot>('/tree/alloc'),

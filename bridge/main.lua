@@ -190,6 +190,11 @@ end
 --- The Calcs tab. Much the most expensive route: it runs CheckFlag over a
 --- thousand rows and formats every one that survives, so the UI fetches it
 --- on demand rather than on the 1s poll the other two use.
+--- The route a click on one node would allocate, and what it would cost.
+routes["GET /tree/path"] = function(_, query)
+	return 200, api.treePath(currentBuild(), query.node)
+end
+
 routes["GET /calcs"] = function()
 	local started = os.clock()
 	local calcs = api.calcs(currentBuild())
