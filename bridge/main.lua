@@ -358,6 +358,25 @@ routes["GET /notes"] = function()
 	return 200, api.notes(currentBuild())
 end
 
+--- The bench item, as something being crafted: its affix rows and what is
+--- in them. Crafting in PoB always happens on the bench, never on an item
+--- already in a slot.
+routes["GET /item/craft"] = function()
+	return 200, api.craftState(currentBuild())
+end
+
+--- Everything one affix row could hold. Its own route because the list
+--- depends on what the other rows are holding, so it has to be asked for
+--- again after every change.
+routes["GET /craft/affixes"] = function(_, query)
+	return 200, api.craftAffixes(currentBuild(), query.kind, query.index, query.q)
+end
+
+--- The bases an item can be crafted on, by type.
+routes["GET /craft/bases"] = function(_, query)
+	return 200, api.craftBases(currentBuild(), query.type)
+end
+
 --- What flipping one configuration option would do, without doing it.
 routes["GET /config/whatif"] = function(_, query)
 	local started = os.clock()
@@ -612,6 +631,7 @@ function love.load()
 	log("  GET /items/search /items/filters")
 	log("  GET /item/edit /item/staged")
 	log("  GET /skills /skills/group /gem /gems/search   GET /config /notes")
+	log("  GET /item/craft /craft/affixes /craft/bases")
 	log("  GET /config/whatif /skills/whatif /tree/whatif /items/whatif /gem/whatif")
 	log("  GET /code /code/inspect   POST /code/import /code/character")
 	log("  GET /builds /compare")

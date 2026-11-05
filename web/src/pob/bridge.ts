@@ -13,6 +13,9 @@ import type {
   ItemFilterOptions,
   ItemFilters,
   ItemSearchSnapshot,
+  CraftAffixes,
+  CraftBases,
+  CraftState,
   NotesSnapshot,
   ItemsSnapshot,
   GemSearchSnapshot,
@@ -178,6 +181,25 @@ export const bridge = {
 
   /** The build's notes, with the palette needed to colour them. */
   notes: () => request<NotesSnapshot>('/notes'),
+
+  /** The bench item, as something being crafted. */
+  craftState: () => request<CraftState>('/item/craft'),
+
+  /**
+   * Everything one affix slot could hold.
+   *
+   * Its own call because the list depends on what the other slots hold,
+   * so it has to be asked for again after every change.
+   */
+  craftAffixes: (kind: string, index: number, query?: string) =>
+    request<CraftAffixes>(
+      `/craft/affixes?kind=${kind}&index=${index}` +
+        (query ? `&q=${encodeURIComponent(query)}` : ''),
+    ),
+
+  /** The bases an item can be crafted on, by type. */
+  craftBases: (type?: string) =>
+    request<CraftBases>('/craft/bases' + (type ? `?type=${encodeURIComponent(type)}` : '')),
 
   /**
    * What a build code contains, without importing it.

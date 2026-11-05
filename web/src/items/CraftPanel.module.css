@@ -1,0 +1,363 @@
+/* Crafting the bench item.
+ *
+ * The desktop tab stacks nine affix dropdowns down one 418px column with a
+ * slider under each. Here the two kinds are side by side, because the real
+ * constraint is "three prefixes and three suffixes" and a single column
+ * hides that. */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.base {
+  color: var(--text-primary);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.quality {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.corrupted {
+  color: var(--danger);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.note {
+  margin: 0;
+  max-width: 64ch;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+/* ------------------------------------------------------------ the slots */
+
+.columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.columnTitle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.used {
+  color: var(--text-disabled);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.row[data-empty] {
+  padding: 0;
+  background: transparent;
+  border-style: dashed;
+}
+
+.rowHead {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.rowName {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--stat-custom);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.rowName:hover {
+  color: var(--text-primary);
+}
+
+.line {
+  display: block;
+}
+
+.unknown {
+  color: var(--warning);
+}
+
+.add {
+  width: 100%;
+  padding: var(--space-3);
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.add:hover {
+  color: var(--text-primary);
+}
+
+.clear {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-disabled);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.clear:hover {
+  background: var(--bg-hover);
+  color: var(--danger);
+}
+
+/* --------------------------------------------------------- tier and roll */
+
+.dials {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.dial {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.dialName {
+  flex: none;
+  width: 34px;
+  color: var(--text-disabled);
+  font-size: var(--text-xs);
+}
+
+.tier,
+.roll {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.tier:disabled {
+  opacity: 0.4;
+}
+
+.dialValue {
+  flex: none;
+  min-width: 96px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.ilvl {
+  color: var(--text-disabled);
+}
+
+/* ----------------------------------------------------------- the picker */
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.pickerHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pickerSearch {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.pickerSearch:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+.pickerClose {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.option:last-of-type {
+  border-bottom: 0;
+}
+
+.option:hover {
+  background: var(--bg-hover);
+}
+
+.option[data-current] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.optionLabel {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.optionMeta {
+  display: flex;
+  gap: var(--space-3);
+  color: var(--text-disabled);
+  font-size: var(--text-xs);
+}
+
+.affixName {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.optionPreview {
+  color: var(--stat-custom);
+  font-size: var(--text-xs);
+}
+
+/* ------------------------------------------------------- the create form */
+
+.create {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+
+.createRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.nameInput {
+  flex: 1;
+  min-width: 180px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-base);
+}
+
+.nameInput:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}

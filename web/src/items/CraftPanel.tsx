@@ -1,0 +1,348 @@
+import { useEffect, useRef, useState } from 'react';
+import { bridge } from '../pob/bridge';
+import { useCraftStore } from '../pob/craftStore';
+import { Select } from '../ui/Select';
+import type { CraftAffixOption, CraftAffixRow } from '../pob/types';
+import styles from './CraftPanel.module.css';
+
+/**
+ * Crafting the item on the bench.
+ *
+ * The desktop tab draws nine affix dropdowns down one column, each with a
+ * slider under it, and the slider does two jobs at once: it spans every
+ * tier of the chosen modifier, so its left third is tier 1 at every roll,
+ * its next third tier 2, and so on. That is why PoB has to flip the range
+ * on tiers whose values run the other way, to keep one control monotonic
+ * over what is really two numbers.
+ *
+ * They are two numbers here. An affix slot is stored as `{ modId, range }`,
+ * which is a tier and where in that tier's range it rolled, so the tier is
+ * a stepper and the roll is its own slider. Nothing about the file changes;
+ * only the control does.
+ *
+ * Which modifiers a slot may hold is never decided here. That is
+ * `UpdateAffixControl` in the engine, which knows the base's spawn weights
+ * and which groups the other slots have used up.
+ */
+
+function rollLabel(roll: number) {
+  return `${Math.round(roll * 100)}%`;
+}
+
+/** The list a slot opens onto: every modifier it could hold. */
+function Picker({
+  kind,
+  index,
+  selected,
+  onPick,
+  onClose,
+}: {
+  kind: 'prefix' | 'suffix';
+  index: number;
+  selected?: string;
+  onPick: (option: CraftAffixOption) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [options, setOptions] = useState<CraftAffixOption[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    input.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    const timer = window.setTimeout(() => {
+      void bridge
+        .craftAffixes(kind, index, query)
+        .then((found) => {
+          if (!live) return;
+          setOptions(found.options ?? []);
+          setError(found.ready ? null : (found.error ?? 'The engine could not answer that.'));
+        })
+        .catch((reason: unknown) => {
+          if (live) setError(reason instanceof Error ? reason.message : String(reason));
+        });
+    }, query ? 140 : 0);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [kind, index, query]);
+
+  return (
+    <div className={styles.picker}>
+      <div className={styles.pickerHead}>
+        <input
+          ref={input}
+          className={styles.pickerSearch}
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={`Search ${kind}es this base can roll`}
+          aria-label={`Search ${kind} modifiers`}
+          onKeyDown={(event) => event.key === 'Escape' && onClose()}
+        />
+        <button className={styles.pickerClose} onClick={onClose} aria-label="Close">
+          ×
+        </button>
+      </div>
+
+      {error && <p className={styles.note}>{error}</p>}
+      {!error && options === null && <p className={styles.note}>Asking the engine…</p>}
+      {!error && options?.length === 0 && (
+        <p className={styles.note}>
+          Nothing matches. This base can only roll what the game lets it, and the other
+          slots have already used up their groups.
+        </p>
+      )}
+
+      <div className={styles.options}>
+        {options?.map((option) => (
+          <button
+            key={option.key}
+            className={styles.option}
+            data-current={option.modIds.includes(selected ?? '') || undefined}
+            onClick={() => onPick(option)}
+          >
+            <span className={styles.optionLabel}>{option.label}</span>
+            <span className={styles.optionMeta}>
+              {option.tierCount > 1 ? `${option.tierCount} tiers` : 'one tier'}
+              {option.affix && <span className={styles.affixName}>{option.affix}</span>}
+            </span>
+            {/* What the top tier reads, because the label above hides the
+                numbers behind `#` as soon as a modifier has more than one
+                tier. */}
+            {option.preview.length > 0 && (
+              <span className={styles.optionPreview}>{option.preview.join(' · ')}</span>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Row({
+  kind,
+  row,
+  busy,
+  open,
+  onOpen,
+  onClose,
+  onSet,
+}: {
+  kind: 'prefix' | 'suffix';
+  row: CraftAffixRow;
+  busy: boolean;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onSet: (modId: string | null, roll?: number) => void;
+}) {
+  // Where the roll slider is while it is being dragged. Every commit
+  // rebuilds the item, so the engine hears about it once, on release.
+  const [dragging, setDragging] = useState<number | null>(null);
+  const roll = dragging ?? row.roll ?? 0.5;
+
+  const commit = () => {
+    if (dragging === null || !row.modId) return;
+    const at = dragging;
+    setDragging(null);
+    if (at !== row.roll) onSet(row.modId, at);
+  };
+
+  if (!row.modId) {
+    return (
+      <div className={styles.row} data-empty>
+        <button className={styles.add} onClick={onOpen} disabled={busy}>
+          {open ? 'Close' : `Add a ${kind}`}
+        </button>
+        {open && (
+          <Picker
+            kind={kind}
+            index={row.index}
+            onPick={(option) => onSet(option.modIds[option.modIds.length - 1])}
+            onClose={onClose}
+          />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.row}>
+      <div className={styles.rowHead}>
+        <button className={styles.rowName} onClick={onOpen} disabled={busy} title="Change it">
+          {row.unknown ? (
+            <span className={styles.unknown}>
+              {row.modId}: this base can no longer roll it
+            </span>
+          ) : (
+            (row.lines ?? []).map((line, i) => (
+              <span key={i} className={styles.line}>
+                {line}
+              </span>
+            ))
+          )}
+        </button>
+        <button
+          className={styles.clear}
+          onClick={() => onSet(null)}
+          disabled={busy}
+          aria-label={`Remove this ${kind}`}
+          title="Remove it"
+        >
+          ×
+        </button>
+      </div>
+
+      {row.tierCount !== undefined && row.tier !== undefined && (
+        <div className={styles.dials}>
+          {/* Tier and roll are the two numbers a slot actually stores. The
+              desktop app runs them together on one slider. */}
+          <label className={styles.dial}>
+            <span className={styles.dialName}>Tier</span>
+            <input
+              className={styles.tier}
+              type="range"
+              min={1}
+              max={row.tierCount}
+              step={1}
+              value={row.tier}
+              disabled={busy || row.tierCount === 1}
+              onChange={(event) => {
+                const tier = Number(event.target.value);
+                const id = row.modIds?.[tier - 1];
+                if (id) onSet(id, row.roll);
+              }}
+              aria-label="Tier"
+            />
+            <span className={styles.dialValue}>
+              {row.tier}/{row.tierCount}
+              {row.level !== undefined && (
+                <span className={styles.ilvl}> at level {row.level}</span>
+              )}
+            </span>
+          </label>
+
+          <label className={styles.dial}>
+            <span className={styles.dialName}>Roll</span>
+            <input
+              className={styles.roll}
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={roll}
+              disabled={busy}
+              onChange={(event) => setDragging(Number(event.target.value))}
+              onPointerUp={commit}
+              onKeyUp={commit}
+              onBlur={commit}
+              aria-label="Roll within the tier"
+            />
+            <span className={styles.dialValue}>{rollLabel(roll)}</span>
+          </label>
+        </div>
+      )}
+
+      {open && (
+        <Picker
+          kind={kind}
+          index={row.index}
+          selected={row.modId}
+          onPick={(option) => onSet(option.modIds[option.modIds.length - 1])}
+          onClose={onClose}
+        />
+      )}
+    </div>
+  );
+}
+
+export function CraftPanel({ onRefusal }: { onRefusal: (reason: string | null) => void }) {
+  const state = useCraftStore((s) => s.state);
+  const busy = useCraftStore((s) => s.busy);
+  const refresh = useCraftStore((s) => s.refresh);
+  const setAffix = useCraftStore((s) => s.setAffix);
+  const setQuality = useCraftStore((s) => s.setQuality);
+
+  const [open, setOpen] = useState<string | null>(null);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  if (!state?.ready) return null;
+
+  const apply = (kind: 'prefix' | 'suffix', index: number) =>
+    (modId: string | null, roll?: number) => {
+      setOpen(null);
+      void setAffix(kind, index, modId, roll).then(onRefusal);
+    };
+
+  const column = (kind: 'prefix' | 'suffix', rows: CraftAffixRow[]) => (
+    <section className={styles.column}>
+      <h4 className={styles.columnTitle}>
+        {kind === 'prefix' ? 'Prefixes' : 'Suffixes'}
+        <span className={styles.used}>
+          {rows.filter((row) => row.modId).length} of {rows.length}
+        </span>
+      </h4>
+      {rows.map((row) => {
+        const id = `${kind}:${row.index}`;
+        return (
+          <Row
+            key={id}
+            kind={kind}
+            row={row}
+            busy={busy}
+            open={open === id}
+            onOpen={() => setOpen(open === id ? null : id)}
+            onClose={() => setOpen(null)}
+            onSet={apply(kind, row.index)}
+          />
+        );
+      })}
+    </section>
+  );
+
+  return (
+    <div className={styles.panel}>
+      <div className={styles.head}>
+        <h3 className={styles.title}>
+          Crafting <span className={styles.base}>{state.baseName}</span>
+        </h3>
+        {state.qualityEditable && (
+          <label className={styles.quality}>
+            <span className={styles.dialName}>Quality</span>
+            <Select
+              value={state.quality ?? 0}
+              options={[0, 5, 10, 15, 20, 25, 30].map((q) => ({ id: q, name: `${q}%` }))}
+              onChange={(q) => void setQuality(q).then(onRefusal)}
+              disabled={busy}
+              aria-label="Quality"
+              width={88}
+            />
+          </label>
+        )}
+        {state.corrupted && <span className={styles.corrupted}>corrupted</span>}
+      </div>
+
+      {!state.crafted ? (
+        <p className={styles.note}>
+          This item has no affix slots. PoB gives them only to a magic or rare item made
+          in its craft dialog: a unique, or a rare copied out of the game, carries its
+          modifiers as text instead, which the box below edits.
+        </p>
+      ) : (
+        <div className={styles.columns}>
+          {column('prefix', state.prefixes ?? [])}
+          {column('suffix', state.suffixes ?? [])}
+        </div>
+      )}
+    </div>
+  );
+}

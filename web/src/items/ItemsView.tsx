@@ -7,6 +7,8 @@ import { Button } from '../ui/Button';
 import { WhatIf } from '../ui/WhatIf';
 import { bridge } from '../pob/bridge';
 import { ItemEditor } from './ItemEditor';
+import { CraftNew } from './CraftNew';
+import { CraftPanel } from './CraftPanel';
 import { ItemFinder } from './ItemFinder';
 import { StagedItem } from './StagedItem';
 import { Lines, blocksOf } from '../ui/TooltipLines';
@@ -75,6 +77,7 @@ export function ItemsView() {
   const [refusal, setRefusal] = useState<string | null>(null);
   const [paste, setPaste] = useState('');
   const [showPaste, setShowPaste] = useState(false);
+  const [showCraft, setShowCraft] = useState(false);
   const [editing, setEditing] = useState(false);
   const detailRef = useRef<HTMLDivElement>(null);
 
@@ -166,10 +169,17 @@ export function ItemsView() {
           ]}
         />
         <div className={styles.barSpacer} />
+        <Button onClick={() => setShowCraft((open) => !open)}>
+          {showCraft ? 'Close' : 'Craft an item'}
+        </Button>
         <Button onClick={() => setShowPaste((open) => !open)}>
           {showPaste ? 'Close' : 'Paste item'}
         </Button>
       </div>
+
+      {showCraft && (
+        <CraftNew onDone={() => setShowCraft(false)} onRefusal={setRefusal} />
+      )}
 
       {showPaste && (
         <form
@@ -207,12 +217,18 @@ export function ItemsView() {
           the decision in front of you and the rest of the screen is
           reference. */}
       {staged?.ready && (
-        <StagedItem
-          staged={staged}
-          busy={stagedLoading}
-          onEquip={(slot) => void equipStaged(slot).then(setRefusal)}
-          onDiscard={() => void clearStaged().then(setRefusal)}
-        />
+        <>
+          <StagedItem
+            staged={staged}
+            busy={stagedLoading}
+            onEquip={(slot) => void equipStaged(slot).then(setRefusal)}
+            onDiscard={() => void clearStaged().then(setRefusal)}
+          />
+          {/* Under the item rather than beside it: the affix rows are what
+              you change and the tooltip above is what changes, so they
+              read top to bottom. */}
+          <CraftPanel onRefusal={setRefusal} />
+        </>
       )}
 
       {refusal && (

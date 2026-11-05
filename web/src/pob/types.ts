@@ -636,6 +636,94 @@ export interface ItemSearchSnapshot {
   buildMs?: number;
 }
 
+/* ---------------------------------------------------------- the crafting */
+
+/** One prefix or suffix slot on the bench item. */
+export interface CraftAffixRow {
+  index: number;
+  /** The tier in the slot. Absent when the slot is empty. */
+  modId?: string;
+  /** The modifier's own name, as the game gives it ("of the Brute"). */
+  affix?: string;
+  /** What it is mutually exclusive with. */
+  group?: string;
+  /** The item level this tier starts at. */
+  level?: number;
+  /** The series label, with `#` where the tiers differ. */
+  label?: string;
+  /** What it reads at its current roll. */
+  lines?: string[];
+  /** Which tier this is, out of how many, 1 being the lowest. */
+  tier?: number;
+  tierCount?: number;
+  /** Every tier of this modifier, lowest first. */
+  modIds?: string[];
+  /** Where in this tier's range it sits: 0 the bottom, 1 the top. */
+  roll?: number;
+  /** Set when the item can no longer roll what is in the slot. */
+  unknown?: boolean;
+}
+
+export interface CraftState {
+  ready: boolean;
+  name?: string;
+  baseName?: string;
+  itemType?: string;
+  rarity?: string;
+  /**
+   * Whether this item has affix slots at all. True only for a magic or
+   * rare item made in the craft dialog: a unique, or a rare copied out of
+   * the game, carries its modifiers as text instead.
+   */
+  crafted?: boolean;
+  affixLimit?: number;
+  corrupted?: boolean;
+  quality?: number;
+  qualityEditable?: boolean;
+  prefixes?: CraftAffixRow[];
+  suffixes?: CraftAffixRow[];
+}
+
+/** One modifier a slot could hold, with all of its tiers. */
+export interface CraftAffixOption {
+  key: string;
+  label: string;
+  affix: string;
+  /** Lowest tier first. */
+  modIds: string[];
+  tierCount: number;
+  /** The item level each tier starts at, in the same order. */
+  levels: number[];
+  haveRange?: boolean;
+  /** What the top tier reads at a middling roll. */
+  preview: string[];
+}
+
+export interface CraftAffixes {
+  ready: boolean;
+  error?: string;
+  kind?: string;
+  index?: number;
+  options?: CraftAffixOption[];
+  total?: number;
+  /** What is in the slot now, so the list can mark it. */
+  selected?: string;
+}
+
+export interface CraftBase {
+  name: string;
+  label: string;
+  level?: number;
+}
+
+export interface CraftBases {
+  ready: boolean;
+  types?: string[];
+  type?: string;
+  bases?: CraftBase[];
+  rarities?: string[];
+}
+
 /* ------------------------------------------------------------- the notes */
 
 /** One colour the desktop Notes tab offers, as PoB names it. */

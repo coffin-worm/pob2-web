@@ -609,13 +609,85 @@ sidebar's Evasion rating from 113 to 137 and rewrote the item's own
 `Evasion:` line from 106 to 130; adding `+200 to maximum Life` to the text
 took Total Life from 91 to 301.
 
+### Crafting, and one slider doing two jobs
+
+The largest gap on this screen, and the one the desktop app spends the
+most surface on. It is now partly closed: an item can be made from a base
+and given prefixes and suffixes, which is the loop people actually want.
+Runes, anoints and corruption are still only reachable through the text
+box.
+
+Crafting in PoB happens on `displayItem` and nowhere else, which is the
+same bench this app already stages pasted and database items on. So the
+affix rows sit under the bench tooltip rather than anywhere new, and the
+thing you change and the thing that changes read top to bottom.
+
+**Making the item** is PoB's own dialog, driven rather than reimplemented.
+The item is built by `makeItem`, a local closure inside `CraftItem`
+carrying sixty lines of what a base implies: the socket count a martial
+weapon gets, the implicit lines parsed off the base, quality
+normalisation, the downgrade a flask takes when you ask for a rare one,
+the Transcendent Limb forced to normal. There is no way to reach a local
+closure, so the dialog is opened, its dropdowns are set through their own
+callbacks and its own Create button is pressed. The type dropdown is what
+rebuilds the base list, so the order is not arbitrary.
+
+**Which modifiers a slot may hold** is never decided here either.
+`UpdateAffixControl` fills a dropdown rather than returning a list, so it
+is handed a stub carrying the four fields it writes to and the list is
+read back off it. What it does is the whole rule: `GetModSpawnWeight`
+against the base's own tags, the groups the other slots have already used
+up, the tags those slots add, and the grouping of a modifier's tiers into
+one entry. A Gold Ring offers nineteen prefixes; put `+# to maximum Life`
+in one slot and it disappears from the others, because they share a group.
+
+Worth saying because it is surprising: none of this filters by item level.
+Every modifier carries a `level` and PoB ignores it here, so a level 1
+ring is offered the level 81 tier. That is the desktop app's behaviour, so
+it is this one's; the tier levels are reported rather than enforced.
+
+### Two numbers, two controls
+
+An affix slot is stored as `{ modId, range }`: which tier of which
+modifier, and where in that tier's own range it rolled. The desktop app
+puts both on a single slider spanning every tier at once, so its left
+third is tier 1 at every roll and its next third tier 2. That is one
+control doing two jobs, and it costs something real: PoB has to flip the
+range on tiers whose values run the other way, just to keep that one
+slider monotonic over what are really two independent numbers.
+
+They are two controls here, a tier stepper and a roll slider, which is how
+they are stored. Nothing about the file changes. Dropping a Life prefix
+from tier 8 to tier 3 gives `+35 to maximum Life`; pushing the roll to the
+top gives `+39`, and the flip has nothing left to correct.
+
+The payoff is the bench underneath. Crafting a rare Gold Ring with a tier
+3 Life prefix and a Fire Resistance suffix, the tooltip above the rows
+updates as you go and runs the whole slot comparison with it: `+41 Total
+Life (+63.1%)`, `+43% Fire Resistance`, against both ring slots, in 4ms.
+The desktop app can tell you what an item would be worth too, but only
+after you equip it, read the sidebar and put the old one back.
+
 ### What it does not do
 
-- **No crafting interface.** The real tab has affix pickers, a mod
-  browser, enchantment and corruption menus, catalysts, rune sockets and
-  a corrupt popup. All of it is reachable through the text box, none of it
-  is reachable by pointing. This is the largest single gap left on this
-  screen, and the one the desktop app spends the most surface on.
+- **No runes or soul cores.** `GetValidRunesForItem` is self-contained and
+  the apply is three lines, so this is the next piece.
+- **No anoints.** `anointItem` is cleanly callable; only the notable list
+  needs exposing.
+- **No corrupting.** PoB's own code there still says it is PoE 1's, with a
+  two-tab dialog and per-unique roll ranges.
+- **No catalysts.** The controls exist but the list is a hardcoded
+  thirteen-entry PoE 1 one.
+- **No item level**, because PoB has no control for it either: the field is
+  parsed and written back but never edited, and nothing reads it.
+- **No "sort by stat" on the affix list.** PoB can rank a slot's
+  candidates by running the calculator on each, the same way the item
+  database sort works here. The hook is in `UpdateAffixControl` and is not
+  used from this side.
+- **Custom modifiers** are still text only, as they are on the Config tab.
+
+### What it does not do
+
 - **The editor opens from the bench and the item list only.** In the real
   tab it also opens by double-clicking a database row.
 - **No item sets beyond switching between them**, and no shared item list.

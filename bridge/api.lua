@@ -2101,6 +2101,276 @@ function api.notes(build)
 	}
 end
 
+----------------------------------------------------------- crafting
+
+-- Prefixes and suffixes are two tables on the item with the same shape, so
+-- everything below takes the pair as one argument.
+local AFFIX_TABLE = { prefix = "prefixes", suffix = "suffixes" }
+local AFFIX_TYPE = { prefix = "Prefix", suffix = "Suffix" }
+
+--- How many rows of one kind this item has.
+---
+--- `limit` is set per item where it differs; otherwise it is half the
+--- total, because an item's affix budget is split evenly between the two.
+local function affixLimit(item, outputTable)
+	local table_ = item[outputTable]
+	return (table_ and table_.limit) or math.floor((item.affixLimit or 0) / 2)
+end
+
+--- The candidates for one affix row, as PoB builds them.
+---
+--- `UpdateAffixControl` fills a DropDownControl rather than returning a
+--- list, so it is handed a stub carrying the four fields it writes to and
+--- the list is read back off it. What it does is the whole of PoB's affix
+--- rule: which mods this base can roll at all (`GetModSpawnWeight` against
+--- the base's tags), which groups the other rows have already used up, the
+--- tags those rows add, and the grouping of a mod's tiers into one entry.
+--- None of that is worth a second opinion.
+---
+--- Note what it does *not* do: filter by item level. The data carries a
+--- `level` on every mod and PoB ignores it here, so a level 1 ring offers
+--- the level 81 tier. That is the desktop app's behaviour and this reports
+--- the tier levels rather than quietly disagreeing with it.
+local function affixControl(tab, item, kind, index)
+	local control = { slider = {} }
+	local ok, err = pcall(
+		tab.UpdateAffixControl, tab, control, item, AFFIX_TYPE[kind], AFFIX_TABLE[kind], index
+	)
+	if not ok then
+		return nil, tostring(err)
+	end
+	return control
+end
+
+--- What a mod reads at a given roll.
+---
+--- The mod's lines carry their ranges as `(5-8)`; applyRange resolves them
+--- the same way the item's own tooltip does, so a row can say "+7 to
+--- Strength" rather than making the reader interpolate.
+local function modLines(mod, roll)
+	local lines = asArray({})
+	for _, line in ipairs(mod or {}) do
+		local ok, resolved = pcall(itemLib.applyRange, line, roll or 0.5)
+		lines[#lines + 1] = strip(ok and resolved or line)
+	end
+	return lines
+end
+
+--- One affix row: what is in it, and where that sits among the tiers.
+local function affixRow(tab, item, kind, index)
+	local slot = item[AFFIX_TABLE[kind]][index] or {}
+	local row = { index = index }
+
+	local modId = slot.modId
+	if not modId or modId == "None" then
+		return row
+	end
+
+	local mod = item.affixes[modId]
+	if not mod then
+		-- An affix the item can no longer roll, which happens when a base
+		-- is swapped under a saved craft. Named rather than hidden.
+		row.modId = modId
+		row.unknown = true
+		return row
+	end
+
+	-- A roll can arrive outside 0 to 1 from an imported legacy item. The
+	-- value is reported as it is rather than clamped, because clamping it
+	-- here would silently rewrite the item on the next read.
+	local roll = type(slot.range) == "table" and slot.range[1] or slot.range
+	row.modId = modId
+	row.affix = strip(mod.affix or "")
+	row.group = mod.group
+	row.level = mod.level
+	row.roll = type(roll) == "number" and roll or nil
+	row.lines = modLines(mod, roll)
+
+	-- Which tier this is, out of how many, which needs the row's own
+	-- candidate list because the tiers are grouped there.
+	local control = affixControl(tab, item, kind, index)
+	local entry = control and control.list and control.list[control.selIndex]
+	if type(entry) == "table" and entry.modList then
+		row.label = strip(entry.label or "")
+		row.tierCount = #entry.modList
+		for tier, id in ipairs(entry.modList) do
+			if id == modId then
+				row.tier = tier
+				break
+			end
+		end
+		row.modIds = asArray(entry.modList)
+	end
+	return row
+end
+
+--- The item on the bench, as something being crafted.
+---
+--- Crafting in PoB always happens on `displayItem`, never on an equipped
+--- item, which is the same bench this app already stages pasted and
+--- database items on. So this is a second view of one thing rather than a
+--- second place to put items.
+function api.craftState(build)
+	local tab = build and build.itemsTab
+	local item = tab and tab.displayItem
+	if not item then
+		return { ready = false }
+	end
+
+	local state = {
+		ready = true,
+		name = strip(item.name or item.title or item.baseName or ""),
+		baseName = strip(item.baseName or ""),
+		itemType = item.type,
+		rarity = item.rarity or "NORMAL",
+		-- Affix rows exist only for a crafted item, which in PoB means a
+		-- magic or rare one made in the craft dialog or parsed from text
+		-- that said so. A unique, or a rare copied out of the game, has
+		-- its modifiers as plain text and no slots to put them in.
+		crafted = item.crafted and true or false,
+		affixLimit = item.affixLimit,
+		corrupted = item.corrupted or nil,
+		-- Quality is editable only where the base has any: a ring has
+		-- none, and offering the control anyway would be a lie.
+		quality = item.quality,
+		qualityEditable = (item.quality ~= nil and item.base and item.base.quality) and true or nil,
+		prefixes = asArray({}),
+		suffixes = asArray({}),
+	}
+
+	if item.crafted then
+		for kind, outputTable in pairs(AFFIX_TABLE) do
+			local rows = state[outputTable]
+			for index = 1, affixLimit(item, outputTable) do
+				rows[#rows + 1] = affixRow(tab, item, kind, index)
+			end
+		end
+	end
+
+	return state
+end
+
+--- Everything one affix row could hold.
+---
+--- Its own endpoint rather than part of the state above, because the list
+--- runs to a few hundred entries per row and depends on what the other
+--- rows are holding: it has to be asked for again after every change, and
+--- sending six of them on every read would be most of the payload.
+---
+--- Each option is one modifier with all of its tiers, lowest first. The
+--- desktop app puts tier and roll on a single slider spanning every tier,
+--- which is one control doing two jobs; the two numbers are reported apart
+--- here, since that is how they are stored.
+function api.craftAffixes(build, kind, index, query)
+	local tab = build and build.itemsTab
+	local item = tab and tab.displayItem
+	kind = tostring(kind or ""):lower()
+	index = tonumber(index)
+	if not item or not AFFIX_TABLE[kind] or not index then
+		return { ready = false }
+	end
+	if not item.crafted then
+		return { ready = false, error = "this item is not crafted, so it has no affix slots" }
+	end
+	if index < 1 or index > affixLimit(item, AFFIX_TABLE[kind]) then
+		return { ready = false, error = "no " .. kind .. " slot " .. tostring(index) }
+	end
+
+	local control, err = affixControl(tab, item, kind, index)
+	if not control then
+		return { ready = false, error = err }
+	end
+
+	local needle = tostring(query or ""):lower()
+	local options, total = asArray({}), 0
+	for _, entry in ipairs(control.list or {}) do
+		-- The first entry is the string "None", which is the clear
+		-- gesture rather than an option.
+		if type(entry) == "table" and entry.modList and entry.modList[1] then
+			local top = item.affixes[entry.modList[#entry.modList]]
+			local label = strip(entry.label or "")
+			local affix = strip((top and top.affix) or "")
+			if needle == "" or label:lower():find(needle, 1, true)
+				or affix:lower():find(needle, 1, true)
+			then
+				total = total + 1
+				options[#options + 1] = {
+					-- The lowest tier's id, which is stable and unique
+					-- enough to key a list row on.
+					key = entry.modList[1],
+					label = label,
+					affix = affix,
+					modIds = asArray(entry.modList),
+					tierCount = #entry.modList,
+					-- Reported so a row can say "tier 9, level 81" rather
+					-- than leaving the reader to guess what a tier costs.
+					levels = (function()
+						local levels = asArray({})
+						for i, id in ipairs(entry.modList) do
+							local mod = item.affixes[id]
+							levels[i] = mod and mod.level or 0
+						end
+						return levels
+					end)(),
+					haveRange = entry.haveRange and true or nil,
+					-- What the top tier would read at a middling roll,
+					-- which is what the label's `#` placeholders hide.
+					preview = modLines(top, 0.5),
+				}
+			end
+		end
+	end
+
+	return {
+		ready = true,
+		kind = kind,
+		index = index,
+		options = options,
+		total = total,
+		-- What is in the row now, so the list can mark it.
+		selected = (item[AFFIX_TABLE[kind]][index] or {}).modId,
+	}
+end
+
+--- The bases an item can be crafted on.
+---
+--- PoB groups every base by type and subtype into `itemBaseLists`, sorted
+--- by required level, and that grouping is what its craft dialog offers.
+--- Read rather than rebuilt: which bases exist, and which are hidden, is
+--- game data.
+function api.craftBases(build, typeName)
+	local data = build and build.data
+	if not data or not data.itemBaseTypeList then
+		return { ready = false }
+	end
+
+	local types = asArray({})
+	for _, name in ipairs(data.itemBaseTypeList) do
+		types[#types + 1] = name
+	end
+
+	local bases = asArray({})
+	typeName = tostring(typeName or "")
+	for _, entry in ipairs(data.itemBaseLists[typeName] or {}) do
+		bases[#bases + 1] = {
+			name = entry.name,
+			label = strip(entry.label or entry.name),
+			level = entry.base and entry.base.req and entry.base.req.level or nil,
+		}
+	end
+
+	return {
+		ready = true,
+		types = types,
+		type = typeName ~= "" and typeName or nil,
+		bases = bases,
+		-- PoB's own four, in its own order. NORMAL and UNIQUE make an item
+		-- with no affix slots: the first has no modifiers to give and the
+		-- second carries its own as text.
+		rarities = asArray({ "NORMAL", "MAGIC", "RARE", "UNIQUE" }),
+	}
+end
+
 -------------------------------------------------------- import and export
 
 --- A build code is base64 of the deflated build XML, in the URL-safe
@@ -3306,6 +3576,187 @@ function commands.setNotes(build, value)
 	pcall(tab.SetShowColorCodes, tab, false)
 	edit:SetText(text)
 	tab.modFlag = (tab.lastContent ~= edit.buf)
+	return true
+end
+
+--- Create an item to craft on, and put it on the bench.
+---
+--- PoB's own dialog, driven rather than reimplemented. The item is built
+--- by `makeItem`, a local closure inside `CraftItem` carrying sixty lines
+--- of base handling: the socket count a martial weapon gets, the implicit
+--- lines parsed off the base, quality normalisation, the rarity downgrade
+--- flasks and charms get from rare to magic, the Transcendent Limb forced
+--- to normal. There is no way to reach it except through the dialog it
+--- lives in, so the dialog is opened, its dropdowns are set through their
+--- own callbacks, and its own Create button is pressed.
+---
+--- The type dropdown's callback is what rebuilds the base list, so the
+--- order below is not arbitrary: type first, then base.
+function commands.craftItem(build, value)
+	local tab = build.itemsTab
+	value = type(value) == "table" and value or {}
+
+	local opened = pcall(tab.CraftItem, tab)
+	local popup = main and main.popups and main.popups[1]
+	local controls = popup and popup.controls
+	if not opened or not controls or not controls.save then
+		if popup then pcall(main.ClosePopup, main) end
+		return nil, "the craft dialog did not open"
+	end
+
+	local ok, err = pcall(function()
+		local typeName = tostring(value.type or "")
+		local typeIndex
+		for i, name in ipairs(build.data.itemBaseTypeList or {}) do
+			if name == typeName then
+				typeIndex = i
+				break
+			end
+		end
+		if not typeIndex then
+			error("no item type named " .. typeName, 0)
+		end
+		controls.type.selIndex = typeIndex
+		controls.type.selFunc(typeIndex, typeName)
+
+		local baseName = tostring(value.base or "")
+		local baseIndex
+		for i, entry in ipairs(controls.base.list or {}) do
+			if entry.name == baseName then
+				baseIndex = i
+				break
+			end
+		end
+		if not baseIndex then
+			error("no base named " .. baseName .. " under " .. typeName, 0)
+		end
+		controls.base.selIndex = baseIndex
+
+		local rarity = tostring(value.rarity or "RARE"):upper()
+		local rarityIndex
+		for i, entry in ipairs(controls.rarity.list or {}) do
+			if tostring(entry.rarity or ""):upper() == rarity then
+				rarityIndex = i
+				break
+			end
+		end
+		if not rarityIndex then
+			error("no rarity named " .. rarity, 0)
+		end
+		controls.rarity.selIndex = rarityIndex
+
+		if type(value.name) == "string" and value.name:match("%S") then
+			controls.title:SetText(value.name)
+		end
+
+		-- Closes the dialog itself, builds the item and stages it.
+		controls.save.onClick()
+	end)
+
+	-- Create opens the text editor afterwards for a rarity that has no
+	-- affix slots, because on the desktop that is the only way to give it
+	-- modifiers. Here the bench already has a text box, so the second
+	-- dialog is closed: a popup left standing blocks every screen rather
+	-- than this one.
+	while main.popups[1] do
+		pcall(main.ClosePopup, main)
+	end
+
+	if not ok then
+		return nil, tostring(err)
+	end
+	return true
+end
+
+--- Put a modifier in an affix row, or take one out.
+---
+--- An affix slot is `{ modId, range }`: which tier of which modifier, and
+--- where in that tier's range it rolled, 0 for the bottom and 1 for the
+--- top. Setting the pair and calling `Craft()` is exactly what the desktop
+--- dropdown's own callback does; `Craft()` rebuilds the item's explicit
+--- modifier lines from the affix tables and leaves custom modifiers alone.
+---
+--- `modId` names a tier, not a modifier: the tiers of one modifier come
+--- back from /craft/affixes as `modIds`, lowest first.
+function commands.setCraftAffix(build, value)
+	local tab = build.itemsTab
+	local item = tab and tab.displayItem
+	if not item then
+		return nil, "nothing is on the bench"
+	end
+	if not item.crafted then
+		return nil, "this item is not crafted, so it has no affix slots"
+	end
+
+	value = type(value) == "table" and value or {}
+	local kind = tostring(value.kind or ""):lower()
+	local outputTable = AFFIX_TABLE[kind]
+	if not outputTable then
+		return nil, "expected kind prefix or suffix"
+	end
+	local index = tonumber(value.index)
+	if not index or index < 1 or index > affixLimit(item, outputTable) then
+		return nil, "no " .. kind .. " slot " .. tostring(value.index)
+	end
+
+	-- Carried across, because it is a property of the slot rather than of
+	-- the modifier in it: a fractured slot stays fractured.
+	local fractured = (item[outputTable][index] or {}).fractured
+
+	if value.modId == nil or value.modId == false or value.modId == "None" then
+		-- PoB's own empty value. Not nil, because the row has to stay
+		-- addressable for the next change.
+		item[outputTable][index] = { modId = "None", fractured = fractured }
+	else
+		local modId = tostring(value.modId)
+		if not item.affixes[modId] then
+			return nil, "this item cannot roll " .. modId
+		end
+		local roll = tonumber(value.roll)
+		if roll == nil then
+			local held = (item[outputTable][index] or {}).range
+			roll = type(held) == "number" and held or 0.5
+		end
+		item[outputTable][index] = {
+			modId = modId,
+			range = math.min(1, math.max(0, roll)),
+			fractured = fractured,
+		}
+	end
+
+	local ok, err = pcall(item.Craft, item)
+	if not ok then
+		return nil, tostring(err)
+	end
+	return true
+end
+
+--- Set the bench item's quality.
+---
+--- Two digits, as PoB's own edit box allows, and only where the base has
+--- quality at all. BuildAndParseRaw is what applies it: quality scales the
+--- base's own values rather than adding a modifier, so the item has to be
+--- rebuilt from its text rather than recrafted.
+function commands.setCraftQuality(build, value)
+	local tab = build.itemsTab
+	local item = tab and tab.displayItem
+	if not item then
+		return nil, "nothing is on the bench"
+	end
+	if item.quality == nil or not (item.base and item.base.quality) then
+		return nil, "this base has no quality"
+	end
+
+	local quality = tonumber(type(value) == "table" and value.quality or value)
+	if not quality then
+		return nil, "expected { quality = ... }"
+	end
+	item.quality = math.min(99, math.max(0, math.floor(quality)))
+
+	local ok, err = pcall(item.BuildAndParseRaw, item)
+	if not ok then
+		return nil, tostring(err)
+	end
 	return true
 end
 
