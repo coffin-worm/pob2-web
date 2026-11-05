@@ -1,0 +1,52 @@
+/* The engine's own tooltip, as lines.
+ *
+ * Moved here from ItemsView so the staged-item panel renders PoB's lines
+ * the same way the item panel does rather than keeping a second copy. The
+ * tone names below are also spelled out in four other stylesheets
+ * (sidebar, calcs, skills, compare); collapsing all five into one place is
+ * worth doing, and is not this change. */
+
+.line {
+  font-size: var(--text-base);
+  line-height: 1.5;
+}
+
+.line[data-size='title'] {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.line[data-centre='true'] {
+  text-align: center;
+}
+
+.rule {
+  height: 0;
+  margin: var(--space-3) 0;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* PoB's own colour names, mapped to this palette. The bridge classifies the
+ * engine's inline colour codes rather than passing hex through, so these are
+ * the same names the sidebar and Calcs board use. */
+
+.line[data-tone='dim'],
+.line[data-tone='disabled'] { color: var(--text-muted); }
+.line[data-tone='normal'] { color: var(--rarity-normal); }
+.line[data-tone='magic'] { color: var(--rarity-magic); }
+.line[data-tone='rare'] { color: var(--rarity-rare); }
+.line[data-tone='unique'] { color: var(--rarity-unique); }
+.line[data-tone='relic'] { color: var(--rarity-relic); }
+.line[data-tone='crafted'],
+.line[data-tone='enchanted'] { color: var(--rarity-crafted); }
+.line[data-tone='custom'] { color: var(--stat-custom); }
+.line[data-tone='source'] { color: var(--stat-source); }
+.line[data-tone='warning'] { color: var(--warning); }
+.line[data-tone='positive'] { color: var(--success); }
+.line[data-tone='negative'],
+.line[data-tone='unsupported'] { color: var(--danger); }
+.line[data-tone='fire'] { color: var(--dmg-fire); }
+.line[data-tone='cold'] { color: var(--dmg-cold); }
+.line[data-tone='lightning'] { color: var(--dmg-lightning); }
+.line[data-tone='chaos'] { color: var(--dmg-chaos); }

@@ -14,6 +14,7 @@ import type {
   GemSearchSnapshot,
   SkillDetail,
   SkillsSnapshot,
+  StagedItem,
   StatsSnapshot,
   TreeAllocSnapshot,
   TreePathPreview,
@@ -97,6 +98,15 @@ export const bridge = {
 
   /** What is editable about one item: text, modifier rolls, variant. */
   itemEdit: (id: number) => request<ItemEdit>(`/item/edit?id=${id}`),
+
+  /**
+   * The item on the bench, against every slot it fits.
+   *
+   * One full recalculation per candidate slot, so this is the most
+   * expensive read here. It is still cheaper than what it replaces, which
+   * was equipping the item to find out and unequipping it again.
+   */
+  stagedItem: () => request<StagedItem>('/item/staged'),
 
   /** PoB's unique and rare databases, by name. */
   itemSearch: (query: string) =>

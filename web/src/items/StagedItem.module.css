@@ -1,0 +1,200 @@
+/* The staged-item panel.
+ *
+ * Sits above the slot columns on the Items tab, because while something is
+ * on the bench it is the thing being decided and everything else is
+ * reference. It is the full width of the screen: the slot rows carry the
+ * engine's comparison lines, and those are sentences. */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  background: var(--bg-raised);
+  /* Marked rather than merely raised: this panel is a pending decision,
+   * not another section of the screen. */
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-lg);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.title {
+  flex: 1;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.name[data-tone='normal'] { color: var(--rarity-normal); }
+.name[data-tone='magic'] { color: var(--rarity-magic); }
+.name[data-tone='rare'] { color: var(--rarity-rare); }
+.name[data-tone='unique'] { color: var(--rarity-unique); }
+.name[data-tone='relic'] { color: var(--rarity-relic); }
+
+.hint {
+  margin: 0;
+  max-width: 78ch;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.note {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-sunken);
+  border-left: 2px solid var(--warning);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+/* The item on the left, the slots on the right. The item's tooltip has a
+ * natural width (PoB caps its own at 600px) and the slot list is the part
+ * that wants the room. */
+.body {
+  display: grid;
+  grid-template-columns: minmax(18rem, 24rem) 1fr;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.block {
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--border-subtle);
+}
+
+.block[data-rarity='normal'] { border-left-color: var(--rarity-normal); }
+.block[data-rarity='magic'] { border-left-color: var(--rarity-magic); }
+.block[data-rarity='rare'] { border-left-color: var(--rarity-rare); }
+.block[data-rarity='unique'] { border-left-color: var(--rarity-unique); }
+.block[data-rarity='relic'] { border-left-color: var(--rarity-relic); }
+
+.slots {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.slot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--bg-sunken);
+  border-radius: var(--radius);
+}
+
+/* The first row is the engine's own recommendation, so it is the one the
+ * eye should land on. */
+.slot:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.slotHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.slotLabel {
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+}
+
+.badge {
+  padding: 1px var(--space-2);
+  background: var(--bg-raised);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+
+/* Pushes the equip button to the far edge of the row. */
+.slotHead > button:last-child {
+  margin-left: auto;
+}
+
+.replaces {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.replaced[data-tone='normal'] { color: var(--rarity-normal); }
+.replaced[data-tone='magic'] { color: var(--rarity-magic); }
+.replaced[data-tone='rare'] { color: var(--rarity-rare); }
+.replaced[data-tone='unique'] { color: var(--rarity-unique); }
+.replaced[data-tone='relic'] { color: var(--rarity-relic); }
+
+/* Two columns where there is room: these lists run to a dozen lines and a
+ * single column pushes the next slot off the screen. */
+.compare {
+  columns: 2;
+  column-gap: var(--space-6);
+  margin-top: var(--space-1);
+}
+
+.unchanged,
+.bad {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.unchanged { color: var(--text-muted); }
+.bad { color: var(--danger); }
+
+.numbers {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin: var(--space-1) 0 0;
+  color: var(--text-disabled);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.cost {
+  margin: 0;
+  color: var(--text-disabled);
+  font-size: var(--text-xs);
+}
+
+/* One column below the point where the two would each be too narrow to
+ * read. The item tooltip goes first, as it does on the desktop. */
+@media (max-width: 68rem) {
+  .body {
+    grid-template-columns: 1fr;
+  }
+
+  .compare {
+    columns: 1;
+  }
+}

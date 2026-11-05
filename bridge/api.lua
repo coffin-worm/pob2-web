@@ -945,6 +945,11 @@ local function tooltipLines(tooltip)
 			lines[#lines + 1] = { separator = true, block = line.block or 1 }
 		elseif toneOf(line.text) == "tip" then
 			tips = tips + 1
+		elseif strip(line.text):match("^%s*$") then
+			-- A line with no text is not a line. PoB spaces its tooltips
+			-- with separators, which are kept above, so this only ever
+			-- catches a header a caller did not want: the per-slot item
+			-- comparisons are headed by the slot itself.
 		else
 			-- Leading spaces are trimmed. In the gem tooltip they are
 			-- `iconNameIndent` and `iconTagIndent`: a hole PoB leaves for
@@ -1852,6 +1857,38 @@ end
 --- run inside this pcall, so a change that throws halfway is still put
 --- back: the build the user is looking at must not be left holding a
 --- setting nobody chose.
+--- Two of the engine's outputs, as the difference between them.
+---
+--- Split out because there are two ways to get the second output and only
+--- one way to read it. `whatIf` below changes the build, recalculates and
+--- changes it back; an item comparison does not have to touch the build at
+--- all, because GetMiscCalculator takes the substitution as an argument.
+--- Both end up here.
+local function renderCompare(build, calcBase, output, header)
+	local tooltip = new("Tooltip"):Tooltip()
+	-- The comparison can fail where the change removes the thing being
+	-- compared: turning off the only socket group leaves no main skill,
+	-- and buildMode's own AddStatComparesToTooltip reaches straight
+	-- through it. Reported, because "it broke" and "nothing moved" look
+	-- identical from an empty list and only one of them is fine.
+	local compared, compareErr = pcall(
+		build.AddStatComparesToTooltip, build, tooltip, calcBase, output, header or ""
+	)
+	if not compared then
+		return { ready = false, error = "the comparison failed: " .. tostring(compareErr) }
+	end
+
+	local lines, tips = tooltipLines(tooltip)
+	return {
+		ready = true,
+		lines = lines,
+		droppedTips = tips,
+		-- Nothing moved. Worth saying outright rather than showing an
+		-- empty panel that looks like it failed to load.
+		unchanged = #lines == 0 or nil,
+	}
+end
+
 local function whatIf(build, apply, header)
 	local calcsTab = build and build.calcsTab
 	if not calcsTab or not calcsTab.GetMiscCalculator then
@@ -1879,28 +1916,7 @@ local function whatIf(build, apply, header)
 		return { ready = false, error = tostring(result) }
 	end
 
-	local tooltip = new("Tooltip"):Tooltip()
-	-- The comparison can fail where the change removes the thing being
-	-- compared: turning off the only socket group leaves no main skill,
-	-- and buildMode's own AddStatComparesToTooltip reaches straight
-	-- through it. Reported, because "it broke" and "nothing moved" look
-	-- identical from an empty list and only one of them is fine.
-	local compared, compareErr = pcall(
-		build.AddStatComparesToTooltip, build, tooltip, calcBase, result, header or ""
-	)
-	if not compared then
-		return { ready = false, error = "the comparison failed: " .. tostring(compareErr) }
-	end
-
-	local lines, tips = tooltipLines(tooltip)
-	return {
-		ready = true,
-		lines = lines,
-		droppedTips = tips,
-		-- Nothing moved. Worth saying outright rather than showing an
-		-- empty panel that looks like it failed to load.
-		unchanged = #lines == 0 or nil,
-	}
+	return renderCompare(build, calcBase, result, header)
 end
 
 --- What flipping one configuration option would do.
@@ -1970,6 +1986,249 @@ function api.socketGroupWhatIf(build, groupIndex)
 			group.enabled = current
 		end
 	end, header)
+end
+
+--- The item on the bench, against every slot it could go in.
+---
+--- This is the desktop tab's actual working loop, and it was the one thing
+--- missing from this screen: paste an item, and before committing to
+--- anything, see what it would do in each slot it fits. PoB keeps the
+--- pasted item as `displayItem` and answers that on hover, one slot at a
+--- time; this answers it for every candidate at once, because a list is
+--- what a web UI has where the desktop had a tooltip and a mouse.
+---
+--- Nothing is mutated. GetMiscCalculator's `repSlotName`/`repItem` pair
+--- means exactly "recalculate as if this item were in that slot", which is
+--- how ItemsTab's own anoint and rune tooltips work, so the deltas are the
+--- engine's and the build is never left holding a half-equipped item. That
+--- matters more than it sounds: the alternative is equip, read, unequip,
+--- and an interruption in the middle of that leaves the build wrong.
+function api.stagedItem(build)
+	local tab = build and build.itemsTab
+	local item = tab and tab.displayItem
+	if not item then
+		return { ready = false }
+	end
+
+	-- The same two passes /items needs. Which slots exist at all is build
+	-- state, and it is those slots IsItemValidForSlot is asked about below.
+	tab:PopulateSlots()
+	pcall(tab.UpdateSockets, tab)
+
+	-- The item itself, and only the item.
+	--
+	-- AddItemTooltip given no slot does not mean "no comparison": it means
+	-- every slot, appended to the item in one column. That is the desktop
+	-- layout, where the tooltip is all there is. Here the slots are their
+	-- own list below, so asking for both would print each comparison
+	-- twice. showStatDifferences is the engine's own switch for this, the
+	-- one Ctrl+D throws in the Items tab, and it sits at the end of the
+	-- tooltip: turning it off leaves the item untouched and drops only the
+	-- part being rendered properly further down.
+	local showing = tab.showStatDifferences
+	tab.showStatDifferences = false
+	local tooltip = new("Tooltip"):Tooltip()
+	local drawn, drawErr = pcall(tab.AddItemTooltip, tab, tooltip, item)
+	tab.showStatDifferences = showing
+	if not drawn then
+		return { ready = false, error = tostring(drawErr) }
+	end
+	local lines, tips = tooltipLines(tooltip)
+
+	local primary
+	local okPrimary, prim = pcall(item.GetPrimarySlot, item)
+	if okPrimary then
+		primary = prim
+	end
+
+	local calcsTab = build.calcsTab
+	local calcFunc, calcBase
+	if calcsTab and calcsTab.GetMiscCalculator then
+		calcFunc, calcBase = calcsTab:GetMiscCalculator()
+	end
+
+	-- Restored by hand, as whatIf does: the calculations below raise it,
+	-- and leaving it raised would have the UI believe the build changed.
+	local buildFlag = build.buildFlag
+
+	-- Which slots are candidates is PoB's own rule, taken from the same
+	-- place its tooltip builds this list: valid for the item, not
+	-- inactive, and belonging to the weapon set actually in play. Without
+	-- that last clause a one-hander offers both sets and half the answers
+	-- are about gear the build is not currently wearing.
+	local env = build.calcsTab and build.calcsTab.mainEnv
+	local weaponSet = (env and env.weaponSet)
+		or ((tab.activeItemSet and tab.activeItemSet.useSecondWeaponSet) and 2 or 1)
+
+	local candidates = {}
+	for slotName, slot in pairs(tab.slots or {}) do
+		local okValid, valid = pcall(tab.IsItemValidForSlot, tab, item, slotName)
+		if okValid and valid and not slot.inactive
+			and (not slot.weaponSet or slot.weaponSet == weaponSet)
+			and (slot.weaponSet or slotShown(slot))
+		then
+			candidates[#candidates + 1] = slot
+		end
+	end
+
+	local isUnique = item.rarity == "UNIQUE" or item.rarity == "RELIC"
+	local sameUniqueCount = 0
+	local entries = {}
+	for _, slot in ipairs(candidates) do
+		local held = tab.items[slot.selItemId]
+		local sameUnique = (isUnique and held and item.name == held.name) or false
+		if sameUnique and item.limit then
+			sameUniqueCount = sameUniqueCount + 1
+		end
+		local output, calcErr
+		if calcFunc and calcBase then
+			-- A nil repItem means "take it out", which is the right
+			-- question when the staged item is the one already in here.
+			local okCalc, res = pcall(calcFunc, {
+				repSlotName = slot.slotName,
+				repItem = (item ~= held) and item or nil,
+			})
+			if okCalc then output = res else calcErr = tostring(res) end
+		end
+		entries[#entries + 1] = {
+			slot = slot,
+			held = held,
+			sameUnique = sameUnique,
+			removing = (item == held) or nil,
+			output = output,
+			calcErr = calcErr,
+		}
+	end
+
+	build.buildFlag = buildFlag
+
+	-- A unique with a limit, already worn as many times as it allows:
+	-- the only honest question left is what swapping one of those for
+	-- this one would do, so the other slots are dropped rather than
+	-- offered as places it cannot legally go.
+	local limited = item.limit and sameUniqueCount == item.limit or false
+	if limited then
+		local kept = {}
+		for _, entry in ipairs(entries) do
+			if entry.sameUnique then
+				kept[#kept + 1] = entry
+			end
+		end
+		entries = kept
+	end
+
+	--- Same unique, or the same base type and subtype: the slot whose
+	--- contents this item is actually an alternative to.
+	local function similar(entry)
+		local held = entry.held
+		if not held then
+			return 0
+		end
+		local sameBase = not isUnique
+			and held.rarity ~= "UNIQUE" and held.rarity ~= "RELIC"
+			and item.base and held.base
+			and item.base.type == held.base.type
+			and item.base.subType == held.base.subType
+		return (sameBase or entry.sameUnique) and 1 or 0
+	end
+
+	-- PoB's own ordering, key for key: an empty slot first, then the slot
+	-- holding something comparable, then by what the build would actually
+	-- do (full DPS, combined DPS, effective hit pool), then by name so
+	-- the result is stable. This is the part that makes the list useful
+	-- rather than long: the slot worth reading is the one at the top.
+	local function keysOf(entry)
+		local out = entry.output or {}
+		return {
+			entry.slot.selItemId == 0 and 1 or 0,
+			similar(entry),
+			out.FullDPS,
+			out.CombinedDPS,
+			out.TotalEHP,
+			entry.slot.label,
+			entry.slot.slotName,
+		}
+	end
+	table.sort(entries, function(a, b)
+		if a == b then
+			return false
+		end
+		local ak, bk = keysOf(a), keysOf(b)
+		for i = 1, #ak do
+			-- A missing key is skipped rather than treated as zero: the
+			-- stat may simply not apply to this build.
+			if ak[i] ~= nil and bk[i] ~= nil then
+				if ak[i] > bk[i] then
+					return true
+				elseif ak[i] < bk[i] then
+					return false
+				end
+			end
+		end
+		return false
+	end)
+
+	local slots = asArray({})
+	for _, entry in ipairs(entries) do
+		local slot = entry.slot
+		local out = entry.output or {}
+		local row = {
+			name = slot.slotName,
+			label = strip(slot.label or slot.slotName),
+			-- Where AddItem would have put it unaided. Not the same thing
+			-- as the best slot, and worth saying separately.
+			primary = (slot.slotName == primary) or nil,
+			weaponSet = slot.weaponSet,
+			socket = slot.nodeId and true or nil,
+			-- The staged item is already in this slot, so the comparison
+			-- below is what taking it out would do.
+			removing = entry.removing,
+			empty = (slot.selItemId == 0) or nil,
+			-- Why this slot sorted where it did, so the UI can say it.
+			similar = similar(entry) == 1 or nil,
+			-- The three numbers the ordering turns on, reported so the UI
+			-- can show a headline without parsing the comparison lines.
+			fullDPS = out.FullDPS,
+			combinedDPS = out.CombinedDPS,
+			totalEHP = out.TotalEHP,
+		}
+		-- What it would displace. Named, because "+40 life" means one
+		-- thing against an empty slot and another against a good ring.
+		if entry.held then
+			row.replaces = {
+				id = slot.selItemId,
+				name = strip(entry.held.name or entry.held.title or entry.held.baseName or "Item"),
+				rarity = entry.held.rarity or "NORMAL",
+			}
+		end
+		if entry.calcErr then
+			row.compare = { ready = false, error = entry.calcErr }
+		elseif entry.output then
+			row.compare = renderCompare(build, calcBase, entry.output, "")
+		end
+		slots[#slots + 1] = row
+	end
+
+	return {
+		ready = true,
+		name = strip(item.name or item.title or item.baseName or "Item"),
+		base = strip(item.baseName or ""),
+		rarity = item.rarity or "NORMAL",
+		primarySlot = primary,
+		lines = lines,
+		droppedTips = tips,
+		slots = slots,
+		-- How many of this unique may be worn at once, and whether that
+		-- many already are. The slot list is narrowed to the ones holding
+		-- a copy when it is, and saying so is the difference between
+		-- "these are your options" and "these are all your options".
+		limit = item.limit,
+		limited = limited or nil,
+		-- Nothing takes it: a jewel with no socket allocated, a shield
+		-- behind a two-hander. Worth saying outright, because an empty
+		-- list reads as a failure to load.
+		fitsNothing = #slots == 0 or nil,
+	}
 end
 
 ------------------------------------------------------------------- commands
@@ -2251,6 +2510,79 @@ function commands.addItemText(build, value)
 		return nil, "that is not an item PoB recognises"
 	end
 	tab:AddDisplayItem()
+	return true
+end
+
+--- Put pasted text on the bench without equipping it.
+---
+--- The same CreateDisplayItemFromRaw addItemText makes; the difference is
+--- that this one stops there. `displayItem` is where the desktop tab keeps
+--- the item being worked on, and leaving it there is what gives
+--- /item/staged something to answer about.
+function commands.stageItemText(build, value)
+	local tab = build.itemsTab
+	local raw = type(value) == "table" and value.text or value
+	if type(raw) ~= "string" or raw:match("^%s*$") then
+		return nil, "expected { text = ... }"
+	end
+
+	tab:CreateDisplayItemFromRaw(raw, true)
+	if not tab.displayItem then
+		return nil, "that is not an item PoB recognises"
+	end
+	return true
+end
+
+--- Take it off the bench again, equipping nothing.
+function commands.clearStagedItem(build)
+	local tab = build.itemsTab
+	if not tab.displayItem then
+		return nil, "nothing is staged"
+	end
+	tab:SetDisplayItem()
+	return true
+end
+
+--- Commit the staged item, into a named slot or wherever PoB would put it.
+---
+--- AddDisplayItem's own argument is `noAutoEquip`, so asking for a
+--- particular slot means adding without equipping and then equipping
+--- deliberately. The slot is checked before anything is added: AddItem
+--- would otherwise leave the item in the list with the slot unchanged,
+--- which looks like the command half worked.
+function commands.equipStagedItem(build, value)
+	local tab = build.itemsTab
+	local item = tab.displayItem
+	if not item then
+		return nil, "nothing is staged"
+	end
+
+	local slotName = type(value) == "table" and value.slot
+		or (type(value) == "string" and value)
+		or nil
+
+	-- No slot asked for: AddItem's own auto-equip, which is the first
+	-- empty slot that will take it, and the behaviour addItemText has.
+	if not slotName then
+		tab:AddDisplayItem()
+		return true
+	end
+
+	local slot = tab.slots and tab.slots[slotName]
+	if not slot then
+		return nil, "no slot named " .. tostring(slotName)
+	end
+	local okValid, valid = pcall(tab.IsItemValidForSlot, tab, item, slotName)
+	if not okValid or not valid then
+		return nil, "that item does not fit " .. strip(slot.label or slotName)
+	end
+
+	-- AddItem assigns the id, on the same table `item` still points at.
+	tab:AddDisplayItem(true)
+	slot:SetSelItemId(item.id)
+	tab:PopulateSlots()
+	tab:AddUndoState()
+	build.buildFlag = true
 	return true
 end
 

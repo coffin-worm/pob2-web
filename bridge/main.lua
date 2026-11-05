@@ -238,6 +238,19 @@ routes["GET /item"] = function(_, query)
 	return 200, detail
 end
 
+--- The item on the bench, against every slot it fits.
+---
+--- One full recalculation per candidate slot, so this is the most
+--- expensive route here and it reports its own cost. It is still cheaper
+--- than the alternative it replaces, which was equipping the item to find
+--- out and unequipping it again.
+routes["GET /item/staged"] = function()
+	local started = os.clock()
+	local staged = api.stagedItem(currentBuild())
+	staged.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, staged
+end
+
 --- What is editable about one item: its text, its modifier rolls and its
 --- variant. The item's appearance comes from /item, which is PoB's own
 --- tooltip and already knows how to draw the result.
@@ -541,6 +554,7 @@ function love.load()
 	log("listening on http://127.0.0.1:%d", server.port)
 	log("  GET /health /state /stats /calcs /paths")
 	log("  GET /tree /tree/alloc   GET /items /item /items/search")
+	log("  GET /item/edit /item/staged")
 	log("  GET /skills /skills/group /gem /gems/search   GET /config")
 	log("  GET /config/whatif /skills/whatif")
 	log("  GET /code /code/inspect   POST /code/import /code/character")

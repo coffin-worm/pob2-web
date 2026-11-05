@@ -5,7 +5,9 @@ import { Select } from '../ui/Select';
 import { Segmented } from '../ui/Segmented';
 import { Button } from '../ui/Button';
 import { ItemEditor } from './ItemEditor';
-import type { ItemLine, ItemSlot } from '../pob/types';
+import { StagedItem } from './StagedItem';
+import { Lines, blocksOf } from './TooltipLines';
+import type { ItemSlot } from '../pob/types';
 import styles from './ItemsView.module.css';
 
 /**
@@ -48,38 +50,6 @@ const GROUPS: { id: string; title: string; match: (slot: ItemSlot) => boolean }[
 
 const toneOfRarity = (rarity: string) => rarity.toLowerCase();
 
-/** PoB's tooltip lines, grouped by the block they belong to. */
-function blocksOf(lines: ItemLine[]): ItemLine[][] {
-  const blocks: ItemLine[][] = [];
-  for (const line of lines) {
-    const index = Math.max(1, line.block) - 1;
-    (blocks[index] ??= []).push(line);
-  }
-  return blocks.filter(Boolean);
-}
-
-function Lines({ lines }: { lines: ItemLine[] }) {
-  return (
-    <>
-      {lines.map((line, i) =>
-        line.separator ? (
-          <hr key={i} className={styles.rule} />
-        ) : (
-          <div
-            key={i}
-            className={styles.line}
-            data-tone={line.tone}
-            data-size={line.size && line.size >= 20 ? 'title' : undefined}
-            data-centre={line.centre ? 'true' : undefined}
-          >
-            {line.text}
-          </div>
-        ),
-      )}
-    </>
-  );
-}
-
 export function ItemsView() {
   const outputRevision = useBridgeStore((s) => s.outputRevision);
   const snapshot = useItemsStore((s) => s.snapshot);
@@ -92,10 +62,16 @@ export function ItemsView() {
   const results = useItemsStore((s) => s.results);
   const searchTotal = useItemsStore((s) => s.searchTotal);
   const searching = useItemsStore((s) => s.searching);
+  const staged = useItemsStore((s) => s.staged);
+  const stagedLoading = useItemsStore((s) => s.stagedLoading);
   const refresh = useItemsStore((s) => s.refresh);
   const select = useItemsStore((s) => s.select);
   const search = useItemsStore((s) => s.search);
   const act = useItemsStore((s) => s.act);
+  const stage = useItemsStore((s) => s.stage);
+  const refreshStaged = useItemsStore((s) => s.refreshStaged);
+  const equipStaged = useItemsStore((s) => s.equipStaged);
+  const clearStaged = useItemsStore((s) => s.clearStaged);
 
   const [refusal, setRefusal] = useState<string | null>(null);
   const [paste, setPaste] = useState('');
@@ -110,6 +86,13 @@ export function ItemsView() {
   useEffect(() => {
     void refresh();
   }, [outputRevision, refresh]);
+
+  // Asked once on arrival, because the bench belongs to the engine rather
+  // than to this screen: reload the page with something staged and the
+  // store knows nothing about it until it asks.
+  useEffect(() => {
+    void refreshStaged();
+  }, [refreshStaged]);
 
   // In the one-column layout the item panel is well below the slots, so
   // clicking a slot's inspect button would otherwise do something the user
@@ -130,8 +113,18 @@ export function ItemsView() {
     })).filter((group) => group.slots.length > 0);
   }, [snapshot]);
 
+  // What gates the editor's controls while the engine is working. It used
+  // to accept a `busy` prop that nothing ever passed, so its sliders and
+  // its Apply button stayed live through a recalculation.
+  const [working, setWorking] = useState(false);
+
   const run = async (action: string, value?: unknown) => {
-    setRefusal(await act(action, value));
+    setWorking(true);
+    try {
+      setRefusal(await act(action, value));
+    } finally {
+      setWorking(false);
+    }
   };
 
   const onSearch = (value: string) => {
@@ -180,7 +173,16 @@ export function ItemsView() {
           onSubmit={(e) => {
             e.preventDefault();
             if (!paste.trim()) return;
-            void run('addItemText', { text: paste }).then(() => setPaste(''));
+            // Staged, not equipped. Pasting used to equip on arrival,
+            // which answered a question nobody had asked and made the
+            // real one ("is this better?") cost two more steps.
+            void stage(paste).then((refused) => {
+              setRefusal(refused);
+              if (!refused) {
+                setPaste('');
+                setShowPaste(false);
+              }
+            });
           }}
         >
           <textarea
@@ -192,9 +194,21 @@ export function ItemsView() {
             aria-label="Item text"
           />
           <Button type="submit" variant="primary" disabled={!paste.trim()}>
-            Add to build
+            Compare it
           </Button>
         </form>
+      )}
+
+      {/* Above the slots, because while something is on the bench it is
+          the decision in front of you and the rest of the screen is
+          reference. */}
+      {staged?.ready && (
+        <StagedItem
+          staged={staged}
+          busy={stagedLoading}
+          onEquip={(slot) => void equipStaged(slot).then(setRefusal)}
+          onDiscard={() => void clearStaged().then(setRefusal)}
+        />
       )}
 
       {refusal && (
@@ -370,6 +384,7 @@ export function ItemsView() {
               <ItemEditor
                 key={edit.raw}
                 edit={edit}
+                busy={working}
                 onRange={(line, range) =>
                   void run('setItemRange', { item: detail.id, line, range })
                 }

@@ -44,29 +44,57 @@ export function ItemEditor({
   const [draft, setDraft] = useState(raw);
   const dirty = draft !== raw;
 
+  /**
+   * Where each slider is while it is being dragged.
+   *
+   * The engine recalculates the whole build from a roll, so sending every
+   * intermediate position would be dozens of full passes for one drag,
+   * each one rewriting the item's text and so remounting this editor
+   * underneath the pointer. The slider shows the local value and the
+   * engine hears about it once, on release.
+   *
+   * Nothing resets this: the editor is keyed on the item's text, so a
+   * committed roll replaces this component outright.
+   */
+  const [rolls, setRolls] = useState<Record<number, number>>({});
+  const commitRoll = (index: number, at: number) => {
+    const settled = rolls[index];
+    if (settled === undefined || settled === at) return;
+    onRange(index, settled);
+  };
+
   return (
         <div className={styles.body}>
           {edit.ranges.length > 0 && (
             <div className={styles.group}>
               <h4 className={styles.heading}>Rolls</h4>
-              {edit.ranges.map((range) => (
-                <label key={range.index} className={styles.range}>
-                  <span className={styles.rangeLine}>{range.line}</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={range.range}
-                    disabled={busy}
-                    aria-label={range.line}
-                    // Committed on release rather than on every pixel:
-                    // each one recalculates the entire build.
-                    onChange={(e) => onRange(range.index, Number(e.target.value))}
-                  />
-                  <span className={styles.rangePct}>{Math.round(range.range * 100)}%</span>
-                </label>
-              ))}
+              {edit.ranges.map((range) => {
+                const at = rolls[range.index] ?? range.range;
+                return (
+                  <label key={range.index} className={styles.range}>
+                    <span className={styles.rangeLine}>{range.line}</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={at}
+                      disabled={busy}
+                      aria-label={range.line}
+                      // Moving is local; committing is not. Release,
+                      // keyboard release and losing focus each end a
+                      // gesture, and only then does the engine hear it.
+                      onChange={(e) =>
+                        setRolls((prev) => ({ ...prev, [range.index]: Number(e.target.value) }))
+                      }
+                      onPointerUp={() => commitRoll(range.index, range.range)}
+                      onKeyUp={() => commitRoll(range.index, range.range)}
+                      onBlur={() => commitRoll(range.index, range.range)}
+                    />
+                    <span className={styles.rangePct}>{Math.round(at * 100)}%</span>
+                  </label>
+                );
+              })}
             </div>
           )}
 

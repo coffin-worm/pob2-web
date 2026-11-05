@@ -6,6 +6,7 @@ import type {
   ItemEdit,
   ItemSearchResult,
   ItemsSnapshot,
+  StagedItem,
 } from './types';
 
 /**
@@ -29,6 +30,14 @@ interface ItemsStore {
   /** The editable side of the selected item, fetched alongside it. */
   edit: ItemEdit | null;
 
+  /**
+   * The item on the bench, if there is one, with what it would do in each
+   * slot it fits. Null means nothing is staged; a `ready: false` payload
+   * means the engine was asked and said so.
+   */
+  staged: StagedItem | null;
+  stagedLoading: boolean;
+
   query: string;
   results: ItemSearchResult[];
   searchTotal: number;
@@ -38,9 +47,28 @@ interface ItemsStore {
   select(id: number | null, slot?: string | null): Promise<void>;
   search(query: string): Promise<void>;
   act(action: string, value?: unknown): Promise<string | null>;
+
+  /** Put pasted text on the bench without equipping it. */
+  stage(text: string): Promise<string | null>;
+  refreshStaged(): Promise<void>;
+  /** Commit it, into a slot or wherever PoB would put it. */
+  equipStaged(slot?: string): Promise<string | null>;
+  clearStaged(): Promise<string | null>;
 }
 
 export const useItemsStore = create<ItemsStore>((set, get) => {
+  const refreshStaged = async () => {
+    set({ stagedLoading: true });
+    try {
+      const staged = await bridge.stagedItem();
+      set({ staged: staged.ready ? staged : null });
+    } catch {
+      set({ staged: null });
+    } finally {
+      set({ stagedLoading: false });
+    }
+  };
+
   const refresh = async () => {
     try {
       const snapshot = await bridge.items();
@@ -61,6 +89,13 @@ export const useItemsStore = create<ItemsStore>((set, get) => {
           set({ selectedId: null, selectedSlot: null, detail: null });
         }
       }
+
+      // Every delta on the bench is measured against the build as it was.
+      // Equip something, move a roll, allocate a node, and all of them are
+      // answers to a question nobody is asking any more, so they are asked
+      // again. It costs a calculation per candidate slot, which is why
+      // this only runs while something is actually staged.
+      if (get().staged) await refreshStaged();
     } catch {
       set({ connection: 'offline' });
     }
@@ -74,6 +109,8 @@ export const useItemsStore = create<ItemsStore>((set, get) => {
     detail: null,
     detailLoading: false,
     edit: null,
+    staged: null,
+    stagedLoading: false,
     query: '',
     results: [],
     searchTotal: 0,
@@ -137,6 +174,36 @@ export const useItemsStore = create<ItemsStore>((set, get) => {
         await refresh();
         return error instanceof Error ? error.message : String(error);
       }
+    },
+
+    refreshStaged,
+
+    stage: async (text) => {
+      try {
+        await bridge.act('stageItemText', { text });
+      } catch (error) {
+        // "that is not an item PoB recognises" is the engine's own answer
+        // and the only failure worth reporting: everything else it parses
+        // leniently and marks unsupported on the item itself.
+        return error instanceof Error ? error.message : String(error);
+      }
+      await refreshStaged();
+      return null;
+    },
+
+    equipStaged: async (slot) => {
+      // Staging is cleared by the engine on its way through
+      // AddDisplayItem, so the panel goes away on its own rather than
+      // being hidden here and contradicted by the next fetch.
+      const refusal = await get().act('equipStagedItem', slot ? { slot } : {});
+      await refreshStaged();
+      return refusal;
+    },
+
+    clearStaged: async () => {
+      const refusal = await get().act('clearStagedItem');
+      await refreshStaged();
+      return refusal;
     },
   };
 });

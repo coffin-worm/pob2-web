@@ -419,6 +419,78 @@ export type ItemDetail =
       buildMs: number;
     };
 
+/**
+ * One slot a staged item could go in, and what it would do there.
+ *
+ * The order these arrive in is PoB's own and is load-bearing: an empty
+ * slot first, then the slot holding something this item is an alternative
+ * to, then by what the build would actually do. The first row is the one
+ * worth reading.
+ */
+export interface StagedSlot {
+  name: string;
+  label: string;
+  /** Where PoB's own auto-equip would have put it, which is not the same
+   * thing as the best slot for it. */
+  primary?: boolean;
+  /** Nothing is in it, which is what sorts it to the top. */
+  empty?: boolean;
+  /** It holds the same unique, or the same base and subtype. */
+  similar?: boolean;
+  /** The staged item is already here, so the comparison below is what
+   * taking it out would do. */
+  removing?: boolean;
+  weaponSet?: number;
+  socket?: boolean;
+  /** What equipping it here would displace. */
+  replaces?: { id: number; name: string; rarity: string };
+  /** The three numbers the ordering turns on. Absent where the build does
+   * not produce them: FullDPS only exists with a full-DPS group. */
+  fullDPS?: number;
+  combinedDPS?: number;
+  totalEHP?: number;
+  compare?: StagedCompare;
+}
+
+/** PoB's comparison lines for one slot. `WhatIf` without its own cost. */
+export type StagedCompare =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      lines: ItemLine[];
+      droppedTips: number;
+      /** Set when equipping it there moves nothing at all. */
+      unchanged?: boolean;
+    };
+
+/**
+ * The item on the bench.
+ *
+ * PoB keeps a pasted item as `displayItem` and does not equip it until
+ * told to, which is what makes the question "what would this do?"
+ * answerable before committing to an answer.
+ */
+export type StagedItem =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      name: string;
+      base: string;
+      rarity: string;
+      /** Where AddItem would put it unaided. */
+      primarySlot?: string;
+      lines: ItemLine[];
+      droppedTips: number;
+      slots: StagedSlot[];
+      /** How many of this unique may be worn at once. */
+      limit?: number;
+      /** That many already are, so only the slots holding one are offered. */
+      limited?: boolean;
+      /** No slot will take it at all. */
+      fitsNothing?: boolean;
+      buildMs: number;
+    };
+
 export interface ItemSearchResult {
   name: string;
   base: string;
