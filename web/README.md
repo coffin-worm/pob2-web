@@ -802,6 +802,63 @@ sidebar reads 189.5 DPS and the Calcs tab reads 241.4, and both are right.
 Because it is the expensive route, it is not polled. `buildMode.outputRevision`
 moves on every recalculation, and the app refetches on that.
 
+### Where a number came from
+
+The Calcs tab was a wall of results and nothing else, which is half a
+tab. You could read that your hit damage was 112 to 168 and had no way to
+find out which of forty modifiers made it so. The desktop one answers that
+on a click, and the answer is most of what the tab is for.
+
+None of it needed computing. Every calculation pass already fills
+`actor.breakdown` with the working behind each output, and
+`CalcBreakdownControl` already turns one cell's worth of that into
+sections. So `/calcs/breakdown` drives that control rather than reading
+`breakdown` itself: what a cell produces depends on the flags each
+descriptor carries, on resolving dotted `ns.name` keys, on sorting and
+labelling the tables, and on listing contributing modifiers through four
+format functions. `SetBreakdownData` builds its `sectionList` and only
+then measures it for drawing, so all of that is readable without drawing
+anything.
+
+Cells are addressed by position, because they have no names: the Calcs
+tab is literally a nested list of format strings. The reference uses
+PoB's own indices rather than the ones this response ends up with, since
+rows that format to nothing are dropped on the way out and the two
+numberings part company at the first one. 262 of the thousand-odd cells on
+a simple build can be explained; the rest are not clickable, because a
+screen of dotted underlines would claim otherwise.
+
+| | |
+|---|---|
+| Cells that can be explained | 262 |
+| Reading one | 0 to 1 ms |
+
+The panel is docked beside the board rather than floating over the cell.
+PoB's pane can be dragged out of the way; a docked one never needs to be.
+It is sticky so it follows a board thousands of pixels long, and it stacks
+underneath when there is no room for two columns, scrolling itself into
+view so that clicking a cell does not answer somewhere you cannot see.
+
+It rebuilds after every recalculation while open, which is what PoB does
+with a pinned pane. Working that describes a build you have since changed
+is worse than no working at all, because it reads as current.
+
+Verified in the browser: *Effective DPS Mod* `x 0.5` explains itself as
+enemy resistance 50% with the two modifiers that set it, and the base
+damage line follows the build from `= 15.0 to 22.0` at gem level 3 to
+`= 224.0 to 336.0` at level 20 without the panel closing.
+
+### What it does not do
+
+- **No radius diagram.** PoB draws the area of effect to scale, with the
+  range guide behind it; this reports the number.
+- **No pop-out.** The real tab can tear a section off into a floating,
+  draggable pane, and keep several of them.
+- **No collapsing sections**, and no search across the board.
+- **The sidebar does not open these.** PoB maps a sidebar stat onto the
+  matching Calcs cell and shows the same pane; the mapping exists
+  (`BuildBreakdownIndex`) and is not wired up here.
+
 ## Import and export, and the zlib that was missing
 
 A build code is base64 of the deflated build XML. Two transforms, both
@@ -1245,7 +1302,7 @@ merely empty.
   notable glow, the Items tab's missing crafting interface, the Skills
   tab's gem defaults, the Config tab's per-option comparison, and the
   compare view's tree/items/skills diffs.
-- **Six of PoB's eighteen stat-difference tooltips.** The passive tree,
+- **Seven of PoB's eighteen stat-difference tooltips.** The passive tree,
   socket groups, gems, gem quality, flasks and charms, and config
   checkboxes are answered. Still unanswered: the gem picker's per-row
   "selecting this gem will give you", the tree-set switch, the custom
