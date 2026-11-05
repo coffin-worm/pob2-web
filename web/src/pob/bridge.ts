@@ -10,6 +10,8 @@ import type {
   ConfigSnapshot,
   ItemDetail,
   ItemEdit,
+  ItemFilterOptions,
+  ItemFilters,
   ItemSearchSnapshot,
   ItemsSnapshot,
   GemSearchSnapshot,
@@ -133,9 +135,24 @@ export const bridge = {
    */
   stagedItem: () => request<StagedItem>('/item/staged'),
 
-  /** PoB's unique and rare databases, by name. */
-  itemSearch: (query: string) =>
-    request<ItemSearchSnapshot>(`/items/search?q=${encodeURIComponent(query)}`),
+  /**
+   * PoB's unique and rare databases, on PoB's own eight filter axes.
+   *
+   * Naming a stat in `sort` makes this expensive: the engine is run
+   * against every candidate in every slot it fits. The bridge answers with
+   * how far it got, and asking again with the same filters carries the
+   * scan on, so this is called in a loop until `scanning` clears.
+   */
+  itemSearch: (filters: ItemFilters, limit?: number) => {
+    const params = new URLSearchParams(
+      Object.entries(filters).filter(([, value]) => value !== ''),
+    );
+    if (limit) params.set('limit', String(limit));
+    return request<ItemSearchSnapshot>(`/items/search?${params}`);
+  },
+
+  /** What each of those filters offers, learned from the database itself. */
+  itemFilters: () => request<ItemFilterOptions>('/items/filters'),
 
   /**
    * Socket groups, and the gems in one of them. `group` is what expands a

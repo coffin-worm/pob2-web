@@ -294,9 +294,23 @@ routes["GET /item/edit"] = function(_, query)
 	return 200, api.itemEdit(currentBuild(), query.id)
 end
 
---- PoB's unique and rare databases, by name.
+--- PoB's unique and rare databases, on PoB's own eight filter axes.
+---
+--- `sort` is the expensive one: naming a stat makes this run the
+--- calculator against every candidate, which takes longer than a single
+--- request should. It answers with how far it got instead, and asking
+--- again with the same filters carries the scan on, so the cost is
+--- reported rather than hidden inside a request that never returns.
 routes["GET /items/search"] = function(_, query)
-	return 200, api.itemSearch(query.q, query.limit)
+	local started = os.clock()
+	local found = api.itemSearch(currentBuild(), query)
+	found.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, found
+end
+
+--- What each of those filters offers, learned from the database itself.
+routes["GET /items/filters"] = function()
+	return 200, api.itemFilters()
 end
 
 --- The skills screen. `group` selects the socket group to expand into its
@@ -589,7 +603,8 @@ function love.load()
 	server = srv
 	log("listening on http://127.0.0.1:%d", server.port)
 	log("  GET /health /state /stats /calcs /calcs/breakdown /paths")
-	log("  GET /tree /tree/alloc   GET /items /item /items/search")
+	log("  GET /tree /tree/alloc   GET /items /item")
+	log("  GET /items/search /items/filters")
 	log("  GET /item/edit /item/staged")
 	log("  GET /skills /skills/group /gem /gems/search   GET /config")
 	log("  GET /config/whatif /skills/whatif /tree/whatif /items/whatif /gem/whatif")

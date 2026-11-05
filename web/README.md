@@ -447,11 +447,12 @@ comes back as a sentence: *that item does not fit Boots*.
 Three ways, all of them PoB's:
 
 - **Its own databases.** `main.uniqueDB.list` and `main.rareDB.list` are
-  every unique and rare the game has, parsed at startup. Searching by name
-  and adding one follows `ItemDBControl:OnSelClick` exactly, including the
-  weapon-set redirection: with the second set showing, an item whose
-  primary slot is "Weapon 1" has to go to "Weapon 1 Swap", and skipping that
-  would quietly equip into the set you are not looking at.
+  every unique and rare the game has, parsed at startup. Filtering and
+  ranking them has a section of its own below. Equipping one follows
+  `ItemDBControl:OnSelClick` exactly, including the weapon-set
+  redirection: with the second set showing, an item whose primary slot is
+  "Weapon 1" has to go to "Weapon 1 Swap", and skipping that would quietly
+  equip into the set you are not looking at.
 - **Pasted item text**, through `CreateDisplayItemFromRaw`, which is what
   pasting into the real tab does. It leaves `displayItem` nil when the base
   is not one PoB knows, and that is the only failure worth reporting:
@@ -459,6 +460,54 @@ Three ways, all of them PoB's:
   Pasting does not equip: see the bench, below.
 - **Auto-equip**, which is `AddItem`'s own behaviour, still reachable
   through `addItemText` for the case where you simply want the item in.
+
+### Finding the item, before judging it
+
+The desktop app's database list filters on eight axes and sorts by any of
+eighty-five stats, and the sort is the part that matters. Picking "Sort by
+Life" makes PoB run its calculator against every candidate item, in every
+slot that item fits, and rank them by what each would be worth here. That
+is the only question worth asking about an item you do not own yet.
+
+It is also expensive. There are 551 items once the obtainability filter
+has had its say, each costing a full calculation pass per slot it fits,
+and PoB pays for it by running the whole scan inside a coroutine that
+yields to the draw loop every 50ms and reports "Sorting... (41%)" in the
+meantime.
+
+There is no draw loop on this side, and a scan that takes a second is far
+too long for one HTTP request. So the same loop yields to the HTTP loop
+instead. The bridge spends a fixed 200ms on each request, reports how far
+it got, and keys the half-finished scan on the question it answers, so
+asking again with the same filters carries it on from exactly where it
+stopped. The front end drives that in a loop until the bridge says it has
+finished.
+
+Three things fall out of that shape rather than being designed in:
+
+- **The progress is real.** "Measuring 270 of 551 (49%)" counts
+  calculation passes that have actually run, not a bar on a timer.
+- **Stopping is possible**, because stopping is just not asking again.
+  The partial ranking stays on screen, labelled with how far it got, and
+  "Carry on" resumes at that item rather than starting over.
+- **The list reorders while it runs**, because it is ranked among what has
+  been measured so far rather than among everything that matched.
+
+Every filter is PoB's, read off `DoesItemMatchFilters`: the same axes, the
+same precedence, the same defaults, obtainability defaulting to on
+included. That default hides ten legacy uniques, which is right up until
+you search for one of them by name and the app appears to find nothing at
+all. So the count line says how many it is holding back, and clicking it
+drops the filter.
+
+The one thing here the desktop app does not have is the delta column. PoB
+ranks the candidates but never says what the winner is worth against what
+you are already wearing, and that subtraction is free once the number has
+been measured: `calcBase` is the unchanged build, sitting right beside
+`calcFunc`. Equipping the top row recalculates the build, which moves
+`outputRevision`, which drops the scan and measures the list again against
+the build you now have. Clicking the row rather than its Equip button puts
+it on the bench instead, which is the next section.
 
 ### The bench, and a question asked before it is answered
 
@@ -567,14 +616,10 @@ took Total Life from 91 to 301.
   a corrupt popup. All of it is reachable through the text box, none of it
   is reachable by pointing. This is the largest single gap left on this
   screen, and the one the desktop app spends the most surface on.
-- **The bench takes pasted text only.** In the real tab the editor also
-  opens by double-clicking any item in any list, and `Ctrl+Click` on a
-  database row equips without going through it at all.
+- **The editor opens from the bench and the item list only.** In the real
+  tab it also opens by double-clicking a database row.
 - **No item sets beyond switching between them**, and no shared item list.
 - **No drag and drop**, which is how the real tab moves items between slots.
-- **No variant or league filters** on the database search. The real one
-  filters by league, slot, type, obtainability and requirements; this
-  matches on name.
 - **No socketed-jewel radius preview**, the same gap the tree has.
 
 ## The Skills tab

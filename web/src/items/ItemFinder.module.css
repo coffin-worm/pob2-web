@@ -1,0 +1,270 @@
+/* PoB's item database, with PoB's filters on it.
+ *
+ * The desktop app stacks six dropdowns and two more above the list, in one
+ * 179px column, which is why nobody uses most of them. Here the two that
+ * answer a question on their own (sort, slot) are always out, and the four
+ * that narrow an answer you already have are behind one disclosure. */
+
+.finder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.search {
+  flex: 1;
+  min-width: 180px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-base);
+}
+
+.search:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+.more {
+  flex: none;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.more:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sortRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* ------------------------------------------------------------- the status */
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 22px;
+  font-size: var(--text-xs);
+}
+
+.count,
+.progress {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.baseline {
+  color: var(--text-disabled);
+}
+
+.error {
+  color: var(--danger);
+}
+
+/* A real proportion of a real scan: the engine has run this many times. */
+.bar {
+  flex: 1;
+  min-width: 80px;
+  max-width: 260px;
+  height: 4px;
+  background: var(--bg-sunken);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 120ms linear;
+}
+
+.hidden {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--text-disabled);
+  font: inherit;
+  font-size: var(--text-xs);
+  text-decoration: underline dotted;
+  cursor: pointer;
+}
+
+.hidden:hover {
+  color: var(--text-primary);
+}
+
+/* -------------------------------------------------------------- the list */
+
+.rows {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  overflow: auto;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-3) 0 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.row:last-of-type {
+  border-bottom: 0;
+}
+
+.row:hover {
+  background: var(--bg-hover);
+}
+
+.rowMain {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.rowName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowName[data-tone='normal'] { color: var(--rarity-normal); }
+.rowName[data-tone='magic'] { color: var(--rarity-magic); }
+.rowName[data-tone='rare'] { color: var(--rarity-rare); }
+.rowName[data-tone='unique'] { color: var(--rarity-unique); }
+.rowName[data-tone='relic'] { color: var(--rarity-relic); }
+
+.rowMeta {
+  display: flex;
+  flex: none;
+  gap: var(--space-3);
+  color: var(--text-disabled);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.league {
+  color: var(--text-muted);
+}
+
+/* The two numbers the ranking is about: what the item would read, and what
+ * it would change. Tabular so the column lines up as the scan reorders. */
+.rowValue {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  min-width: 148px;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.value {
+  color: var(--text-primary);
+}
+
+.delta {
+  min-width: 68px;
+  text-align: right;
+}
+
+.delta[data-tone='positive'] { color: var(--success); }
+.delta[data-tone='negative'] { color: var(--danger); }
+.delta[data-tone='flat'] { color: var(--text-disabled); }
+
+.noFit {
+  color: var(--text-disabled);
+  font-size: var(--text-xs);
+}
+
+.equip {
+  flex: none;
+  padding: var(--space-1) var(--space-3);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.equip:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+/* Three columns stop fitting side by side well before the window gets
+ * narrow, because this list sits in a column beside the slots rather than
+ * across the page. So the question is the list's own width: below this the
+ * slot and level drop under the name instead of squeezing it to nothing. */
+@container (max-width: 420px) {
+  .rowMain {
+    flex-wrap: wrap;
+  }
+
+  .rowName {
+    flex: 1 0 100%;
+  }
+
+  .rowValue {
+    min-width: 104px;
+  }
+
+  .delta {
+    min-width: 52px;
+  }
+}
+
+.truncated {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  color: var(--text-disabled);
+  font-size: var(--text-xs);
+}

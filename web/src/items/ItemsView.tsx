@@ -7,6 +7,7 @@ import { Button } from '../ui/Button';
 import { WhatIf } from '../ui/WhatIf';
 import { bridge } from '../pob/bridge';
 import { ItemEditor } from './ItemEditor';
+import { ItemFinder } from './ItemFinder';
 import { StagedItem } from './StagedItem';
 import { Lines, blocksOf } from '../ui/TooltipLines';
 import type { ItemSlot } from '../pob/types';
@@ -60,17 +61,13 @@ export function ItemsView() {
   const detail = useItemsStore((s) => s.detail);
   const detailLoading = useItemsStore((s) => s.detailLoading);
   const edit = useItemsStore((s) => s.edit);
-  const query = useItemsStore((s) => s.query);
-  const results = useItemsStore((s) => s.results);
-  const searchTotal = useItemsStore((s) => s.searchTotal);
-  const searching = useItemsStore((s) => s.searching);
   const staged = useItemsStore((s) => s.staged);
   const stagedLoading = useItemsStore((s) => s.stagedLoading);
   const refresh = useItemsStore((s) => s.refresh);
   const select = useItemsStore((s) => s.select);
-  const search = useItemsStore((s) => s.search);
   const act = useItemsStore((s) => s.act);
   const stage = useItemsStore((s) => s.stage);
+  const stageFromDb = useItemsStore((s) => s.stageFromDb);
   const refreshStaged = useItemsStore((s) => s.refreshStaged);
   const equipStaged = useItemsStore((s) => s.equipStaged);
   const clearStaged = useItemsStore((s) => s.clearStaged);
@@ -79,7 +76,6 @@ export function ItemsView() {
   const [paste, setPaste] = useState('');
   const [showPaste, setShowPaste] = useState(false);
   const [editing, setEditing] = useState(false);
-  const debounce = useRef<number | undefined>(undefined);
   const detailRef = useRef<HTMLDivElement>(null);
 
   // The engine bumps outputRevision on every recalculation, and equipping
@@ -133,11 +129,13 @@ export function ItemsView() {
     }
   };
 
-  const onSearch = (value: string) => {
-    window.clearTimeout(debounce.current);
-    // A scan of every unique and rare PoB knows, so not on every keystroke.
-    debounce.current = window.setTimeout(() => void search(value), 180);
-    void useItemsStore.setState({ query: value });
+  const runStage = async (name: string) => {
+    setWorking(true);
+    try {
+      setRefusal(await stageFromDb(name));
+    } finally {
+      setWorking(false);
+    }
   };
 
   if (!snapshot) {
@@ -323,39 +321,10 @@ export function ItemsView() {
         </div>
 
         <div className={styles.right}>
-          <form className={styles.search} onSubmit={(e) => e.preventDefault()}>
-            <input
-              className={styles.searchInput}
-              type="search"
-              value={query}
-              onChange={(e) => onSearch(e.target.value)}
-              placeholder="Search PoB's uniques and rares"
-              aria-label="Search the item database"
-            />
-            {query.trim().length >= 2 && (
-              <span className={styles.searchCount}>
-                {searching ? '…' : `${searchTotal} found`}
-              </span>
-            )}
-          </form>
-
-          {results.length > 0 && (
-            <div className={styles.results}>
-              {results.map((result) => (
-                <button
-                  key={result.name}
-                  className={styles.result}
-                  onClick={() => void run('addDbItem', { name: result.name })}
-                  title={`Add and equip in ${result.slot ?? 'the first free slot'}`}
-                >
-                  <span className={styles.resultName} data-tone={toneOfRarity(result.rarity)}>
-                    {result.name}
-                  </span>
-                  {result.slot && <span className={styles.resultSlot}>{result.slot}</span>}
-                </button>
-              ))}
-            </div>
-          )}
+          <ItemFinder
+            onAdd={(name) => void run('addDbItem', { name })}
+            onStage={(name) => void runStage(name)}
+          />
 
           <div className={styles.detail} ref={detailRef}>
             {selectedId === null && (

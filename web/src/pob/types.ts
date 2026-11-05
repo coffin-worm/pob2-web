@@ -568,13 +568,72 @@ export interface ItemSearchResult {
   rarity: string;
   /** Where PoB would equip it. */
   slot?: string;
+  /** Which database it came out of. */
+  db: 'unique' | 'rare';
+  league?: string;
+  /** How PoB says this is obtained, with its colour markup taken off. */
+  source?: string;
+  /** The level it requires, if it requires one. */
+  level?: number;
+  /**
+   * Only on a stat sort: the stat as a reader should see it, and the
+   * change against the build as it stands. Absent together for an item
+   * that fits no slot this build has.
+   */
+  value?: number;
+  delta?: number;
+  fits?: boolean;
+}
+
+/** The eight axes PoB filters its database on. */
+export interface ItemFilters {
+  q: string;
+  mode: string;
+  db: string;
+  slot: string;
+  type: string;
+  league: string;
+  req: string;
+  source: string;
+  sort: string;
+}
+
+/** What each of those axes offers, learned from the database itself. */
+export interface ItemFilterOptions {
+  ready: boolean;
+  loading?: boolean;
+  slots: string[];
+  typeGroups: { key: string; label: string }[];
+  types: string[];
+  leagues: string[];
+  sorts: { key: string; label: string }[];
+  sources: { key: string; label: string }[];
+  requirements: { key: string; label: string }[];
+  modes: { key: string; label: string }[];
 }
 
 export interface ItemSearchSnapshot {
   ready: boolean;
+  error?: string;
   results: ItemSearchResult[];
   total?: number;
   truncated?: boolean;
+  /** How many matched everything except the obtainability default. */
+  hiddenBySource?: number;
+  sort?: string;
+  sortLabel?: string;
+  /** What the sorted stat is worth right now, for the delta column. */
+  baseline?: number;
+  /**
+   * Set while a stat sort is still running. The list is then ranked among
+   * what has been measured rather than among everything that matched, so
+   * asking again with the same filters carries the scan on.
+   */
+  scanning?: boolean;
+  scanned?: number;
+  /** True while PoB is still parsing the databases at startup. */
+  loading?: boolean;
+  buildMs?: number;
 }
 
 /* ------------------------------------------------------------ the skills */

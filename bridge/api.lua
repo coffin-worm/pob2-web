@@ -1035,39 +1035,590 @@ function api.itemDetail(build, itemId, slotName)
 	}
 end
 
---- Search PoB's unique and rare databases.
----
---- main.uniqueDB.list is keyed by name and holds a parsed Item each, built
---- once at startup from Data/Uniques. Only a name match is offered: the real
---- tab filters by league, slot, obtainability and six other axes, and all of
---- that is UI state that would have to live somewhere on this side.
-function api.itemSearch(query, limit)
-	local needle = tostring(query or ""):lower()
-	local max = tonumber(limit) or 40
-	if #needle < 2 or not main then
-		return { ready = true, results = asArray({}), truncated = false }
-	end
+------------------------------------------------------- the item database
 
-	local results, total = asArray({}), 0
-	for _, db in ipairs({ main.uniqueDB, main.rareDB }) do
-		for name, item in pairs(db and db.list or {}) do
-			if tostring(name):lower():find(needle, 1, true) and item.base then
-				total = total + 1
-				if #results < max then
-					local ok, primary = pcall(item.GetPrimarySlot, item)
-					results[#results + 1] = {
-						name = name,
-						base = strip(item.baseName or ""),
-						rarity = item.rarity or "NORMAL",
-						slot = ok and primary or nil,
-					}
+-- PoB's magic-character escape for the search box, verbatim. `(` and `)`
+-- are deliberately left unescaped: matchOrPattern reads them as an
+-- alternation group, which is how a search for "(life|mana)" works in the
+-- desktop app. Escaping them would silently remove a feature.
+local function escapeNeedle(text)
+	return (tostring(text or ""):lower():gsub("[%-%.%+%[%]%$%^%%%?%*]", "%%%0"))
+end
+
+local function anyModMatches(lines, needle)
+	for _, line in pairs(lines or {}) do
+		local ok, matched = pcall(string.matchOrPattern, tostring(line.line or ""):lower(), needle)
+		if ok and matched then
+			return true
+		end
+	end
+	return false
+end
+
+-- Anywhere, Names or Modifiers, which is PoB's own three-way switch. The
+-- modifier side reads the four mod-line lists an Item carries and then,
+-- only if none of them matched, the parsed modifier names with the spaces
+-- taken out of both sides: that last pass is what lets "increasedlife"
+-- find what "increased life" would not.
+local function matchesSearch(item, needle, mode)
+	if not needle or needle == "" then
+		return true
+	end
+	if mode == "anywhere" or mode == "names" then
+		local ok, matched = pcall(string.matchOrPattern, tostring(item.name or ""):lower(), needle)
+		if ok and matched then
+			return true
+		end
+	end
+	if mode == "anywhere" or mode == "mods" then
+		if anyModMatches(item.enchantModLines, needle)
+			or anyModMatches(item.runeModLines, needle)
+			or anyModMatches(item.implicitModLines, needle)
+			or anyModMatches(item.explicitModLines, needle)
+		then
+			return true
+		end
+		local tight = needle:gsub(" ", "")
+		for _, mod in ipairs(item.baseModList or {}) do
+			local ok, matched = pcall(string.matchOrPattern, tostring(mod.name or ""):lower(), tight)
+			if ok and matched then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- "Ring 1" is a slot the build has; "Ring" is what the filter offers. PoB
+-- compares both the whole name and the name with its trailing number taken
+-- off, so one filter entry covers both rings.
+local function matchesSlot(item, want)
+	if want == "" or want == "any" then
+		return true
+	end
+	local ok, primary = pcall(item.GetPrimarySlot, item)
+	if not ok or not primary then
+		return false
+	end
+	return primary == want or primary:gsub(" %d", "") == want
+end
+
+-- Four of these are groups rather than types: Armour is "has an armour
+-- value", Jewellery is three named types, and the two melee entries are a
+-- question for the weapon table rather than for the item.
+local function matchesType(build, item, want)
+	if want == "" or want == "any" then
+		return true
+	end
+	if want == "armour" then
+		return (item.base and item.base.armour) and true or false
+	elseif want == "jewellery" then
+		return item.type == "Amulet" or item.type == "Ring" or item.type == "Belt"
+	elseif want == "melee1h" or want == "melee2h" then
+		local info = build.data and build.data.weaponTypeInfo and build.data.weaponTypeInfo[item.type]
+		if not (info and info.melee
+			and ((want == "melee1h" and info.oneHand) or (want == "melee2h" and not info.oneHand)))
+		then
+			return false
+		end
+		-- A Staff counts as melee only as a Warstaff. The plain kind is a
+		-- caster weapon that happens to share the type name.
+		if item.type == "Staff" and item.base and item.base.subType ~= "Warstaff" then
+			return false
+		end
+		return true
+	end
+	return item.type == want
+end
+
+local function matchesLeague(item, want)
+	if want == "" or want == "any" then
+		return true
+	end
+	if want == "none" then
+		return not item.league
+	end
+	if not item.league then
+		return false
+	end
+	local ok, matched = pcall(string.match, tostring(item.league), want)
+	return (ok and matched) and true or false
+end
+
+-- Obtainability is a definition, not a flag: no item says it is
+-- obtainable, only that it is no longer or that it came from a race. The
+-- other five are substring tests on the source line PoB already wrote.
+local function matchesSource(item, want)
+	if want == "any" then
+		return true
+	end
+	local source = tostring(item.source or "")
+	local obtainable = not (source == "No longer obtainable"
+		or (item.league and item.league == "Race Events"))
+	if want == "obtainable" then
+		return obtainable
+	elseif want == "unobtainable" then
+		return not obtainable
+	elseif want == "vendor" then
+		return source == "Vendor Recipe"
+	elseif want == "upgraded" then
+		return source:match("Upgraded from") and true or false
+	elseif want == "boss" then
+		return source:match("Drops from unique") and true or false
+	elseif want == "corruption" then
+		return source:match("Vaal Orb") and true or false
+	end
+	return true
+end
+
+-- Level, attributes, or both. PoB's "Current useable" is the pair, which
+-- is why the two checks below are written as separate conditions rather
+-- than as a three-way branch.
+local function matchesRequirement(build, item, want)
+	if want == "" or want == "any" then
+		return true
+	end
+	local req = item.requirements
+	if (want == "level" or want == "useable")
+		and req and req.level and req.level > (build.characterLevel or 0)
+	then
+		return false
+	end
+	if want == "attributes" or want == "useable" then
+		local out = (build.calcsTab and build.calcsTab.mainOutput) or {}
+		if req and ((req.strMod or 0) > (out.Str or 0)
+			or (req.dexMod or 0) > (out.Dex or 0)
+			or (req.intMod or 0) > (out.Int or 0))
+		then
+			return false
+		end
+	end
+	return true
+end
+
+local DBS = {
+	{ key = "unique", get = function() return main and main.uniqueDB end },
+	{ key = "rare", get = function() return main and main.rareDB end },
+}
+
+local function dbsLoading()
+	for _, entry in ipairs(DBS) do
+		local db = entry.get()
+		if not db or db.loading then
+			return true
+		end
+	end
+	return false
+end
+
+-- PoB's NAME comparator: the leading "The " is not part of a name for
+-- sorting purposes, so The Anvil files under A.
+local function byName(a, b)
+	return (a.name:gsub("^The ", "")) < (b.name:gsub("^The ", ""))
+end
+
+--- The filtered list, in name order, with nothing measured yet.
+---
+--- Pure data: no calculation, no engine, a few hundred items. It runs in
+--- full on every request, because caching something this cheap would only
+--- add a way for it to go stale.
+local function filterList(build, f)
+	local kept, hiddenBySource = {}, 0
+	for _, entry in ipairs(DBS) do
+		if f.db == "all" or f.db == entry.key then
+			local db = entry.get()
+			for name, item in pairs(db and db.list or {}) do
+				if item.base
+					and matchesSlot(item, f.slot)
+					and matchesType(build, item, f.type)
+					and matchesLeague(item, f.league)
+					and matchesRequirement(build, item, f.requirement)
+					and matchesSearch(item, f.needle, f.mode)
+				then
+					if matchesSource(item, f.source) then
+						kept[#kept + 1] = { name = name, item = item, db = entry.key }
+					else
+						-- Counted rather than dropped in silence. Obtainable
+						-- is the default here as it is in PoB, and a name
+						-- search that finds only legacy variants would
+						-- otherwise report nothing and look broken.
+						hiddenBySource = hiddenBySource + 1
+					end
 				end
 			end
 		end
 	end
+	table.sort(kept, byName)
+	return kept, hiddenBySource
+end
 
-	table.sort(results, function(a, b) return a.name < b.name end)
-	return { ready = true, results = results, total = total, truncated = total > #results }
+--- The powerStatList entry a sort key names.
+---
+--- Held by reference rather than copied, because GetFromOutput reads
+--- `transform` off it: "Taken Fire dmg" sorts on the negated value, and
+--- re-deriving that rule here would be a second copy of it.
+local function sortEntry(key)
+	if type(data) ~= "table" or type(data.powerStatList) ~= "table" then
+		return nil
+	end
+	for _, stat in ipairs(data.powerStatList) do
+		if not stat.ignoreForItems and stat.stat == key then
+			return stat
+		end
+	end
+	return nil
+end
+
+--- What this item would be worth, in the best slot it fits.
+---
+--- PoB's loop, including both toggles: a flask is not swapped into a slot,
+--- it is turned on, and so is a charm. Everything else replaces whatever
+--- the slot is holding. An item that fits two slots is worth what the
+--- better of the two is worth, which is why this keeps a maximum rather
+--- than a sum.
+---
+--- Two numbers come back. `power` is the sort key, transform and all, and
+--- `shown` is the same stat with the transform skipped, which is what a
+--- reader wants to see: nobody reads "Taken Fire dmg: -412" as good news.
+local function measure(tab, job, item)
+	local power, shown
+	for slotName, slot in pairs(tab.slots or {}) do
+		local okValid, valid = pcall(tab.IsItemValidForSlot, tab, item, slotName)
+		if okValid and valid and not slot.inactive
+			and (not slot.weaponSet or slot.weaponSet == job.weaponSet)
+		then
+			local override
+			if item.base.flask then
+				override = { toggleFlask = item }
+			elseif item.base.charm then
+				override = { toggleCharm = item }
+			else
+				override = { repSlotName = slotName, repItem = item }
+			end
+			local okCalc, output = pcall(job.calcFunc, override, job.useFullDPS)
+			if okCalc and type(output) == "table" then
+				local okStat, value = pcall(data.powerStatList.GetFromOutput, output, job.stat)
+				if okStat and type(value) == "number" and (not power or value > power) then
+					power = value
+					local okRaw, raw = pcall(data.powerStatList.GetFromOutput, output, job.stat, true)
+					shown = (okRaw and type(raw) == "number") and raw or value
+				end
+			end
+		end
+	end
+	return power, shown
+end
+
+--- One scan at a time, keyed by the question it answers.
+---
+--- PoB runs this inside a coroutine that yields to the draw loop every
+--- 50ms and reports "Sorting... (N%)" in the meantime. There is no draw
+--- loop on this side, so the same scan yields to the HTTP loop instead:
+--- each request spends a fixed budget on it and reports how far it got,
+--- and the next request for the same question carries on from there.
+--- Asking a different question drops it, and so does recalculating the
+--- build, because every measurement is against the build as it was.
+local sortJob = nil
+
+--- How much of the list one request will measure.
+---
+--- PoB yields every 50ms because it owes the draw loop a frame. This owes
+--- an HTTP client a response, which is a looser obligation, so the budget
+--- is larger: fewer round trips for the same scan, and progress still
+--- lands four or five times a second.
+local SORT_BUDGET = 0.2
+
+local function sortKey(build, f)
+	return table.concat({
+		f.db, f.slot, f.type, f.league, f.requirement, f.source,
+		f.mode, f.needle, f.sort, tostring(build.outputRevision),
+	}, "\1")
+end
+
+--- One row of the list.
+---
+--- The source line arrives as `Drops from unique{Arbiter of Ash} in
+--- normal{The Burning Monolith}`, where the braces are PoB's way of
+--- colouring a boss name differently from the zone it is in.
+--- FormatItemSource turns them into colour codes, which strip then takes
+--- off: borrowing PoB's own formatter rather than matching the four brace
+--- kinds again here.
+local function itemRow(tab, entry)
+	local item = entry.item
+	local ok, primary = pcall(item.GetPrimarySlot, item)
+	local source
+	if item.source then
+		local okSource, formatted = pcall(tab.FormatItemSource, tab, item.source)
+		source = strip(okSource and formatted or item.source)
+	end
+	return {
+		name = entry.name,
+		base = strip(item.baseName or ""),
+		rarity = item.rarity or "NORMAL",
+		slot = ok and primary or nil,
+		db = entry.db,
+		league = item.league and strip(item.league) or nil,
+		source = source,
+		level = item.requirements and item.requirements.level or nil,
+		-- Only on a stat sort. `value` is the stat as a reader should see
+		-- it and `delta` is the change against the build as it stands,
+		-- which is the number the question was really about. Absent
+		-- together when the item fits no slot this build has.
+		value = entry.shown or nil,
+		delta = entry.delta or nil,
+		fits = entry.power ~= nil or nil,
+	}
+end
+
+--- Search PoB's unique and rare databases.
+---
+--- main.uniqueDB.list is keyed by name and holds a parsed Item each, built
+--- once at startup from Data/Uniques; main.rareDB.list is the same for the
+--- rare templates. Both are scanned together, because "what could go in
+--- this slot" does not care which file an item came from.
+---
+--- Every filter is PoB's, read off DoesItemMatchFilters: the same axes,
+--- the same precedence, the same defaults. A filter that quietly disagreed
+--- with the desktop app would be worse than no filter at all.
+---
+--- Sorting by a stat is the part that costs something. It runs the
+--- calculator against every candidate in every slot it fits, which is a
+--- few hundred full passes, so it is spread over as many requests as it
+--- takes and reports its progress on each one.
+function api.itemSearch(build, query)
+	local tab = build and build.itemsTab
+	if not tab or not main then
+		return { ready = false }
+	end
+
+	query = query or {}
+	local f = {
+		needle = escapeNeedle(query.q),
+		mode = query.mode or "anywhere",
+		db = query.db or "all",
+		slot = query.slot or "",
+		type = query.type or "",
+		league = query.league or "",
+		requirement = query.req or "any",
+		source = query.source or "obtainable",
+		sort = query.sort or "name",
+	}
+	local limit = tonumber(query.limit) or 40
+	local loading = dbsLoading() or nil
+
+	local stat = f.sort ~= "name" and sortEntry(f.sort) or nil
+	if f.sort ~= "name" and not stat then
+		return { ready = false, error = "no such sort: " .. tostring(f.sort) }
+	end
+
+	if not stat then
+		-- Name order needs no engine, so there is nothing to resume and
+		-- the answer is complete the moment it is asked for.
+		sortJob = nil
+		local kept, hidden = filterList(build, f)
+		local rows = asArray({})
+		for i = 1, math.min(#kept, limit) do
+			rows[i] = itemRow(tab, kept[i])
+		end
+		return {
+			ready = true,
+			results = rows,
+			total = #kept,
+			truncated = #kept > #rows,
+			hiddenBySource = (f.source == "obtainable" and hidden > 0) and hidden or nil,
+			sort = "name",
+			sortLabel = "Name",
+			loading = loading,
+		}
+	end
+
+	local key = sortKey(build, f)
+	if not sortJob or sortJob.key ~= key then
+		local calcsTab = build.calcsTab
+		if not (calcsTab and calcsTab.GetMiscCalculator) then
+			return { ready = false, error = "the calculator is not available yet" }
+		end
+		local calcFunc, calcBase = calcsTab:GetMiscCalculator()
+		if not calcFunc then
+			return { ready = false, error = "the calculator is not available yet" }
+		end
+
+		-- Which slots exist at all is build state, and it is those slots
+		-- IsItemValidForSlot is asked about below.
+		tab:PopulateSlots()
+		pcall(tab.UpdateSockets, tab)
+
+		local env = calcsTab.mainEnv
+		local kept, hidden = filterList(build, f)
+		local okBase, base = pcall(data.powerStatList.GetFromOutput, calcBase, stat, true)
+		sortJob = {
+			key = key,
+			list = kept,
+			hidden = hidden,
+			at = 1,
+			calcFunc = calcFunc,
+			stat = stat,
+			useFullDPS = stat.stat == "FullDPS",
+			base = (okBase and type(base) == "number") and base or nil,
+			weaponSet = (env and env.weaponSet)
+				or ((tab.activeItemSet and tab.activeItemSet.useSecondWeaponSet) and 2 or 1),
+		}
+	end
+
+	local job = sortJob
+	-- Restored by hand, as every other calculation here does: measuring
+	-- raises it, and leaving it raised would have the UI believe the user
+	-- had changed something.
+	local buildFlag = build.buildFlag
+	local started = os.clock()
+	while job.at <= #job.list do
+		local entry = job.list[job.at]
+		entry.power, entry.shown = measure(tab, job, entry.item)
+		if entry.shown and job.base then
+			entry.delta = entry.shown - job.base
+		end
+		job.at = job.at + 1
+		if os.clock() - started > SORT_BUDGET then
+			break
+		end
+	end
+	build.buildFlag = buildFlag
+
+	-- Ranked among what has been measured, not among everything that
+	-- matched, so a scan still running reorders as it goes. The UI says so
+	-- rather than pretending the top of the list is settled.
+	local ranked = {}
+	for i = 1, job.at - 1 do
+		ranked[#ranked + 1] = job.list[i]
+	end
+	table.sort(ranked, function(a, b)
+		if a.power ~= b.power then
+			-- An item that fits nothing this build has goes last. It is
+			-- still listed, because the filters counted it.
+			if a.power == nil then return false end
+			if b.power == nil then return true end
+			return b.power < a.power
+		end
+		return byName(a, b)
+	end)
+
+	local rows = asArray({})
+	for i = 1, math.min(#ranked, limit) do
+		rows[i] = itemRow(tab, ranked[i])
+	end
+
+	local scanning = job.at <= #job.list
+	return {
+		ready = true,
+		results = rows,
+		total = #job.list,
+		truncated = #ranked > #rows,
+		hiddenBySource = (f.source == "obtainable" and job.hidden > 0) and job.hidden or nil,
+		sort = f.sort,
+		sortLabel = strip(stat.label or f.sort),
+		baseline = job.base,
+		-- While this is set the list is a leaderboard in progress: ask
+		-- again with the same filters to carry the scan on.
+		scanning = scanning or nil,
+		scanned = job.at - 1,
+		loading = loading,
+	}
+end
+
+--- The values each filter offers, and the stats the list can sort by.
+---
+--- PoB walks the database once at first open to learn its leagues and item
+--- types, because both are data rather than rules: a league exists because
+--- an item says it does. Done once here too, and cached, so the UI never
+--- hardcodes a list the data can change underneath it. Not cached while
+--- the databases are still parsing, or the cache would hold whichever half
+--- had loaded.
+local dbFacets = nil
+
+local function sortedKeys(set)
+	local keys = asArray({})
+	for key in pairs(set) do
+		keys[#keys + 1] = key
+	end
+	table.sort(keys)
+	return keys
+end
+
+function api.itemFilters()
+	if not main then
+		return { ready = false }
+	end
+
+	local loading = dbsLoading()
+	if not dbFacets or (dbFacets.partial and not loading) then
+		local leagues, types = {}, {}
+		for _, entry in ipairs(DBS) do
+			local db = entry.get()
+			for _, item in pairs(db and db.list or {}) do
+				-- One item can name several leagues, comma separated.
+				for league in tostring(item.league or ""):gmatch(" ?([%w ]+),?") do
+					leagues[league] = true
+				end
+				if item.type then
+					types[item.type] = true
+				end
+			end
+		end
+		dbFacets = {
+			leagues = sortedKeys(leagues),
+			types = sortedKeys(types),
+			partial = loading or nil,
+		}
+	end
+
+	local sorts = asArray({ { key = "name", label = "Name" } })
+	for _, stat in ipairs((type(data) == "table" and data.powerStatList) or {}) do
+		if not stat.ignoreForItems and stat.stat then
+			sorts[#sorts + 1] = { key = stat.stat, label = strip(stat.label or stat.stat) }
+		end
+	end
+
+	return {
+		ready = true,
+		loading = loading or nil,
+		-- PoB's own slot list, which is deliberately shorter than the set
+		-- of slots a build has: one entry covers both rings.
+		slots = asArray({
+			"Weapon 1", "Weapon 2", "Helmet", "Body Armour", "Gloves",
+			"Boots", "Amulet", "Ring", "Belt", "Jewel",
+		}),
+		-- The four groups come first because they are the useful ones; the
+		-- bare types after them are what the data happens to contain.
+		typeGroups = asArray({
+			{ key = "armour", label = "Armour" },
+			{ key = "jewellery", label = "Jewellery" },
+			{ key = "melee1h", label = "One Handed Melee" },
+			{ key = "melee2h", label = "Two Handed Melee" },
+		}),
+		types = dbFacets.types,
+		leagues = dbFacets.leagues,
+		sorts = sorts,
+		sources = asArray({
+			{ key = "obtainable", label = "Obtainable" },
+			{ key = "any", label = "Any source" },
+			{ key = "unobtainable", label = "Unobtainable" },
+			{ key = "vendor", label = "Vendor Recipe" },
+			{ key = "upgraded", label = "Upgraded" },
+			{ key = "boss", label = "Boss Item" },
+			{ key = "corruption", label = "Corruption" },
+		}),
+		requirements = asArray({
+			{ key = "any", label = "Any requirements" },
+			{ key = "level", label = "Current level" },
+			{ key = "attributes", label = "Current attributes" },
+			{ key = "useable", label = "Current useable" },
+		}),
+		modes = asArray({
+			{ key = "anywhere", label = "Anywhere" },
+			{ key = "names", label = "Names" },
+			{ key = "mods", label = "Modifiers" },
+		}),
+	}
 end
 
 ------------------------------------------------------------ the skills tab
@@ -2833,6 +3384,33 @@ function commands.addDbItem(build, value)
 	tab:PopulateSlots()
 	tab:AddUndoState()
 	build.buildFlag = true
+	return true
+end
+
+--- Put a database item on the bench instead of equipping it.
+---
+--- The pairing the desktop app does not have: its database list equips on
+--- click, so finding out what the best-ranked amulet would actually do
+--- means wearing it and then putting the old one back. Every database item
+--- carries the raw text it was parsed from, so this is stageItemText with
+--- the text looked up rather than pasted.
+function commands.stageDbItem(build, value)
+	local tab = build.itemsTab
+	local name = type(value) == "table" and value.name or value
+	if type(name) ~= "string" then
+		return nil, "expected { name = ... }"
+	end
+
+	local source = (main.uniqueDB and main.uniqueDB.list and main.uniqueDB.list[name])
+		or (main.rareDB and main.rareDB.list and main.rareDB.list[name])
+	if not source or not source.raw then
+		return nil, "no database item named " .. name
+	end
+
+	tab:CreateDisplayItemFromRaw(source.raw, true)
+	if not tab.displayItem then
+		return nil, "that is not an item PoB recognises"
+	end
 	return true
 end
 
