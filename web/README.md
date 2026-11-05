@@ -91,7 +91,7 @@ MB using the system WebView2, against Electron's ~150).
 ## Running it
 
 ```bash
-cd C:/dev/pob2/web
+cd web
 npm install && npm run dev
 ```
 
@@ -1121,7 +1121,7 @@ looking hung.
 
 **LÖVE's game-directory argument is read as a build URL.**
 `Modules/Main.lua:64` treats `arg[1]` as something to download, so PoB tried
-to fetch `C:/dev/pob2/bridge` from a build site, named the build after the
+to fetch the bridge directory's own path from a build site, named the build after the
 failure message, and skipped creating its own initial build. `main.lua`
 blanks `arg` before boot.
 

@@ -5,14 +5,18 @@
 -- LOVE. The point of the exercise: LOVE gives TrueType fonts, shaders and
 -- canvases, none of which SimpleGraphic exposes.
 --
--- Run:  "C:\Program Files\LOVE\love.exe" C:\dev\pob-love
+-- Run:  "C:\Program Files\LOVE\love.exe" <checkout>\love-host
 
-local POB_SRC = "C:/dev/pob2/src/"
-local POB_RUNTIME = "C:/dev/pob2/runtime/"
+-- Where this host was loaded from, and the checkout above it. Derived
+-- rather than written down, so both follow the repository.
+local HOST = love.filesystem.getSource():gsub("\\", "/"):gsub("/$", "")
+local ROOT = HOST:gsub("/love%-host$", "") .. "/"
+local POB_SRC = ROOT .. "src/"
+local POB_RUNTIME = ROOT .. "runtime/"
 
 --------------------------------------------------------------------- logging
 
-local logFile = io.open("C:/dev/pob-love/shim.log", "w")
+local logFile = io.open(HOST .. "/shim.log", "w")
 local function log(fmt, ...)
 	local ok, line = pcall(string.format, fmt, ...)
 	line = ok and line or tostring(fmt)
@@ -571,7 +575,7 @@ function SetWindowTitle(t) love.window.setTitle(t or "Path of Building") end
 function GetCursorPos() return love.mouse.getPosition() end
 function SetCursorPos(x, y) love.mouse.setPosition(x, y) end
 function ShowCursor(s) love.mouse.setVisible(s and true or false) end
-local SHOT_PATH = "C:/dev/pob-love/shot.png"
+local SHOT_PATH = HOST .. "/shot.png"
 local shotPending = false
 
 function TakeScreenshot()
@@ -644,7 +648,7 @@ end
 
 function GetScriptPath() return POB_SRC:gsub("/$", "") end
 function GetRuntimePath() return POB_RUNTIME:gsub("/$", "") end
-function GetUserPath() return os.getenv("APPDATA") or "C:/dev/pob-love" end
+function GetUserPath() return os.getenv("APPDATA") or HOST end
 function GetWorkDir() return workDir:gsub("/$", "") end
 function SetWorkDir(path) workDir = resolve(path):gsub("/?$", "/") end
 

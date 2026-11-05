@@ -10,7 +10,7 @@ shaders, no TrueType, no canvases. Swap the host and that ceiling moves,
 without editing a single one of PoB's tabs.
 
 ```bash
-"C:\Program Files\LOVE\love.exe" C:\dev\pob-love
+"C:\Program Files\LOVE\love.exe" <checkout>\love-host
 ```
 
 `shim.log` records boot status, frame errors and any host call that's still

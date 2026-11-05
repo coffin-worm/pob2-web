@@ -11,8 +11,8 @@
 -- set the working directory to src/ first, because HeadlessWrapper.lua
 -- resolves _SimpleGraphic.def.lua and Launch.lua relative to the cwd:
 --
---   cd C:\dev\pob2\src
---   "C:\Program Files\LOVE\lovec.exe" C:\dev\pob2\bridge
+--   cd <checkout>\src
+--   "C:\Program Files\LOVE\lovec.exe" <checkout>\bridge
 --
 -- POB_SRC, POB_RUNTIME, POB_BRIDGE_DIR and POB_BRIDGE_PORT override the
 -- defaults below.
@@ -28,9 +28,25 @@ local function envDir(name, fallback)
 	return value:match("/$") and value or value .. "/"
 end
 
-local POB_SRC = envDir("POB_SRC", "C:/dev/pob2/src/")
-local POB_RUNTIME = envDir("POB_RUNTIME", "C:/dev/pob2/runtime/")
-local POB_BRIDGE = envDir("POB_BRIDGE_DIR", "C:/dev/pob2/bridge/")
+--- The checkout this file lives in.
+---
+--- LOVE's source directory is the bridge directory it was handed, so
+--- the defaults below follow the repository wherever it sits. They used
+--- to name one machine's copy of it, which goes wrong the moment the
+--- checkout moves, and goes wrong quietly: the dev server always sets
+--- these env vars, so a stale default surfaces only when someone runs
+--- this by hand, as an error from inside PoB rather than a word about
+--- paths.
+local function checkoutRoot()
+	local source = love.filesystem.getSource():gsub("\\", "/")
+	source = source:gsub("/$", "")
+	return (source:gsub("/bridge$", "")) .. "/"
+end
+
+local ROOT = checkoutRoot()
+local POB_SRC = envDir("POB_SRC", ROOT .. "src/")
+local POB_RUNTIME = envDir("POB_RUNTIME", ROOT .. "runtime/")
+local POB_BRIDGE = envDir("POB_BRIDGE_DIR", ROOT .. "bridge/")
 
 -- A port given explicitly is the only one tried: when the caller picked it,
 -- quietly moving to another one strands whoever is waiting on it.
@@ -62,8 +78,8 @@ local function boot()
 
 	-- Modules/Main.lua:64 treats arg[1] as a build URL to download, and LOVE
 	-- puts the game directory there. Left alone, PoB tries to fetch
-	-- "C:/dev/pob2/bridge" from a build site, names the build after the
-	-- failure message, and skips creating its own initial build.
+	-- the bridge directory's own path from a build site, names the build
+	-- after the failure message, and skips creating its own initial build.
 	_G.arg = {}
 
 	-- HeadlessWrapper resolves these relative to the cwd, so fail loudly here
