@@ -329,6 +329,41 @@ Checked rather than assumed: preview a node, allocate it, and compare.
 Predicted 4 points, cost 4, and every node in the previewed route came back
 allocated.
 
+### What the point is worth
+
+A route preview says what a click would cost. It does not say whether the
+cost is worth paying, and that is the question the desktop tree exists to
+answer: hover a node there and the tooltip prices it in the stats you
+actually care about.
+
+`GET /tree/whatif` gives PoB's two answers rather than one. The node alone
+is the obvious one. The whole route to it is the one that decides
+anything, and it carries its own length, which is what turns the
+comparison into a per-point one. Six nodes for 8% life is a worse deal
+than two for 5%, and the second answer is the only place that shows.
+A node an item granted is priced the only way that makes sense for it:
+what losing it would cost.
+
+Neither mutates the build. `addNodes` and `removeNodes` are arguments to
+the misc calculator, the same way `repSlotName`/`repItem` are for the item
+bench, so the whole feature is the engine answering a hypothetical rather
+than this UI changing something and changing it back.
+
+It is asked once the pointer rests, not on every node it crosses, and sits
+behind a switch in the HUD. That switch is PoB's `Ctrl+D` made visible,
+and it exists for the same reason PoB has one: two full recalculations is
+not a thing to fire while a pointer travels across 4546 nodes.
+
+Verified in the browser on Eldritch Will, 30 points away: the node alone
+gave `+2 Total Life (+3.1%)`, and the route gave `+15.0 Average Hit
+(+10.0%) [+0.5 (+0.3%) per point]`.
+
+The tooltip had to learn to measure itself for this. It used to sit below
+the cursor in the top half of the panel and above it in the bottom half,
+which needs no measurement and was right while a tooltip was a name and
+three stat lines. Thirty lines run off the panel whichever side of the
+cursor they start on.
+
 ### What the tree still lacks
 
 - **The glow behind allocated notables** (`activeEffectImage`). It is 60
@@ -1207,9 +1242,16 @@ merely empty.
 - **Ten screens of perhaps a dozen.** Notes and the party/minion views are
   unbuilt. None of them looks harder than what is here.
 - **Each screen's own gaps** are listed with that screen above: the tree's
-  notable glow and path preview, the Items tab's missing crafting
-  interface, the Skills tab's gem defaults, the Config tab's per-option
-  comparison, and the compare view's tree/items/skills diffs.
+  notable glow, the Items tab's missing crafting interface, the Skills
+  tab's gem defaults, the Config tab's per-option comparison, and the
+  compare view's tree/items/skills diffs.
+- **Six of PoB's eighteen stat-difference tooltips.** The passive tree,
+  socket groups, gems, gem quality, flasks and charms, and config
+  checkboxes are answered. Still unanswered: the gem picker's per-row
+  "selecting this gem will give you", the tree-set switch, the custom
+  modifier group, the crafting affix and rune dropdowns, and config
+  options that are lists rather than checkboxes. The bridge helper they
+  all need is already there, so each is an endpoint and a button.
 - **One screen copies rather than calls.** The compare view transcribes
   `CompareTab:DrawStatList`, because that logic exists only inside a draw
   function. It is the only place in this UI that will not track upstream
