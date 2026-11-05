@@ -421,7 +421,60 @@ Three ways, all of them PoB's:
   pasting into the real tab does. It leaves `displayItem` nil when the base
   is not one PoB knows, and that is the only failure worth reporting:
   everything else it parses leniently and marks unsupported on the item.
-- **Auto-equip**, which is `AddItem`'s own behaviour.
+  Pasting does not equip: see the bench, below.
+- **Auto-equip**, which is `AddItem`'s own behaviour, still reachable
+  through `addItemText` for the case where you simply want the item in.
+
+### The bench, and a question asked before it is answered
+
+Pasting used to equip on arrival. That is one step fewer than the desktop
+app and it costs you the only question worth asking: finding out whether
+an item was an upgrade meant equipping it, reading the sidebar, and
+unequipping it again. Three steps, the middle one against a build that had
+already changed, and an interruption anywhere in that sequence leaving the
+build wrong.
+
+PoB does not work that way. A pasted item becomes `displayItem` and
+nothing is equipped until told to. Its tooltip then answers "what would
+this do here?" one slot at a time, on hover, because a tooltip is all the
+desktop has. A web UI has room for a list, so `/item/staged` answers it
+for every candidate slot at once.
+
+Nothing is mutated to do it. `GetMiscCalculator` takes a
+`repSlotName`/`repItem` pair, which means *recalculate as if this item
+were in that slot*, and that is the same call PoB's own anoint and rune
+tooltips make. So there is no equip-and-revert to get interrupted, and no
+way to leave a half-equipped build behind.
+
+The order of the slots is PoB's, key for key, from `ItemsTab:4495`: an
+empty slot first, then the slot holding whatever this item is a direct
+alternative to (the same unique, or the same base and subtype), then by
+`FullDPS`, `CombinedDPS` and `TotalEHP`, then by name so it is stable.
+That ordering is most of the feature. A ring that fits two slots sorts the
+empty one above the one holding a working ring, which is the answer you
+wanted and not the one the engine's slot order would have given. The
+limited-unique rule came along with it: wear as many copies as the item
+allows and only the slots holding one are offered, because the others are
+not places a further copy could legally go.
+
+One thing had to be turned off to make room. `AddItemTooltip` given no
+slot does not mean *no comparison*; it means *every slot*, appended to the
+item in one column, which is right when the tooltip is the whole UI. Asked
+for both, the screen printed each comparison twice. `showStatDifferences`
+is the engine's own switch for exactly this, the one `Ctrl+D` throws in
+the real Items tab, and it gates the last section of the tooltip, so
+turning it off leaves the item untouched.
+
+| | |
+|---|---|
+| A ring against two slots | 8 ms |
+| What it replaced | equip, read, unequip |
+
+Verified in the browser: pasting Cracklecreep with Death Rush in Ring 1
+offered Ring 2 first as *filling an empty slot*, all gains, and Ring 1
+second as *replacing Death Rush*, trading 59% of hit DPS for fire
+resistance and life regeneration. Equipping it from the second row put it
+in the row's slot rather than PoB's default, and the bench cleared itself.
 
 ### What this screen decides for itself
 
@@ -475,8 +528,13 @@ took Total Life from 91 to 301.
 ### What it does not do
 
 - **No crafting interface.** The real tab has affix pickers, a mod
-  browser, enchantment and corruption menus. All of it is reachable
-  through the text box, none of it is reachable by pointing.
+  browser, enchantment and corruption menus, catalysts, rune sockets and
+  a corrupt popup. All of it is reachable through the text box, none of it
+  is reachable by pointing. This is the largest single gap left on this
+  screen, and the one the desktop app spends the most surface on.
+- **The bench takes pasted text only.** In the real tab the editor also
+  opens by double-clicking any item in any list, and `Ctrl+Click` on a
+  database row equips without going through it at all.
 - **No item sets beyond switching between them**, and no shared item list.
 - **No drag and drop**, which is how the real tab moves items between slots.
 - **No variant or league filters** on the database search. The real one
