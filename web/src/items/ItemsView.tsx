@@ -102,7 +102,11 @@ export function ItemsView() {
   // refresh would yank the page around while you read.
   useEffect(() => {
     if (selectedId === null) return;
-    detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Instant rather than animated. A smooth scroll is a no-op in the
+    // app's own browser pane, which is where this gets looked at, and
+    // 3700px of animation is not what you want after clicking a cell
+    // anyway: you asked a question and the answer should be there.
+    detailRef.current?.scrollIntoView({ behavior: 'auto', block: 'nearest' });
   }, [selectedId, selectedSlot]);
 
   const groups = useMemo(() => {

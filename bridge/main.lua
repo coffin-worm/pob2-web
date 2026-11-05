@@ -238,6 +238,15 @@ routes["GET /item"] = function(_, query)
 	return 200, detail
 end
 
+--- Where one number on the Calcs tab came from. `ref` is the cell
+--- reference carried by /calcs, which addresses PoB's own tables.
+routes["GET /calcs/breakdown"] = function(_, query)
+	local started = os.clock()
+	local breakdown = api.calcsBreakdown(currentBuild(), query.ref)
+	breakdown.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, breakdown
+end
+
 --- What one passive node is worth, before the point is spent. Two
 --- answers where the node is not adjacent: the node alone, and the whole
 --- route to it with its cost, which is the one that decides anything.
@@ -579,7 +588,7 @@ function love.load()
 	end
 	server = srv
 	log("listening on http://127.0.0.1:%d", server.port)
-	log("  GET /health /state /stats /calcs /paths")
+	log("  GET /health /state /stats /calcs /calcs/breakdown /paths")
 	log("  GET /tree /tree/alloc   GET /items /item /items/search")
 	log("  GET /item/edit /item/staged")
 	log("  GET /skills /skills/group /gem /gems/search   GET /config")

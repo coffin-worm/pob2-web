@@ -698,7 +698,7 @@ function api.calcs(build)
 	local sections, rowCount = asArray({}), 0
 	local selector = nil
 
-	for _, section in ipairs(tab.sectionList) do
+	for sIdx, section in ipairs(tab.sectionList) do
 		if section.id == "SkillSelect" then
 			-- Its updateFunc is what repopulates the dropdown lists; without
 			-- it they hold whatever was there when the tab was built.
@@ -717,10 +717,10 @@ function api.calcs(build)
 		elseif not section.isOverlay and tab:CheckFlag(section, actor) then
 			local subSections, sectionRows = asArray({}), 0
 
-			for _, subSec in ipairs(section.subSection or {}) do
+			for subIdx, subSec in ipairs(section.subSection or {}) do
 				local rows = asArray({})
 
-				for _, rowData in ipairs(subSec.data or {}) do
+				for rowIdx, rowData in ipairs(subSec.data or {}) do
 					if tab:CheckFlag(rowData, actor) then
 						-- A column slot is kept even when it has nothing in
 						-- it. PoB's rows carry empty placeholders, "Added
@@ -731,8 +731,13 @@ function api.calcs(build)
 						-- whole row left and silently misaligns the matrix
 						-- against its own header.
 						local values, tones = asArray({}), asArray({})
-						local hasValue, hasTone = false, false
-						for _, colData in ipairs(rowData) do
+						-- Where this cell's breakdown lives, by PoB's own indices
+						-- rather than the ones this response ends up with: rows
+						-- that format to nothing are dropped below, so the two
+						-- numberings part company almost immediately.
+						local refs = asArray({})
+						local hasValue, hasTone, hasRef = false, false, false
+						for colIdx, colData in ipairs(rowData) do
 							local text, tone = "", "normal"
 							if colData.format and tab:CheckFlag(colData, actor) then
 								text = format(colData.format, colData) or ""
@@ -742,6 +747,14 @@ function api.calcs(build)
 							end
 							values[#values + 1] = text
 							tones[#tones + 1] = tone
+							-- A cell carries a breakdown when it has section
+							-- descriptors in its array part. Most do not.
+							local ref = ""
+							if text ~= "" and #colData > 0 then
+								ref = sIdx .. "." .. subIdx .. "." .. rowIdx .. "." .. colIdx
+								hasRef = true
+							end
+							refs[#refs + 1] = ref
 							hasValue = hasValue or text ~= ""
 							hasTone = hasTone or tone ~= "normal"
 						end
@@ -757,6 +770,7 @@ function api.calcs(build)
 								-- Only when it says something, to keep the
 								-- common row a plain list of strings.
 								tones = hasTone and tones or nil,
+								refs = hasRef and refs or nil,
 							}
 							sectionRows = sectionRows + 1
 						end
@@ -1999,6 +2013,128 @@ function api.socketGroupWhatIf(build, groupIndex)
 			group.enabled = current
 		end
 	end, header)
+end
+
+--- Where one number on the Calcs tab came from.
+---
+--- The Calcs tab is a wall of results, and until now that is all it was
+--- here: the desktop one answers "why is it that?" on a click, and this
+--- read-only copy of it could not. The answer is the engine's and it is
+--- already computed: every calculation pass fills `actor.breakdown` with
+--- the working behind each output, and `CalcBreakdownControl` turns one
+--- cell's worth of that into sections.
+---
+--- So this drives PoB's own control rather than reading `breakdown`
+--- directly. Deciding which sections a cell produces means honouring the
+--- flags on each descriptor, resolving dotted `ns.name` keys, sorting and
+--- labelling the tables, and listing contributing modifiers through four
+--- format functions. All of that is `SetBreakdownData`, which builds a
+--- `sectionList` and only then measures it for drawing, so the content is
+--- readable without drawing anything.
+---
+--- A cell is addressed by its position in PoB's own tables rather than by
+--- a name, because the cells have no names: the Calcs tab is literally a
+--- nested list of format strings.
+function api.calcsBreakdown(build, ref)
+	local tab = build and build.calcsTab
+	local ctrl = tab and tab.controls and tab.controls.breakdown
+	if not tab or not ctrl then
+		return { ready = false, error = "the calculation tab has no breakdown control" }
+	end
+
+	local s, sub, row, col = tostring(ref or ""):match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
+	if not s then
+		return { ready = false, error = "expected a reference like 3.1.4.2" }
+	end
+
+	local section = tab.sectionList and tab.sectionList[tonumber(s)]
+	local subSec = section and section.subSection and section.subSection[tonumber(sub)]
+	local rowData = subSec and subSec.data and subSec.data[tonumber(row)]
+	local colData = rowData and rowData[tonumber(col)]
+	if not colData then
+		return { ready = false, error = "no cell at " .. tostring(ref) }
+	end
+	if #colData == 0 then
+		return { ready = false, error = "that number has no working to show" }
+	end
+
+	-- SetBreakdownData returns early when handed what it already holds,
+	-- and calls back into the tab to clear the on-screen selection when a
+	-- cell turns out to have nothing. Neither is wanted here: this is a
+	-- question, not a selection, and the tab's own state is not ours to
+	-- move.
+	local hadSource, hadClear, hadPinned = ctrl.sourceData, ctrl.clearDisplayFunc, ctrl.pinned
+	ctrl.sourceData = nil
+	ctrl.clearDisplayFunc = function() end
+
+	-- The sizing pass that follows the content pass measures text, and
+	-- headless that is a stub. If it throws, the sections are already
+	-- built: what is lost is their width in pixels, which is not a thing
+	-- this answer carries anyway.
+	local built = pcall(ctrl.SetBreakdownData, ctrl, colData, false)
+	local sectionList = ctrl.sectionList or {}
+
+	local out = asArray({})
+	for _, part in ipairs(sectionList) do
+		if part.type == "TEXT" then
+			local lines = asArray({})
+			for _, line in ipairs(part.lines or {}) do
+				lines[#lines + 1] = { text = strip(tostring(line)), tone = toneOf(tostring(line)) }
+			end
+			out[#out + 1] = { type = "text", lines = lines }
+		elseif part.type == "TABLE" then
+			local cols = asArray({})
+			for _, c in ipairs(part.colList or {}) do
+				cols[#cols + 1] = { key = c.key, label = strip(c.label or c.key), right = c.right or nil }
+			end
+			-- Projected onto the declared columns only. A row also carries
+			-- the item it came from and a function to draw its tooltip,
+			-- and neither is something to put on the wire.
+			local rows = asArray({})
+			for _, r in ipairs(part.rowList or {}) do
+				local cells = asArray({})
+				local anything = false
+				for _, c in ipairs(part.colList or {}) do
+					local v = r[c.key]
+					local text = (v ~= nil and type(v) ~= "function" and type(v) ~= "table")
+						and strip(tostring(v))
+						or ""
+					cells[#cells + 1] = { text = text, tone = toneOf(tostring(v or "")) }
+					anything = anything or text ~= ""
+				end
+				if anything then
+					rows[#rows + 1] = cells
+				end
+			end
+			out[#out + 1] = {
+				type = "table",
+				label = part.label and strip(part.label) or nil,
+				footer = part.footer and strip(part.footer) or nil,
+				cols = cols,
+				rows = rows,
+			}
+		elseif part.type == "RADIUS" then
+			-- PoB draws a circle to scale here. The number is the part
+			-- that survives being read rather than looked at.
+			out[#out + 1] = { type = "radius", radius = part.radius }
+		end
+	end
+
+	-- Put the control back as it was found.
+	ctrl.sourceData = nil
+	pcall(ctrl.SetBreakdownData, ctrl, hadSource, hadPinned)
+	ctrl.clearDisplayFunc = hadClear
+
+	return {
+		ready = true,
+		ref = ref,
+		label = rowData.label and strip(rowData.label) or nil,
+		sections = out,
+		-- Said outright: a cell can have descriptors whose flags all fail
+		-- for the current skill, which is a different thing from an error.
+		empty = #out == 0 or nil,
+		partial = (not built) or nil,
+	}
 end
 
 --- What allocating or unallocating one node would do.

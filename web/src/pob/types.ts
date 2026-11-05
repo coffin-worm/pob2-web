@@ -289,7 +289,50 @@ export interface CalcRow {
   values: string[];
   /** Present only when at least one cell carries a meaningful colour. */
   tones?: StatTone[];
+  /**
+   * One entry per column slot, as `values` is. A non-empty entry is the
+   * address of that cell's working inside PoB's own tables, and the only
+   * thing that makes the cell worth clicking. Absent when no cell in the
+   * row has any.
+   */
+  refs?: string[];
 }
+
+/** One part of the working behind a number. */
+export type CalcBreakdownPart =
+  | { type: 'text'; lines: { text: string; tone?: StatTone }[] }
+  | {
+      type: 'table';
+      label?: string;
+      footer?: string;
+      cols: { key: string; label: string; right?: boolean }[];
+      /** Row-major, already projected onto `cols`. */
+      rows: { text: string; tone?: StatTone }[][];
+    }
+  /** PoB draws a circle to scale; the number is what survives reading. */
+  | { type: 'radius'; radius: number };
+
+/**
+ * Where one number on the Calcs tab came from.
+ *
+ * The engine fills `actor.breakdown` on every pass, and PoB's own
+ * `CalcBreakdownControl` turns one cell's worth of it into these sections.
+ */
+export type CalcBreakdown =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      ref: string;
+      label?: string;
+      sections: CalcBreakdownPart[];
+      /** The cell's descriptors all failed their flags for this skill,
+       * which is not the same as an error. */
+      empty?: boolean;
+      /** The sizing pass threw; the content is whole, its pixel widths
+       * are not, and nothing here wanted those. */
+      partial?: boolean;
+      buildMs: number;
+    };
 
 export interface CalcSubSection {
   label: string;

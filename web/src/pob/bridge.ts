@@ -5,6 +5,7 @@ import type {
   BuildSort,
   CodeInspection,
   CompareSnapshot,
+  CalcBreakdown,
   CalcsSnapshot,
   ConfigSnapshot,
   ItemDetail,
@@ -112,6 +113,13 @@ export const bridge = {
   /** What a gem being off, or at 20 quality, would do. */
   gemWhatIf: (group: number, gem: number, subject: 'enabled' | 'quality') =>
     request<WhatIf>(`/gem/whatif?group=${group}&gem=${gem}&subject=${subject}`),
+
+  /**
+   * Where one number on the Calcs tab came from. `ref` is the cell
+   * reference that /calcs carries, which addresses PoB's own tables.
+   */
+  calcsBreakdown: (ref: string) =>
+    request<CalcBreakdown>(`/calcs/breakdown?ref=${encodeURIComponent(ref)}`),
 
   /** What is editable about one item: text, modifier rolls, variant. */
   itemEdit: (id: number) => request<ItemEdit>(`/item/edit?id=${id}`),
