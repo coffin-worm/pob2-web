@@ -15,6 +15,7 @@ import type {
   SkillDetail,
   SkillsSnapshot,
   StagedItem,
+  TreeWhatIf,
   StatsSnapshot,
   TreeAllocSnapshot,
   TreePathPreview,
@@ -95,6 +96,22 @@ export const bridge = {
     request<ItemDetail>(
       `/item?id=${id}` + (slot ? `&slot=${encodeURIComponent(slot)}` : ''),
     ),
+
+  /**
+   * What one passive node is worth, before the point is spent.
+   *
+   * Two full recalculations where the node is not adjacent, so it is
+   * asked on a dwell rather than on every pixel of pointer movement.
+   */
+  treeWhatIf: (node: number) => request<TreeWhatIf>(`/tree/whatif?node=${node}`),
+
+  /** What switching a flask or charm on, or off, would do. */
+  slotWhatIf: (slot: string) =>
+    request<WhatIf>(`/items/whatif?slot=${encodeURIComponent(slot)}`),
+
+  /** What a gem being off, or at 20 quality, would do. */
+  gemWhatIf: (group: number, gem: number, subject: 'enabled' | 'quality') =>
+    request<WhatIf>(`/gem/whatif?group=${group}&gem=${gem}&subject=${subject}`),
 
   /** What is editable about one item: text, modifier rolls, variant. */
   itemEdit: (id: number) => request<ItemEdit>(`/item/edit?id=${id}`),

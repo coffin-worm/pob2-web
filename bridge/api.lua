@@ -868,21 +868,31 @@ function api.items(build)
 	local slots = asArray({})
 	for _, slot in ipairs(tab.orderedSlots) do
 		if slotShown(slot) then
-			slots[#slots + 1] = {
+			local entry = {
 				name = slot.slotName,
 				label = strip(slot.label or slot.slotName),
 				itemId = slot.selItemId or 0,
 				options = slotOptions(slot),
-				-- Flasks are the only slots that can be equipped but turned
-				-- off, and the checkbox is part of what the slot means.
-				flask = slot.slotName:match("Flask") and true or nil,
-				active = slot.slotName:match("Flask") and (slot.active and true or false) or nil,
 				-- A jewel socket belongs to the passive tree, not to a piece
 				-- of equipment, and is grouped apart in the UI.
 				socket = slot.nodeId and true or nil,
 				jewel = slot.parentSlot and slot.parentSlot.slotName or nil,
 				weaponSet = slot.weaponSet,
 			}
+			-- Flasks are the only slots that can be equipped but turned
+			-- off, and the checkbox is part of what the slot means.
+			--
+			-- Set here rather than in the table above, where `cond and
+			-- (x and true or false) or nil` collapses a legitimate false
+			-- back to nil and the key disappears. It made no difference to
+			-- the checkbox, which reads a missing key as unticked either
+			-- way, but "this flask is off" and "this is not a flask" are
+			-- not the same answer and should not arrive as the same bytes.
+			if slot.slotName:match("Flask") then
+				entry.flask = true
+				entry.active = slot.active and true or false
+			end
+			slots[#slots + 1] = entry
 		end
 	end
 
@@ -1864,7 +1874,10 @@ end
 --- changes it back; an item comparison does not have to touch the build at
 --- all, because GetMiscCalculator takes the substitution as an argument.
 --- Both end up here.
-local function renderCompare(build, calcBase, output, header)
+--- `nodeCount` is PoB's per-point column: given the number of passives a
+--- change costs, every line also reports what it buys per point spent,
+--- which is the only way to compare a route of six nodes with one of two.
+local function renderCompare(build, calcBase, output, header, nodeCount)
 	local tooltip = new("Tooltip"):Tooltip()
 	-- The comparison can fail where the change removes the thing being
 	-- compared: turning off the only socket group leaves no main skill,
@@ -1872,7 +1885,7 @@ local function renderCompare(build, calcBase, output, header)
 	-- through it. Reported, because "it broke" and "nothing moved" look
 	-- identical from an empty list and only one of them is fine.
 	local compared, compareErr = pcall(
-		build.AddStatComparesToTooltip, build, tooltip, calcBase, output, header or ""
+		build.AddStatComparesToTooltip, build, tooltip, calcBase, output, header or "", nodeCount
 	)
 	if not compared then
 		return { ready = false, error = "the comparison failed: " .. tostring(compareErr) }
@@ -1986,6 +1999,200 @@ function api.socketGroupWhatIf(build, groupIndex)
 			group.enabled = current
 		end
 	end, header)
+end
+
+--- What allocating or unallocating one node would do.
+---
+--- The signature interaction of the desktop tree: hover a node and it
+--- tells you what the point is worth, in the stats you care about, before
+--- you spend it. PoB does this with addNodes/removeNodes on the misc
+--- calculator, which substitutes without mutating, so this is the same
+--- shape as the item bench rather than the config what-if.
+---
+--- Two answers, not one, and the second is the one people actually need.
+--- A node you cannot reach in a single step costs the whole route to it,
+--- and what the route is worth is a different question from what the node
+--- is worth. The route's answer carries its length, which is what turns
+--- the comparison into a per-point one: six nodes for 8% life is a worse
+--- deal than two nodes for 5%, and only the per-point column says so.
+function api.treeWhatIf(build, nodeId)
+	local spec = build and build.spec
+	local node = spec and spec.nodes and spec.nodes[tonumber(nodeId) or 0]
+	if not node then
+		return { ready = false, error = "no node with id " .. tostring(nodeId) }
+	end
+
+	local calcsTab = build.calcsTab
+	if not calcsTab or not calcsTab.GetMiscCalculator then
+		return { ready = false, error = "the engine has no calculator yet" }
+	end
+	local calcFunc, calcBase = calcsTab:GetMiscCalculator()
+	if not calcFunc or not calcBase then
+		return { ready = false, error = "the engine has not finished its first calculation" }
+	end
+
+	-- A node an item hands you is not a node you allocated, so the only
+	-- question that makes sense about it is what losing it would cost.
+	local granted = calcsTab.mainEnv
+		and calcsTab.mainEnv.grantedPassives
+		and calcsTab.mainEnv.grantedPassives[node.id]
+		or false
+
+	-- PoB's own path: what this node holds up when it is allocated, and
+	-- what it would take to reach it when it is not.
+	local path = (node.alloc and node.depends) or node.path or {}
+	local pathNodes, pathLength = {}, 0
+	for _, pathNode in pairs(path) do
+		pathNodes[pathNode] = true
+		pathLength = pathLength + 1
+	end
+
+	local function run(override)
+		local ok, out = pcall(calcFunc, override)
+		if ok then
+			return out
+		end
+		return nil, tostring(out)
+	end
+
+	-- Restored by hand, as everywhere else here: the passes below raise it
+	-- and leaving it raised would have the UI believe the build changed.
+	local buildFlag = build.buildFlag
+
+	local header, pathHeader
+	local nodeOutput, nodeErr, pathOutput
+	if node.alloc then
+		header = "^7Unallocating this node will give you:"
+		pathHeader = "^7Unallocating this node and all nodes depending on it will give you:"
+		nodeOutput, nodeErr = run({ removeNodes = { [node] = true } })
+		if pathLength > 1 then
+			pathOutput = run({ removeNodes = pathNodes })
+		end
+	elseif granted then
+		header = "^7This node is granted by an item. Removing it will give you:"
+		nodeOutput, nodeErr = run({ removeNodes = { [node.id] = true } })
+	else
+		header = "^7Allocating this node will give you:"
+		pathHeader = "^7Allocating this node and all nodes leading to it will give you:"
+		nodeOutput, nodeErr = run({ addNodes = { [node] = true } })
+		if pathLength > 1 then
+			pathOutput = run({ addNodes = pathNodes })
+		end
+	end
+
+	build.buildFlag = buildFlag
+
+	if not nodeOutput then
+		return { ready = false, error = nodeErr or "the calculation failed" }
+	end
+
+	-- PoB's own condition for offering the route as well. A node reached
+	-- through an Intuitive Leap style jewel has no route to price.
+	local routeWorthAsking = pathOutput
+		and not granted
+		and (node.alloc or #(node.intuitiveLeapLikesAffecting or {}) == 0)
+
+	return {
+		ready = true,
+		id = node.id,
+		allocated = node.alloc and true or nil,
+		granted = granted and true or nil,
+		node = renderCompare(build, calcBase, nodeOutput, header),
+		path = routeWorthAsking
+			and renderCompare(build, calcBase, pathOutput, pathHeader, pathLength)
+			or nil,
+		-- How many nodes the route covers, so the UI can say what it costs
+		-- without counting the engine's lines.
+		pathLength = routeWorthAsking and pathLength or nil,
+	}
+end
+
+--- What switching a flask or a charm on, or off, would do.
+---
+--- Equipped but inactive is a state only these two have, and the question
+--- "is this flask worth a slot?" is not the same as "is it worth
+--- drinking". PoB keys the substitution on the item rather than the slot,
+--- and reads the current state out of the calculation environment rather
+--- than off the slot, because a flask can be active in the build without
+--- the slot saying so.
+function api.slotWhatIf(build, slotName)
+	local tab = build and build.itemsTab
+	local slot = tab and tab.slots and tab.slots[tostring(slotName)]
+	if not slot then
+		return { ready = false, error = "no slot named " .. tostring(slotName) }
+	end
+	local item = tab.items[slot.selItemId]
+	if not item then
+		return { ready = false, error = "nothing is equipped in " .. strip(slot.label or slotName) }
+	end
+	local base = item.base
+	if not base or not (base.flask or base.charm) then
+		return { ready = false, error = "only a flask or a charm can be switched on and off" }
+	end
+
+	local env = build.calcsTab and build.calcsTab.mainEnv
+	if not env then
+		return { ready = false, error = "the engine has not finished its first calculation" }
+	end
+
+	local flask = base.flask and true or false
+	local on = flask and (env.flasks and env.flasks[item]) or (env.charms and env.charms[item])
+	local noun = flask and "flask" or "charm"
+	local header = on
+		and ("^7Deactivating this " .. noun .. " will give you:")
+		or ("^7Activating this " .. noun .. " will give you:")
+
+	-- Nothing to revert: the toggle is an argument to the calculator, not
+	-- a change to the build, so whatIf's apply/undo shape is not needed.
+	local calcFunc, calcBase = build.calcsTab:GetMiscCalculator()
+	if not calcFunc or not calcBase then
+		return { ready = false, error = "the engine has not finished its first calculation" }
+	end
+	local buildFlag = build.buildFlag
+	local ok, output = pcall(calcFunc, flask and { toggleFlask = item } or { toggleCharm = item })
+	build.buildFlag = buildFlag
+	if not ok then
+		return { ready = false, error = tostring(output) }
+	end
+	return renderCompare(build, calcBase, output, header)
+end
+
+--- What a gem being off, or at 20 quality, would do.
+---
+--- Unlike the tree and the item bench, the calculator has no argument for
+--- a gem, so these are the apply-and-revert shape: PoB's own tooltips
+--- write the field, recalculate and write it back, and so does this.
+function api.gemWhatIf(build, groupIndex, gemIndex, subject)
+	local tab = build and build.skillsTab
+	local group = tab and tab.socketGroupList and tab.socketGroupList[tonumber(groupIndex) or 0]
+	local gem = group and group.gemList and group.gemList[tonumber(gemIndex) or 0]
+	if not gem then
+		return {
+			ready = false,
+			error = "no gem " .. tostring(gemIndex) .. " in group " .. tostring(groupIndex),
+		}
+	end
+
+	if subject == "quality" then
+		if (gem.quality or 0) >= 20 then
+			return { ready = false, error = "this gem is already at 20 quality or better" }
+		end
+		local stored = gem.quality
+		return whatIf(build, function()
+			gem.quality = 20
+			return function()
+				gem.quality = stored
+			end
+		end, "^7Setting to 20 quality will give you:")
+	end
+
+	local on = gem.enabled
+	return whatIf(build, function()
+		gem.enabled = not on
+		return function()
+			gem.enabled = on
+		end
+	end, on and "^7Disabling this gem will give you:" or "^7Enabling this gem will give you:")
 end
 
 --- The item on the bench, against every slot it could go in.

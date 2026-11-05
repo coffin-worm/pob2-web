@@ -8,6 +8,7 @@ import type {
   TreeConnector,
   TreeFrameSet,
   TreeNode,
+  TreeWhatIf,
 } from './types';
 
 /**
@@ -57,6 +58,21 @@ interface TreeStore {
   preview: { id: number; path: number[]; cost: number } | null;
   previewPath(id: number | null): Promise<void>;
 
+  /**
+   * What the hovered node would be worth, once asked.
+   *
+   * Two full recalculations, so this is not asked on every node the
+   * pointer crosses: the view waits for a dwell. PoB answers the same
+   * question instantly because it is in-process, and gates it behind
+   * Ctrl+D anyway for the same reason it costs something.
+   */
+  delta: { id: number; whatIf: TreeWhatIf } | null;
+  previewDelta(id: number | null): Promise<void>;
+
+  /** PoB's Ctrl+D, which is a real switch there and so is one here. */
+  showDeltas: boolean;
+  setShowDeltas(on: boolean): void;
+
   load(): Promise<void>;
   refreshAlloc(): Promise<void>;
   toggle(id: number): Promise<void>;
@@ -64,6 +80,21 @@ interface TreeStore {
 
 export const useTreeStore = create<TreeStore>((set, get) => {
   const pathCache = new Map<number, { path: number[]; cost: number }>();
+  // Keyed by node, emptied whenever the allocation moves, which is the
+  // only thing that can change what a node is worth without the build
+  // itself changing. refreshAlloc runs on every outputRevision, so this
+  // follows the build rather than a clock.
+  const deltaCache = new Map<number, TreeWhatIf>();
+
+  // Remembered per viewer, the way PoB remembers its own switch. A failure
+  // to read it is not worth an error: the default is simply used.
+  const readShowDeltas = () => {
+    try {
+      return window.localStorage.getItem('pob.tree.deltas') !== 'off';
+    } catch {
+      return true;
+    }
+  };
 
   const refreshAlloc = async () => {
     try {
@@ -78,6 +109,7 @@ export const useTreeStore = create<TreeStore>((set, get) => {
       });
       // Every cached route is about the tree as it was.
       pathCache.clear();
+      deltaCache.clear();
     } catch {
       set({ connection: 'offline' });
     }
@@ -98,6 +130,41 @@ export const useTreeStore = create<TreeStore>((set, get) => {
     reachable: new Map(),
     backdrop: null,
     preview: null,
+    delta: null,
+    showDeltas: readShowDeltas(),
+
+    setShowDeltas: (on) => {
+      try {
+        window.localStorage.setItem('pob.tree.deltas', on ? 'on' : 'off');
+      } catch {
+        // A refused write costs the preference, not the feature.
+      }
+      set({ showDeltas: on, delta: on ? get().delta : null });
+    },
+
+    previewDelta: async (id) => {
+      if (id === null || !get().showDeltas) {
+        if (get().delta) set({ delta: null });
+        return;
+      }
+      if (get().delta?.id === id) return;
+
+      const cached = deltaCache.get(id);
+      if (cached) {
+        set({ delta: { id, whatIf: cached } });
+        return;
+      }
+      try {
+        const whatIf = await bridge.treeWhatIf(id);
+        deltaCache.set(id, whatIf);
+        // The pointer may have moved on, or the switch been thrown,
+        // while two recalculations were in flight.
+        if (get().showDeltas) set({ delta: { id, whatIf } });
+      } catch {
+        // A node the engine will not price is not an error worth
+        // showing; the tooltip simply carries no comparison.
+      }
+    },
 
     previewPath: async (id) => {
       if (id === null) {

@@ -238,6 +238,33 @@ routes["GET /item"] = function(_, query)
 	return 200, detail
 end
 
+--- What one passive node is worth, before the point is spent. Two
+--- answers where the node is not adjacent: the node alone, and the whole
+--- route to it with its cost, which is the one that decides anything.
+routes["GET /tree/whatif"] = function(_, query)
+	local started = os.clock()
+	local whatIf = api.treeWhatIf(currentBuild(), query.node)
+	whatIf.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, whatIf
+end
+
+--- What switching a flask or charm on, or off, would do.
+routes["GET /items/whatif"] = function(_, query)
+	local started = os.clock()
+	local whatIf = api.slotWhatIf(currentBuild(), query.slot)
+	whatIf.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, whatIf
+end
+
+--- What a gem being off, or at 20 quality, would do. `subject` is
+--- "enabled" (the default) or "quality".
+routes["GET /gem/whatif"] = function(_, query)
+	local started = os.clock()
+	local whatIf = api.gemWhatIf(currentBuild(), query.group, query.gem, query.subject)
+	whatIf.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, whatIf
+end
+
 --- The item on the bench, against every slot it fits.
 ---
 --- One full recalculation per candidate slot, so this is the most
@@ -556,7 +583,7 @@ function love.load()
 	log("  GET /tree /tree/alloc   GET /items /item /items/search")
 	log("  GET /item/edit /item/staged")
 	log("  GET /skills /skills/group /gem /gems/search   GET /config")
-	log("  GET /config/whatif /skills/whatif")
+	log("  GET /config/whatif /skills/whatif /tree/whatif /items/whatif /gem/whatif")
 	log("  GET /code /code/inspect   POST /code/import /code/character")
 	log("  GET /builds /compare")
 	log("  POST /action  POST /build/new  POST /build/open")

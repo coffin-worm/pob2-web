@@ -4,9 +4,11 @@ import { useItemsStore } from '../pob/itemsStore';
 import { Select } from '../ui/Select';
 import { Segmented } from '../ui/Segmented';
 import { Button } from '../ui/Button';
+import { WhatIf } from '../ui/WhatIf';
+import { bridge } from '../pob/bridge';
 import { ItemEditor } from './ItemEditor';
 import { StagedItem } from './StagedItem';
-import { Lines, blocksOf } from './TooltipLines';
+import { Lines, blocksOf } from '../ui/TooltipLines';
 import type { ItemSlot } from '../pob/types';
 import styles from './ItemsView.module.css';
 
@@ -266,6 +268,15 @@ export function ItemsView() {
                   >
                     ?
                   </button>
+                  {/* Equipped but switched off is a state only flasks and
+                      charms have, so "is it worth drinking?" is a question
+                      only they can be asked. */}
+                  {slot.flask && slot.itemId !== 0 && (
+                    <WhatIf
+                      label={slot.label}
+                      ask={() => bridge.slotWhatIf(slot.name)}
+                    />
+                  )}
                 </div>
               ))}
             </section>

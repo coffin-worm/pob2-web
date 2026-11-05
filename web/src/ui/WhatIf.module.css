@@ -26,6 +26,11 @@
    * socket group's wrapping button row. */
   grid-column: 1 / -1;
   flex-basis: 100%;
+  /* Placed last whatever its position in the markup. The button belongs
+   * beside the thing it asks about, which in a row of controls is the
+   * middle; without this the answer is laid out there too and shoulders
+   * the rest of the row onto the line below it. */
+  order: 1;
   display: flex;
   flex-direction: column;
   gap: 1px;

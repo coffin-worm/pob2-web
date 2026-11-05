@@ -234,15 +234,20 @@ export function SkillsView() {
                     <p className={styles.hint}>No gems in this group yet.</p>
                   )}
 
+                  {/* Header and rows share one grid so the two labels sit
+                      over the fields they name. They are separate grids
+                      otherwise, and separate grids size their own columns. */}
                   {gems.length > 0 && (
+                    <div className={styles.gemTable}>
                     <div className={styles.gemHead} aria-hidden="true">
+                      <span />
                       <span />
                       <span />
                       <span>level</span>
                       <span>qual</span>
                       <span />
+                      <span />
                     </div>
-                  )}
 
                   {gems.map((gem) => (
                     <div
@@ -263,6 +268,13 @@ export function SkillsView() {
                           })
                         }
                         aria-label={`${gem.name} enabled`}
+                      />
+                      {/* Beside the thing it asks about, which is where
+                          PoB puts it: this one hangs off the enable
+                          checkbox's own tooltip there. */}
+                      <WhatIf
+                        label={gem.name}
+                        ask={() => bridge.gemWhatIf(entry.index, gem.index, 'enabled')}
                       />
                       <button
                         className={styles.gemName}
@@ -293,6 +305,18 @@ export function SkillsView() {
                         }
                         aria-label={`${gem.name} quality`}
                       />
+                      {/* Only worth asking below 20: PoB's question is
+                          "what would 20 quality give you", and at 20 it
+                          would be comparing the gem with itself. The cell
+                          stays so the columns do not shift between rows. */}
+                      {gem.quality < 20 ? (
+                        <WhatIf
+                          label={`${gem.name} at 20 quality`}
+                          ask={() => bridge.gemWhatIf(entry.index, gem.index, 'quality')}
+                        />
+                      ) : (
+                        <span aria-hidden="true" />
+                      )}
                       <button
                         className={styles.remove}
                         onClick={() =>
@@ -305,6 +329,8 @@ export function SkillsView() {
                       {gem.error && <p className={styles.gemError}>{gem.error}</p>}
                     </div>
                   ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

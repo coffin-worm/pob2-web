@@ -75,6 +75,29 @@
   font-style: italic;
 }
 
+/* What the point would buy. Set apart from the node's own stat lines,
+ * because one is what the node says and the other is what it would do to
+ * this build, and reading them as one list is how you misread both. */
+.tipDelta {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-xs);
+}
+
+.tipRule {
+  height: 0;
+  margin: var(--space-2) 0;
+  border: 0;
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.tipQuiet {
+  margin-top: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
 .search {
   position: absolute;
   z-index: 2;
@@ -137,4 +160,23 @@
 
 .hudWarn {
   color: var(--stat-negative, #f05050);
+}
+
+/* PoB's Ctrl+D, as something you can see and click. It is in the HUD
+ * rather than a menu because its cost is the reason it exists. */
+.hudToggle {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-disabled);
+  font: inherit;
+  cursor: pointer;
+}
+
+.hudToggle:hover {
+  color: var(--text-secondary);
+}
+
+.hudToggle[data-on='true'] {
+  color: var(--text-muted);
 }

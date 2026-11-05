@@ -449,11 +449,16 @@ export interface StagedSlot {
   fullDPS?: number;
   combinedDPS?: number;
   totalEHP?: number;
-  compare?: StagedCompare;
+  compare?: Comparison;
 }
 
-/** PoB's comparison lines for one slot. `WhatIf` without its own cost. */
-export type StagedCompare =
+/**
+ * PoB's comparison lines for one change.
+ *
+ * `WhatIf` without a cost of its own, because these arrive several at a
+ * time inside a bigger answer that reports the cost once.
+ */
+export type Comparison =
   | { ready: false; error?: string }
   | {
       ready: true;
@@ -461,6 +466,29 @@ export type StagedCompare =
       droppedTips: number;
       /** Set when equipping it there moves nothing at all. */
       unchanged?: boolean;
+    };
+
+/**
+ * What one passive node would be worth.
+ *
+ * Two answers where the node is not adjacent. `node` is what the node
+ * alone does; `path` is what the whole route to it does, and carries the
+ * per-point column, which is the only way to weigh a route of six nodes
+ * against one of two. PoB shows both for the same reason.
+ */
+export type TreeWhatIf =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      id: number;
+      allocated?: boolean;
+      /** Granted by an item, so the only question is what losing it costs. */
+      granted?: boolean;
+      node: Comparison;
+      path?: Comparison;
+      /** How many nodes the route covers. */
+      pathLength?: number;
+      buildMs: number;
     };
 
 /**

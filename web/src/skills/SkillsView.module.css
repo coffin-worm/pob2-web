@@ -178,20 +178,30 @@
 
 /* Shares the gem row's track sizes so the two number columns are named
  * without a label inside each field. */
-.gemHead,
-.gem {
+/* One grid for the header and every row, so "level" and "qual" sit over
+ * the fields they name. Two grids with the same template do not line up:
+ * each sizes its own auto columns from its own contents, and the header's
+ * cells are empty. */
+.gemTable {
   display: grid;
   /* minmax(0, 1fr) on the name: a long gem name would otherwise widen the
    * track past the panel. */
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto auto auto;
+}
+
+.gemHead,
+.gem {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-2) var(--space-2) 0;
   border-radius: var(--radius-sm);
 }
 
-.gemHead > span:nth-child(3),
-.gemHead > span:nth-child(4) {
+.gemHead > span:nth-child(4),
+.gemHead > span:nth-child(5) {
   color: var(--text-disabled);
   font-size: var(--text-xs);
   text-align: center;

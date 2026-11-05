@@ -1,10 +1,10 @@
 /* The engine's own tooltip, as lines.
  *
- * Moved here from ItemsView so the staged-item panel renders PoB's lines
- * the same way the item panel does rather than keeping a second copy. The
- * tone names below are also spelled out in four other stylesheets
- * (sidebar, calcs, skills, compare); collapsing all five into one place is
- * worth doing, and is not this change. */
+ * Shared by the item panel, the staged-item bench and the tree's node
+ * tooltip, because PoB builds all of them the same way. The tone names
+ * below are also spelled out in four other stylesheets (sidebar, calcs,
+ * skills, compare); collapsing all five into this one is worth doing, and
+ * is not this change. */
 
 .line {
   font-size: var(--text-base);

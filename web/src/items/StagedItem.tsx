@@ -1,5 +1,5 @@
 import { Button } from '../ui/Button';
-import { Lines, blocksOf } from './TooltipLines';
+import { Lines, blocksOf } from '../ui/TooltipLines';
 import type { StagedItem as Staged, StagedSlot } from '../pob/types';
 import styles from './StagedItem.module.css';
 

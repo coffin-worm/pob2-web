@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTreeStore } from '../pob/treeStore';
+import { Lines } from '../ui/TooltipLines';
 import type { SpriteRect, TreeArt } from './art';
 import type { TreeBackdropImage, TreeNode } from '../pob/types';
 import styles from './TreeView.module.css';
@@ -36,6 +37,12 @@ const MIN_SCALE = 0.012;
 const MAX_SCALE = 0.9;
 const TIP_WIDTH = 320;
 const TIP_GUTTER = 12;
+/**
+ * How long the pointer rests on a node before the engine is asked what it
+ * is worth. Long enough that crossing the tree costs nothing, short
+ * enough that stopping to read is answered by the time you have.
+ */
+const DWELL_MS = 180;
 
 /**
  * Below this, nodes are drawn as circles instead of sprites.
@@ -133,6 +140,10 @@ export function TreeView() {
   const backdrop = useTreeStore((s) => s.backdrop);
   const preview = useTreeStore((s) => s.preview);
   const previewPath = useTreeStore((s) => s.previewPath);
+  const delta = useTreeStore((s) => s.delta);
+  const previewDelta = useTreeStore((s) => s.previewDelta);
+  const showDeltas = useTreeStore((s) => s.showDeltas);
+  const setShowDeltas = useTreeStore((s) => s.setShowDeltas);
   const load = useTreeStore((s) => s.load);
   const toggle = useTreeStore((s) => s.toggle);
 
@@ -144,6 +155,8 @@ export function TreeView() {
   const hoverRef = useRef<TreeNode | null>(null);
   const matchRef = useRef<Set<number>>(new Set());
   const previewRef = useRef<Set<number>>(new Set());
+  const dwellRef = useRef<number | undefined>(undefined);
+  const tipRef = useRef<HTMLDivElement>(null);
 
   const [hover, setHover] = useState<Hover | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -561,8 +574,25 @@ export function TreeView() {
       // The route goes with it. Leaving it drawn after the pointer has
       // gone is a highlight with nothing explaining it.
       void previewPath(null);
+      window.clearTimeout(dwellRef.current);
+      void previewDelta(null);
     }
   };
+
+  // The tooltip used to sit above the cursor in the lower half of the
+  // panel and below it in the upper half, which needs no measurement and
+  // was right while a tooltip was a name and three stat lines. A node's
+  // worth can be thirty, and a box that tall runs off the top of the
+  // panel whichever side of the cursor it starts on. So it is measured
+  // once it exists and pulled back inside, which is the one thing the
+  // original heuristic was written to avoid and the change that made it
+  // necessary.
+  useLayoutEffect(() => {
+    const el = tipRef.current;
+    if (!el || !hover) return;
+    const limit = hover.wrapH - el.offsetHeight - TIP_GUTTER;
+    el.style.top = `${Math.max(TIP_GUTTER, Math.min(hover.sy + 16, limit))}px`;
+  });
 
   /** Put the first search match in the middle of the view. */
   const goToFirstMatch = () => {
@@ -625,6 +655,20 @@ export function TreeView() {
             // engine, cached per node, and only when the node under the
             // pointer changes, not per mouse-move.
             void previewPath(found && reachable.has(found.id) ? found.id : null);
+
+            // What the node is worth waits for the pointer to settle.
+            // The route above is one cheap call the engine answers from
+            // what it already knows; this is two full recalculations, and
+            // firing them across every node between here and there would
+            // queue work for answers nobody asked for.
+            window.clearTimeout(dwellRef.current);
+            void previewDelta(null);
+            if (found) {
+              dwellRef.current = window.setTimeout(() => {
+                void previewDelta(found.id);
+              }, DWELL_MS);
+            }
+
             setHover(
               found
                 ? {
@@ -691,14 +735,13 @@ export function TreeView() {
           // Kept inside the panel on both axes. Below the cursor in the top
           // half and above it in the bottom half, which needs no measurement
           // of a box that has not been laid out yet.
+          ref={tipRef}
           style={{
             left: Math.max(
               TIP_GUTTER,
               Math.min(hover.sx + 16, hover.wrapW - TIP_WIDTH - TIP_GUTTER),
             ),
-            ...(hover.sy > hover.wrapH / 2
-              ? { bottom: hover.wrapH - hover.sy + 16 }
-              : { top: hover.sy + 16 }),
+            top: hover.sy + 16,
           }}
         >
           <div className={styles.tipName}>{hover.node.name || `Node ${hover.node.id}`}</div>
@@ -714,6 +757,32 @@ export function TreeView() {
             </ul>
           )}
           {hover.node.flavour && <div className={styles.tipFlavour}>{hover.node.flavour}</div>}
+
+          {/* What the point is worth. The question the desktop tree
+              answers on hover and the reason its tooltip is the tool
+              people actually plan with. */}
+          {showDeltas && delta?.id === hover.node.id && delta.whatIf.ready && (
+            <div className={styles.tipDelta}>
+              <Lines lines={delta.whatIf.node.ready ? delta.whatIf.node.lines : []} />
+              {delta.whatIf.node.ready && delta.whatIf.node.unchanged && (
+                <div className={styles.tipQuiet}>
+                  {delta.whatIf.allocated ? 'Unallocating' : 'Allocating'} this changes nothing.
+                </div>
+              )}
+              {delta.whatIf.path?.ready && (
+                <>
+                  <hr className={styles.tipRule} />
+                  <Lines lines={delta.whatIf.path.lines} />
+                </>
+              )}
+            </div>
+          )}
+          {showDeltas && delta?.id === hover.node.id && !delta.whatIf.ready && (
+            <div className={styles.tipQuiet}>{delta.whatIf.error}</div>
+          )}
+          {showDeltas && delta?.id !== hover.node.id && (
+            <div className={styles.tipQuiet}>working out what it is worth…</div>
+          )}
         </div>
       )}
 
@@ -728,6 +797,18 @@ export function TreeView() {
           <span className={styles.hudValue}>{frameMs}</span> ms/frame
         </span>
         <span>{spriteMode ? 'art' : 'dots'}</span>
+        <button
+          className={styles.hudToggle}
+          data-on={showDeltas ? 'true' : undefined}
+          onClick={() => setShowDeltas(!showDeltas)}
+          title={
+            showDeltas
+              ? 'Stop pricing each node on hover'
+              : 'Show what each node would be worth, on hover'
+          }
+        >
+          stat differences {showDeltas ? 'on' : 'off'}
+        </button>
         {!loaded && <span>loading…</span>}
         {loaded && !art && <span title="run npm run tree-art">no artwork</span>}
         {arcErrors > 0 && (
