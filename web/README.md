@@ -1302,7 +1302,7 @@ merely empty.
   notable glow, the Items tab's missing crafting interface, the Skills
   tab's gem defaults, the Config tab's per-option comparison, and the
   compare view's tree/items/skills diffs.
-- **Seven of PoB's eighteen stat-difference tooltips.** The passive tree,
+- **Six of PoB's eighteen stat-difference tooltips.** The passive tree,
   socket groups, gems, gem quality, flasks and charms, and config
   checkboxes are answered. Still unanswered: the gem picker's per-row
   "selecting this gem will give you", the tree-set switch, the custom
