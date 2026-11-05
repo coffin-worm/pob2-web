@@ -904,6 +904,83 @@ damage line follows the build from `= 15.0 to 22.0` at gem level 3 to
   matching Calcs cell and shows the same pane; the mapping exists
   (`BuildBreakdownIndex`) and is not wired up here.
 
+## The Notes tab, and one widget doing two jobs
+
+The smallest screen here. A build's notes are free text saved into its
+XML by `NotesTab:Save` and read by nothing else: no calculation depends on
+them, so there is nothing to be faithful to except the format.
+
+The format is one thing, though. Notes carry caret escapes, `^xRRGGBB` and
+`^0` to `^9`, each setting the colour of everything after it until the next
+one. There is no closing form and no nesting, because this is an
+instruction to the renderer rather than a markup language.
+
+The desktop tab draws those colours in its editor, which means it draws
+them instead of showing them, which means you cannot see what you typed.
+Its answer is a **Show Color Codes** button that rewrites every `^` in the
+buffer to `^_` so the codes become ordinary text, and gives up the colours
+while you look. One widget doing two jobs, neither of them at the same
+time, and the toggle is destructive: the buffer really is rewritten, which
+is why `Save` turns it off first.
+
+Two widgets cost nothing here, so the editor shows the text as stored and
+a preview beside it shows what the desktop app will draw. The toggle is
+not needed and is not offered.
+
+### Who holds the truth while you type
+
+Every other screen here reads the engine and writes through its callbacks,
+so the engine is ahead and the browser is catching up. This one inverts
+that: the user is typing, so the draft is the truth until it has been
+pushed.
+
+That inversion is why the draft lives in the store rather than in the
+component. It has to survive the editor being unmounted by a tab switch,
+and it has to be reachable by the flush that the tab switch triggers,
+neither of which is true of state held inside the view. Keystrokes settle
+for 500ms before a write; leaving the tab, or the field, pushes
+immediately. Switching away mid-sentence keeps the sentence.
+
+A reload only replaces the draft when the draft is not ahead of the
+engine, because an answer landing mid-sentence must not take the sentence
+back.
+
+### A flag PoB only sets when you are looking at it
+
+`NotesTab:Draw` is what works out whether the notes differ from what the
+file holds, and `Build:Draw` folds that into the build's unsaved flag.
+Headless, the first of those never runs, because it only runs while the
+Notes tab is the one on screen.
+
+Nothing would have been lost: `Save` reads the buffer whatever the flag
+says. But the build would not have reported unsaved work, which is the
+worse failure of the two, since it removes the reason to press Save. So
+`setNotes` repeats the one line that Draw would have run. It is the
+comparison rather than a flat `true`, exactly as PoB has it, so typing the
+notes back to what was loaded clears the flag again.
+
+### One deliberate difference
+
+The colour buttons are PoB's gesture: insert the code at the caret, or
+wrap the selection in it. Wrapping has to close with something, because
+the text after the selection would otherwise inherit the new colour, and
+PoB closes with the last colour found *inside* the selection, falling back
+to white. Colour three words inside a grey line and the rest of that line
+turns white.
+
+This closes with the colour that was in effect *before* the selection
+instead, which is what the gesture meant. The file is identical in every
+other respect, and a note written here opens in the desktop app unchanged.
+
+### What it does not do
+
+- **No zoom.** The real tab has Ctrl +/- and Ctrl+0 for the note font.
+- **No undo stack of its own.** The textarea's own undo covers typing, but
+  a colour button's edit is applied programmatically and does not join it.
+- **No `^_` escaping.** With the preview beside the editor there is nothing
+  for it to do, but a note that arrives already escaped from the desktop
+  app is unescaped on read rather than preserved.
+
 ## Import and export, and the zlib that was missing
 
 A build code is base64 of the deflated build XML. Two transforms, both

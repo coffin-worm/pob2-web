@@ -2020,6 +2020,87 @@ function api.config(build)
 	}
 end
 
+-------------------------------------------------------------- the notes
+
+-- The twelve colours the desktop Notes tab offers as buttons, in its own
+-- order. Only the names are written down: the codes are read out of
+-- colorCodes, because the palette is PoB's and it has been changed before.
+-- DEFAULT is the exception, because NotesTab writes "^7" literally rather
+-- than naming a colour.
+local NOTE_COLOURS = {
+	"NORMAL", "MAGIC", "RARE", "UNIQUE",
+	"FIRE", "COLD", "LIGHTNING", "CHAOS",
+	"STRENGTH", "DEXTERITY", "INTELLIGENCE",
+}
+
+-- The ten indexed colours `^0` to `^9` resolve against. Unlike the named
+-- palette there is nothing to read these out of: they belong to the
+-- renderer rather than to PoB's data, and both the SimpleGraphic host and
+-- the LOVE one define the same table.
+local DIGIT_HEX = {
+	["0"] = "#000000", ["1"] = "#ff0000", ["2"] = "#00ff00", ["3"] = "#0000ff",
+	["4"] = "#ffff00", ["5"] = "#ff00ff", ["6"] = "#00ffff", ["7"] = "#ffffff",
+	["8"] = "#b3b3b3", ["9"] = "#666666",
+}
+
+--- A caret escape as a CSS colour, or nil if it is not one.
+local function hexOf(code)
+	code = tostring(code or "")
+	local hex = code:match("^%^[xX](%x%x%x%x%x%x)")
+	if hex then
+		return "#" .. hex:lower()
+	end
+	local digit = code:match("^%^(%d)")
+	return digit and DIGIT_HEX[digit] or nil
+end
+
+--- The notes, and what is needed to colour them.
+---
+--- One text buffer on a build, which is the whole of the desktop tab: the
+--- notes are free text, saved into the build XML by `NotesTab:Save`, and
+--- read by nothing else. No calculation depends on them.
+---
+--- The only subtlety is the caret escapes. `^xRRGGBB` and `^0` to `^9` set
+--- the colour of everything after them, and the desktop tab shows them
+--- with a toggle that rewrites `^` to `^_` throughout so the codes become
+--- visible as text. That is a trick for making one widget do two jobs, and
+--- it is a destructive one: the buffer really is rewritten. There are two
+--- widgets here, an editor and a preview beside it, so the toggle is not
+--- needed and the buffer is always read in its real form.
+function api.notes(build)
+	local tab = build and build.notesTab
+	local edit = tab and tab.controls and tab.controls.edit
+	if not edit then
+		return { ready = false }
+	end
+
+	-- If the desktop tab was left with its toggle on, the buffer is
+	-- carrying escaped codes. Putting it back is what Save does too.
+	if tab.showColorCodes then
+		pcall(tab.SetShowColorCodes, tab, false)
+	end
+
+	local palette = asArray({})
+	for _, name in ipairs(NOTE_COLOURS) do
+		local code = type(colorCodes) == "table" and colorCodes[name] or nil
+		local hex = hexOf(code)
+		if hex then
+			palette[#palette + 1] = { name = name, code = code, hex = hex }
+		end
+	end
+	palette[#palette + 1] = { name = "DEFAULT", code = "^7", hex = DIGIT_HEX["7"] }
+
+	return {
+		ready = true,
+		text = edit.buf or "",
+		-- PoB's own comparison against what was loaded. Reported so the UI
+		-- can say whether what is on screen has reached the file yet.
+		modified = tab.modFlag and true or nil,
+		palette = palette,
+		digits = DIGIT_HEX,
+	}
+end
+
 -------------------------------------------------------- import and export
 
 --- A build code is base64 of the deflated build XML, in the URL-safe
@@ -3192,6 +3273,39 @@ function commands.setLoadout(build, value)
 	if not treeTab or not treeTab.specList then return nil, "no tree tab" end
 	if not treeTab.specList[i] then return nil, "no spec at index " .. tostring(value) end
 	treeTab:SetActiveSpec(i)
+	return true
+end
+
+--- Replace the notes.
+---
+--- The whole buffer at once, which is what SetText takes and what Save
+--- writes back out.
+---
+--- The modFlag line below is the one `NotesTab:Draw` runs, and it has to
+--- be repeated here because that Draw only happens while the Notes tab is
+--- the one on screen. Headless, it never is. Without this the notes would
+--- still be saved, since Save reads the buffer either way, but the build
+--- would not say it had unsaved work in it, which is a worse failure than
+--- losing the text: you would have no reason to press Save.
+---
+--- It is the comparison rather than a flat `true`, exactly as PoB has it,
+--- so typing the notes back to what they were clears the flag again.
+function commands.setNotes(build, value)
+	local tab = build.notesTab
+	local edit = tab and tab.controls and tab.controls.edit
+	if not edit then
+		return nil, "this build has no notes"
+	end
+	local text = type(value) == "table" and value.text or value
+	if type(text) ~= "string" then
+		return nil, "expected { text = ... }"
+	end
+	-- Escaped caret codes are a display mode of the desktop editor. Writing
+	-- them into the buffer would save them, and they would come back as
+	-- literal text rather than as colours.
+	pcall(tab.SetShowColorCodes, tab, false)
+	edit:SetText(text)
+	tab.modFlag = (tab.lastContent ~= edit.buf)
 	return true
 end
 

@@ -13,6 +13,7 @@ import type {
   ItemFilterOptions,
   ItemFilters,
   ItemSearchSnapshot,
+  NotesSnapshot,
   ItemsSnapshot,
   GemSearchSnapshot,
   SkillDetail,
@@ -174,6 +175,9 @@ export const bridge = {
 
   /** The configuration tab: only the options this build actually uses. */
   config: () => request<ConfigSnapshot>('/config'),
+
+  /** The build's notes, with the palette needed to colour them. */
+  notes: () => request<NotesSnapshot>('/notes'),
 
   /**
    * What a build code contains, without importing it.

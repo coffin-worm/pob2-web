@@ -1,0 +1,123 @@
+/* The notes, and the colours they will be drawn in.
+ *
+ * Two panes rather than the desktop app's one widget and a toggle: the
+ * editor shows the text as it is stored, codes and all, and the preview
+ * shows what anyone opening this build in PoB will see. */
+
+/* Fills the panel. A text editor that stops two thirds of the way down a
+ * screen with nothing under it is just a smaller editor. */
+.view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: var(--space-4);
+  min-height: 0;
+}
+
+.empty {
+  color: var(--text-muted);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.palette {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+/* The button is the colour it inserts. A row of identically grey buttons
+ * labelled with colour names would be a worse swatch than no swatch. */
+.swatch {
+  padding: var(--space-1) var(--space-3);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.swatch:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-subtle);
+}
+
+.state {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.error {
+  color: var(--danger);
+}
+
+/* Side by side where there is room, stacked where there is not, decided by
+ * this panel's width rather than the window's. */
+.panes {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: var(--space-5);
+  align-items: stretch;
+  min-height: 0;
+}
+
+.editor,
+.preview {
+  min-height: 320px;
+  padding: var(--space-5);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  /* Both panes wrap the same way, so a line in one is a line in the
+   * other and the two can be read against each other. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.editor {
+  color: var(--text-primary);
+  /* No resize handle: the pane already grows with the window, and a
+   * dragged height would only desync it from the preview beside it. */
+  resize: none;
+}
+
+.editor:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+.preview {
+  /* The colour of text with no escape before it, which is what PoB draws
+   * when nothing has set one. */
+  color: #ffffff;
+  overflow: auto;
+}
+
+.hint {
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}
+
+.hint code {
+  padding: 0 var(--space-2);
+  background: var(--bg-raised);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}

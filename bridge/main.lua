@@ -353,6 +353,11 @@ routes["GET /config"] = function()
 	return 200, config
 end
 
+--- The build's notes, with the palette needed to colour them.
+routes["GET /notes"] = function()
+	return 200, api.notes(currentBuild())
+end
+
 --- What flipping one configuration option would do, without doing it.
 routes["GET /config/whatif"] = function(_, query)
 	local started = os.clock()
@@ -606,7 +611,7 @@ function love.load()
 	log("  GET /tree /tree/alloc   GET /items /item")
 	log("  GET /items/search /items/filters")
 	log("  GET /item/edit /item/staged")
-	log("  GET /skills /skills/group /gem /gems/search   GET /config")
+	log("  GET /skills /skills/group /gem /gems/search   GET /config /notes")
 	log("  GET /config/whatif /skills/whatif /tree/whatif /items/whatif /gem/whatif")
 	log("  GET /code /code/inspect   POST /code/import /code/character")
 	log("  GET /builds /compare")

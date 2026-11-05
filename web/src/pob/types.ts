@@ -636,6 +636,27 @@ export interface ItemSearchSnapshot {
   buildMs?: number;
 }
 
+/* ------------------------------------------------------------- the notes */
+
+/** One colour the desktop Notes tab offers, as PoB names it. */
+export interface NoteColour {
+  name: string;
+  /** The caret escape that selects it, such as "^xFFFF77". */
+  code: string;
+  /** The same colour, as CSS. */
+  hex: string;
+}
+
+export interface NotesSnapshot {
+  ready: boolean;
+  text?: string;
+  /** PoB's own comparison of the buffer against what the file holds. */
+  modified?: boolean;
+  palette?: NoteColour[];
+  /** What `^0` to `^9` resolve to. */
+  digits?: Record<string, string>;
+}
+
 /* ------------------------------------------------------------ the skills */
 
 /** One socket group in the list. */

@@ -5,6 +5,7 @@ import { CalcsView } from './calcs/CalcsView';
 import { ItemsView } from './items/ItemsView';
 import { SkillsView } from './skills/SkillsView';
 import { ConfigView } from './config/ConfigView';
+import { NotesView } from './notes/NotesView';
 import { PortView } from './port/PortView';
 import { BuildsView } from './builds/BuildsView';
 import { CompareView } from './compare/CompareView';
@@ -18,7 +19,16 @@ import { useCalcsStore } from './pob/calcsStore';
 import { useTreeStore } from './pob/treeStore';
 import styles from './App.module.css';
 
-type Tab = 'tree' | 'items' | 'skills' | 'config' | 'calcs' | 'port' | 'builds' | 'compare';
+type Tab =
+  | 'tree'
+  | 'items'
+  | 'skills'
+  | 'config'
+  | 'calcs'
+  | 'notes'
+  | 'port'
+  | 'builds'
+  | 'compare';
 
 export default function App() {
   const state = useBridgeStore();
@@ -59,6 +69,7 @@ export default function App() {
               { value: 'skills', label: 'Skills', title: 'Socket groups and gems' },
               { value: 'config', label: 'Config', title: 'Everything the engine has to be told' },
               { value: 'calcs', label: 'Calcs', title: 'Calculation breakdown' },
+              { value: 'notes', label: 'Notes', title: "The build's own notes" },
               { value: 'compare', label: 'Compare', title: 'This build against another' },
               { value: 'port', label: 'Import', title: 'Build codes in and out' },
               { value: 'builds', label: 'Builds', title: 'Open, save and manage build files' },
@@ -91,6 +102,14 @@ export default function App() {
           <div className={styles.panel} hidden={tab !== 'calcs'}>
             <CalcsView />
           </div>
+          {/* Unmounted when hidden like the rest, which is also what
+              flushes a half-typed note to the engine: the editor pushes
+              on its way out. */}
+          {tab === 'notes' && (
+            <div className={styles.panel}>
+              <NotesView />
+            </div>
+          )}
           {tab === 'port' && (
             <div className={styles.panel}>
               <PortView />
