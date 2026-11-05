@@ -668,10 +668,41 @@ Life (+63.1%)`, `+43% Fire Resistance`, against both ring slots, in 4ms.
 The desktop app can tell you what an item would be worth too, but only
 after you equip it, read the sidebar and put the old one back.
 
+### Runes and soul cores
+
+The next piece, and the one with the cleanest seam. `item.runes` is a flat
+array of names, one per socket, with PoB's own "None" for an empty one,
+and socketing is three lines: set the name, `UpdateRunes`, rebuild. The
+rules are all on the read side.
+
+`GetValidRunesForItem` is a real filter rather than a list. It asks the
+socket's own augment type, the soul core types the base names, the
+`SocketedRunesOnly` and `SocketedSoulCoresOnly` flags a unique can carry,
+and the two blanket restrictions on uniques and on jewellery. It also
+merges the several mod lines one rune can have into a single entry, which
+is where the `Bonded:` lines come from. An Iron Cuirass takes 120 of them.
+None of that is repeated here; the method is called and its answer is
+reported.
+
+Socket counts are two numbers, rune and jewel, both capped at six, which
+is PoB's cap rather than a guess: its edit box rewrites anything larger
+straight back down to it. The base's own socket limit is reported beside
+the control rather than enforced, because PoB lets you exceed it, so the
+panel says "6 of 4 on this base" rather than silently refusing.
+
+One thing worth checking rather than assuming, and it went the other way:
+taking sockets away drops the runes in them for good. `UpdateRunes`
+rebuilds the item's lines from the sockets that remain and the rebuild
+after it re-reads the item from that text, so putting the sockets back
+leaves them empty. The forgiving behaviour is the one you would expect,
+and it is not what happens.
+
+Stacking does work as you would hope. Two Soul Cores of Jiquani in one
+chest read `10% increased maximum Life` rather than two lines of 5%,
+because `UpdateRunes` combines mods that share a stat order.
+
 ### What it does not do
 
-- **No runes or soul cores.** `GetValidRunesForItem` is self-contained and
-  the apply is three lines, so this is the next piece.
 - **No anoints.** `anointItem` is cleanly callable; only the notable list
   needs exposing.
 - **No corrupting.** PoB's own code there still says it is PoE 1's, with a

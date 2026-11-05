@@ -361,3 +361,34 @@
   outline: none;
   border-color: var(--border-strong);
 }
+
+/* ---------------------------------------------------------- the sockets */
+
+.sockets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.socketCounts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: var(--space-3) var(--space-5);
+}
+
+.runeRows {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.runeName {
+  color: var(--rarity-crafted);
+}
+
+.bound {
+  color: var(--warning);
+}

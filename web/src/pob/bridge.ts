@@ -15,6 +15,7 @@ import type {
   ItemSearchSnapshot,
   CraftAffixes,
   CraftBases,
+  CraftRunes,
   CraftState,
   NotesSnapshot,
   ItemsSnapshot,
@@ -200,6 +201,10 @@ export const bridge = {
   /** The bases an item can be crafted on, by type. */
   craftBases: (type?: string) =>
     request<CraftBases>('/craft/bases' + (type ? `?type=${encodeURIComponent(type)}` : '')),
+
+  /** The runes and soul cores the bench item's sockets will accept. */
+  craftRunes: (query?: string) =>
+    request<CraftRunes>('/craft/runes' + (query ? `?q=${encodeURIComponent(query)}` : '')),
 
   /**
    * What a build code contains, without importing it.

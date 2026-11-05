@@ -2204,6 +2204,86 @@ local function affixRow(tab, item, kind, index)
 	return row
 end
 
+--- Whether this item can carry rune sockets at all.
+---
+--- PoB's own `canHaveAugmentSockets`, which is a file-local one-liner in
+--- the Items tab rather than a method, so it is repeated here: a base with
+--- a socket limit, a base that overrides what may go in its sockets, or an
+--- item that already has some.
+local function canSocket(item)
+	return (item.base and item.base.socketLimit and item.base.socketLimit > 0)
+		or item.socketedAugmentTypeOverride ~= nil
+		or (item.itemSocketCount or 0) > 0
+end
+
+--- One rune, as the list needs it.
+local function runeEntry(rune)
+	local lines = asArray({})
+	for _, line in ipairs(rune.lines or {}) do
+		lines[#lines + 1] = strip(line)
+	end
+	return {
+		name = rune.name,
+		label = strip(rune.label or lines[1] or rune.name),
+		lines = lines,
+		-- Rune or SoulCore. A base can be restricted to one or the other,
+		-- and the filter below has already applied that, but the kind is
+		-- still worth saying: they are different objects in the game.
+		type = rune.type,
+		-- The level the rune itself needs, which is not the item's.
+		req = rune.req,
+		-- How many of this rune one item may carry, where the game caps it.
+		limit = rune.limit,
+		-- A rune that cannot be taken out again once it is in.
+		socketBound = rune.isSocketBound or nil,
+	}
+end
+
+--- The runes and soul cores this item's sockets will accept.
+---
+--- `GetValidRunesForItem` is the whole rule and it is a real one: the
+--- socket's own augment type, the soul core types the base names, the
+--- SocketedRunesOnly and SocketedSoulCoresOnly flags a unique can carry,
+--- and the two blanket restrictions on uniques and on jewellery. It also
+--- merges the several mod lines one rune can have into a single entry.
+--- Reimplementing that would be six chances to disagree with the game.
+function api.craftRunes(build, query)
+	local tab = build and build.itemsTab
+	local item = tab and tab.displayItem
+	if not item then
+		return { ready = false }
+	end
+	if not canSocket(item) then
+		return { ready = false, error = "this base has no rune sockets" }
+	end
+
+	local ok, runes = pcall(tab.GetValidRunesForItem, tab, item)
+	if not ok then
+		return { ready = false, error = tostring(runes) }
+	end
+
+	local needle = tostring(query or ""):lower()
+	local options, total = asArray({}), 0
+	for _, rune in ipairs(runes or {}) do
+		-- The first entry is PoB's "None", which is the empty socket
+		-- rather than something to put in one.
+		if rune.name and rune.name ~= "None" then
+			local entry = runeEntry(rune)
+			local hay = (entry.name .. " " .. entry.label .. " " .. table.concat(entry.lines, " ")):lower()
+			if needle == "" or hay:find(needle, 1, true) then
+				total = total + 1
+				options[#options + 1] = entry
+			end
+		end
+	end
+
+	return {
+		ready = true,
+		options = options,
+		total = total,
+	}
+end
+
 --- The item on the bench, as something being crafted.
 ---
 --- Crafting in PoB always happens on `displayItem`, never on an equipped
@@ -2237,6 +2317,55 @@ function api.craftState(build)
 		prefixes = asArray({}),
 		suffixes = asArray({}),
 	}
+
+	-- Sockets, and what is in them. PoB keeps `item.runes` as a flat
+	-- array of names, one per socket, with "None" for an empty one.
+	if canSocket(item) then
+		-- PoB's own repair pass: a rune that the item can no longer take,
+		-- because the base changed under it, is reset to None here rather
+		-- than reported as something it is not.
+		pcall(tab.UpdateRuneControls, tab)
+
+		local byName = {}
+		local okRunes, valid = pcall(tab.GetValidRunesForItem, tab, item)
+		for _, rune in ipairs(okRunes and valid or {}) do
+			byName[rune.name] = rune
+		end
+
+		local runes = asArray({})
+		for index = 1, (item.itemSocketCount or 0) do
+			local name = item.runes and item.runes[index]
+			local row = { index = index }
+			if name and name ~= "None" then
+				row.name = name
+				local rune = byName[name]
+				if rune then
+					local entry = runeEntry(rune)
+					row.label = entry.label
+					row.lines = entry.lines
+					row.type = entry.type
+					row.socketBound = entry.socketBound
+				else
+					row.unknown = true
+				end
+			end
+			runes[#runes + 1] = row
+		end
+
+		state.sockets = {
+			rune = item.itemSocketCount or 0,
+			jewel = item.jewelSocketCount or 0,
+			-- PoB's own cap, which its edit box enforces by rewriting
+			-- anything larger back down to it.
+			max = 6,
+			-- What the base itself comes with. PoB lets you ask for more
+			-- than this, so it is reported rather than enforced: the
+			-- number is worth seeing before you craft an item the game
+			-- would not hand you.
+			natural = item.base and item.base.socketLimit or nil,
+		}
+		state.runes = runes
+	end
 
 	if item.crafted then
 		for kind, outputTable in pairs(AFFIX_TABLE) do
@@ -3725,6 +3854,110 @@ function commands.setCraftAffix(build, value)
 	end
 
 	local ok, err = pcall(item.Craft, item)
+	if not ok then
+		return nil, tostring(err)
+	end
+	return true
+end
+
+--- Put a rune in a socket, or take one out.
+---
+--- `item.runes` is a flat array of rune names, one per socket, with PoB's
+--- own "None" for an empty one. Setting the name and calling UpdateRunes
+--- then BuildAndParseRaw is exactly what the desktop dropdown does:
+--- UpdateRunes is what merges the socketed runes' lines into the item,
+--- including the stacking of two of the same, and the rebuild is what
+--- makes the result readable as an item again.
+function commands.setRune(build, value)
+	local tab = build.itemsTab
+	local item = tab and tab.displayItem
+	if not item then
+		return nil, "nothing is on the bench"
+	end
+	if (item.itemSocketCount or 0) < 1 then
+		return nil, "this item has no rune sockets"
+	end
+
+	value = type(value) == "table" and value or {}
+	local index = tonumber(value.index)
+	if not index or index < 1 or index > item.itemSocketCount then
+		return nil, "no socket " .. tostring(value.index)
+	end
+
+	local name = value.name
+	if name == nil or name == false or name == "None" then
+		name = "None"
+	else
+		name = tostring(name)
+		-- Checked against the item's own valid list rather than against
+		-- every rune the game has: which runes a socket takes is a real
+		-- restriction and silently accepting a wrong one would build an
+		-- item that cannot exist.
+		local ok, valid = pcall(tab.GetValidRunesForItem, tab, item)
+		local found = false
+		for _, rune in ipairs(ok and valid or {}) do
+			if rune.name == name then
+				found = true
+				break
+			end
+		end
+		if not found then
+			return nil, "this item cannot socket " .. name
+		end
+	end
+
+	item.runes = item.runes or {}
+	item.runes[index] = name
+
+	local ok, err = pcall(function()
+		item:UpdateRunes()
+		item:BuildAndParseRaw()
+	end)
+	if not ok then
+		return nil, tostring(err)
+	end
+	return true
+end
+
+--- Set how many sockets the bench item has.
+---
+--- Two kinds, as the desktop tab has: rune sockets, whose contents are
+--- runes, and jewel sockets, which only count. Both are capped at six,
+--- which is PoB's own limit rather than a guess: its edit box rewrites
+--- anything larger straight back down to it.
+---
+--- Shrinking the count drops the runes past it for good: UpdateRunes
+--- rebuilds the item's lines from the sockets that remain, and the
+--- rebuild after it re-reads the item from that text. Putting the sockets
+--- back leaves them empty. Checked rather than assumed, because the
+--- forgiving behaviour is the one you would expect.
+function commands.setSocketCount(build, value)
+	local tab = build.itemsTab
+	local item = tab and tab.displayItem
+	if not item then
+		return nil, "nothing is on the bench"
+	end
+
+	value = type(value) == "table" and value or {}
+	local kind = tostring(value.kind or "rune"):lower()
+	if kind ~= "rune" and kind ~= "jewel" then
+		return nil, "expected kind rune or jewel"
+	end
+	local count = tonumber(value.count)
+	if not count then
+		return nil, "expected { count = ... }"
+	end
+	count = math.min(6, math.max(0, math.floor(count)))
+
+	local ok, err = pcall(function()
+		if kind == "rune" then
+			item.itemSocketCount = count
+			item:UpdateRunes()
+		else
+			item.jewelSocketCount = count
+		end
+		item:BuildAndParseRaw()
+	end)
 	if not ok then
 		return nil, tostring(err)
 	end

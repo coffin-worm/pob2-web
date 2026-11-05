@@ -664,6 +664,49 @@ export interface CraftAffixRow {
   unknown?: boolean;
 }
 
+/** One rune or soul core a socket will take. */
+export interface CraftRune {
+  name: string;
+  label: string;
+  lines: string[];
+  /** Rune or SoulCore: different objects in the game. */
+  type?: string;
+  /** The level the rune itself needs, which is not the item's. */
+  req?: number;
+  /** How many of it one item may carry, where the game caps that. */
+  limit?: number;
+  /** A rune that cannot be taken out once it is in. */
+  socketBound?: boolean;
+}
+
+/** One socket on the bench item, and what is in it. */
+export interface CraftRuneRow {
+  index: number;
+  name?: string;
+  label?: string;
+  lines?: string[];
+  type?: string;
+  socketBound?: boolean;
+  /** Set when the item can no longer take what is in the socket. */
+  unknown?: boolean;
+}
+
+export interface CraftSockets {
+  rune: number;
+  jewel: number;
+  /** PoB's own cap on both. */
+  max: number;
+  /** What the base itself comes with, which PoB lets you exceed. */
+  natural?: number;
+}
+
+export interface CraftRunes {
+  ready: boolean;
+  error?: string;
+  options?: CraftRune[];
+  total?: number;
+}
+
 export interface CraftState {
   ready: boolean;
   name?: string;
@@ -682,6 +725,9 @@ export interface CraftState {
   qualityEditable?: boolean;
   prefixes?: CraftAffixRow[];
   suffixes?: CraftAffixRow[];
+  /** Absent when the base has no rune sockets and cannot be given any. */
+  sockets?: CraftSockets;
+  runes?: CraftRuneRow[];
 }
 
 /** One modifier a slot could hold, with all of its tiers. */

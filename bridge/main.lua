@@ -377,6 +377,11 @@ routes["GET /craft/bases"] = function(_, query)
 	return 200, api.craftBases(currentBuild(), query.type)
 end
 
+--- The runes and soul cores the bench item's sockets will accept.
+routes["GET /craft/runes"] = function(_, query)
+	return 200, api.craftRunes(currentBuild(), query.q)
+end
+
 --- What flipping one configuration option would do, without doing it.
 routes["GET /config/whatif"] = function(_, query)
 	local started = os.clock()
@@ -631,7 +636,7 @@ function love.load()
 	log("  GET /items/search /items/filters")
 	log("  GET /item/edit /item/staged")
 	log("  GET /skills /skills/group /gem /gems/search   GET /config /notes")
-	log("  GET /item/craft /craft/affixes /craft/bases")
+	log("  GET /item/craft /craft/affixes /craft/bases /craft/runes")
 	log("  GET /config/whatif /skills/whatif /tree/whatif /items/whatif /gem/whatif")
 	log("  GET /code /code/inspect   POST /code/import /code/character")
 	log("  GET /builds /compare")

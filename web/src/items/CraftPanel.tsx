@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { bridge } from '../pob/bridge';
 import { useCraftStore } from '../pob/craftStore';
 import { Select } from '../ui/Select';
-import type { CraftAffixOption, CraftAffixRow } from '../pob/types';
+import type { CraftAffixOption, CraftAffixRow, CraftRune, CraftRuneRow } from '../pob/types';
 import styles from './CraftPanel.module.css';
 
 /**
@@ -262,12 +262,165 @@ function Row({
   );
 }
 
+/**
+ * The runes and soul cores one socket will take.
+ *
+ * Which ones those are is `GetValidRunesForItem`, and it is a real rule
+ * rather than a list: the socket's own augment type, the soul core types
+ * the base names, the SocketedRunesOnly and SocketedSoulCoresOnly flags a
+ * unique can carry, and the blanket restrictions on uniques and on
+ * jewellery. An Iron Cuirass takes 120 of them.
+ */
+function RunePicker({
+  onPick,
+  onClose,
+}: {
+  onPick: (rune: CraftRune) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [options, setOptions] = useState<CraftRune[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    input.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    const timer = window.setTimeout(
+      () => {
+        void bridge
+          .craftRunes(query)
+          .then((found) => {
+            if (!live) return;
+            setOptions(found.options ?? []);
+            setError(found.ready ? null : (found.error ?? 'The engine could not answer that.'));
+          })
+          .catch((reason: unknown) => {
+            if (live) setError(reason instanceof Error ? reason.message : String(reason));
+          });
+      },
+      query ? 140 : 0,
+    );
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [query]);
+
+  return (
+    <div className={styles.picker}>
+      <div className={styles.pickerHead}>
+        <input
+          ref={input}
+          className={styles.pickerSearch}
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search runes and soul cores"
+          aria-label="Search runes"
+          onKeyDown={(event) => event.key === 'Escape' && onClose()}
+        />
+        <button className={styles.pickerClose} onClick={onClose} aria-label="Close">
+          ×
+        </button>
+      </div>
+
+      {error && <p className={styles.note}>{error}</p>}
+      {!error && options === null && <p className={styles.note}>Asking the engine…</p>}
+      {!error && options?.length === 0 && (
+        <p className={styles.note}>Nothing matches what these sockets will take.</p>
+      )}
+
+      <div className={styles.options}>
+        {options?.map((rune) => (
+          <button key={rune.name} className={styles.option} onClick={() => onPick(rune)}>
+            <span className={styles.optionLabel}>{rune.name}</span>
+            <span className={styles.optionMeta}>
+              {rune.type === 'SoulCore' ? 'soul core' : 'rune'}
+              {rune.socketBound && <span className={styles.bound}>cannot be removed</span>}
+            </span>
+            <span className={styles.optionPreview}>{rune.lines.join(' · ')}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RuneRow({
+  row,
+  busy,
+  open,
+  onOpen,
+  onClose,
+  onSet,
+}: {
+  row: CraftRuneRow;
+  busy: boolean;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onSet: (name: string | null) => void;
+}) {
+  const picker = open && (
+    <RunePicker
+      onPick={(rune) => onSet(rune.name)}
+      onClose={onClose}
+    />
+  );
+
+  if (!row.name) {
+    return (
+      <div className={styles.row} data-empty>
+        <button className={styles.add} onClick={onOpen} disabled={busy}>
+          {open ? 'Close' : `Socket ${row.index}: empty`}
+        </button>
+        {picker}
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.row}>
+      <div className={styles.rowHead}>
+        <button className={styles.rowName} onClick={onOpen} disabled={busy} title="Change it">
+          <span className={styles.runeName}>{row.name}</span>
+          {row.unknown ? (
+            <span className={styles.unknown}>this item can no longer take it</span>
+          ) : (
+            (row.lines ?? []).map((line, i) => (
+              <span key={i} className={styles.line}>
+                {line}
+              </span>
+            ))
+          )}
+        </button>
+        <button
+          className={styles.clear}
+          onClick={() => onSet(null)}
+          disabled={busy}
+          aria-label={`Empty socket ${row.index}`}
+          title="Take it out"
+        >
+          ×
+        </button>
+      </div>
+      {picker}
+    </div>
+  );
+}
+
 export function CraftPanel({ onRefusal }: { onRefusal: (reason: string | null) => void }) {
   const state = useCraftStore((s) => s.state);
   const busy = useCraftStore((s) => s.busy);
   const refresh = useCraftStore((s) => s.refresh);
   const setAffix = useCraftStore((s) => s.setAffix);
   const setQuality = useCraftStore((s) => s.setQuality);
+  const setRune = useCraftStore((s) => s.setRune);
+  const setSocketCount = useCraftStore((s) => s.setSocketCount);
 
   const [open, setOpen] = useState<string | null>(null);
 
@@ -342,6 +495,85 @@ export function CraftPanel({ onRefusal }: { onRefusal: (reason: string | null) =
           {column('prefix', state.prefixes ?? [])}
           {column('suffix', state.suffixes ?? [])}
         </div>
+      )}
+
+      {/* Sockets come last because a rune is the last thing you put in,
+          and they are shown for any base that can carry them, crafted or
+          not: a unique with sockets takes runes just the same. */}
+      {state.sockets && (
+        <section className={styles.sockets}>
+          <h4 className={styles.columnTitle}>
+            Sockets
+            <span className={styles.used}>
+              {(state.runes ?? []).filter((row) => row.name).length} of {state.sockets.rune}
+            </span>
+          </h4>
+
+          <div className={styles.socketCounts}>
+            <label className={styles.dial}>
+              <span className={styles.dialName}>Rune</span>
+              <input
+                className={styles.tier}
+                type="range"
+                min={0}
+                max={state.sockets.max}
+                step={1}
+                value={state.sockets.rune}
+                disabled={busy}
+                onChange={(event) =>
+                  void setSocketCount('rune', Number(event.target.value)).then(onRefusal)
+                }
+                aria-label="Rune sockets"
+              />
+              <span className={styles.dialValue}>
+                {state.sockets.rune}
+                {state.sockets.natural !== undefined && (
+                  <span className={styles.ilvl}> of {state.sockets.natural} on this base</span>
+                )}
+              </span>
+            </label>
+
+            <label className={styles.dial}>
+              <span className={styles.dialName}>Jewel</span>
+              <input
+                className={styles.tier}
+                type="range"
+                min={0}
+                max={state.sockets.max}
+                step={1}
+                value={state.sockets.jewel}
+                disabled={busy}
+                onChange={(event) =>
+                  void setSocketCount('jewel', Number(event.target.value)).then(onRefusal)
+                }
+                aria-label="Jewel sockets"
+              />
+              <span className={styles.dialValue}>{state.sockets.jewel}</span>
+            </label>
+          </div>
+
+          {/* Taking sockets away drops the runes in them for good: the
+              engine rebuilds the item from the sockets that remain. */}
+          <div className={styles.runeRows}>
+            {(state.runes ?? []).map((row) => {
+              const id = `rune:${row.index}`;
+              return (
+                <RuneRow
+                  key={id}
+                  row={row}
+                  busy={busy}
+                  open={open === id}
+                  onOpen={() => setOpen(open === id ? null : id)}
+                  onClose={() => setOpen(null)}
+                  onSet={(name) => {
+                    setOpen(null);
+                    void setRune(row.index, name).then(onRefusal);
+                  }}
+                />
+              );
+            })}
+          </div>
+        </section>
       )}
     </div>
   );

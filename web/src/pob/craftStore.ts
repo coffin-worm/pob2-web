@@ -38,6 +38,12 @@ interface CraftStore {
   ): Promise<string | null>;
 
   setQuality(quality: number): Promise<string | null>;
+
+  /** Put a rune in a socket, or, with a null name, empty it. */
+  setRune(index: number, name: string | null): Promise<string | null>;
+
+  /** How many sockets of one kind the item has. */
+  setSocketCount(kind: 'rune' | 'jewel', count: number): Promise<string | null>;
 }
 
 export const useCraftStore = create<CraftStore>((set) => {
@@ -93,5 +99,9 @@ export const useCraftStore = create<CraftStore>((set) => {
       run('setCraftAffix', { kind, index, modId, roll }),
 
     setQuality: (quality) => run('setCraftQuality', { quality }),
+
+    setRune: (index, name) => run('setRune', { index, name }),
+
+    setSocketCount: (kind, count) => run('setSocketCount', { kind, count }),
   };
 });
