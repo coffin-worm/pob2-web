@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { bridge } from '../pob/bridge';
 import { useCraftStore } from '../pob/craftStore';
+import { Segmented } from '../ui/Segmented';
 import { Select } from '../ui/Select';
-import type { CraftAffixOption, CraftAffixRow, CraftRune, CraftRuneRow } from '../pob/types';
+import { Lines } from '../ui/TooltipLines';
+import type {
+  AnointWhatIf,
+  CraftAffixOption,
+  CraftAffixRow,
+  CraftAnoint,
+  CraftAnointSlot,
+  CraftRune,
+  CraftRuneRow,
+} from '../pob/types';
 import styles from './CraftPanel.module.css';
 
 /**
@@ -413,6 +423,248 @@ function RuneRow({
   );
 }
 
+/**
+ * The notables this item could be anointed with.
+ *
+ * All 875 of them, which is why this is a search and not a list. The three
+ * modes are the desktop control's own; what it has above them, and this
+ * does not, is thirteen checkboxes for the distilled emotions. "Anywhere"
+ * searches the emotions instead, so typing Greed finds every notable that
+ * costs one, in the box that was already there.
+ *
+ * The preview strip is PoB's hover tooltip, moved somewhere it can stay.
+ * It sits above the list rather than over it, so the lines a pointer is
+ * reading never move out from under it, and it reports the two answers
+ * that are not comparisons: a notable already on the tree, or already
+ * anointed, cannot give you the same thing twice.
+ */
+function AnointPicker({
+  slot,
+  selected,
+  onPick,
+  onClose,
+}: {
+  slot: number;
+  selected?: string;
+  onPick: (anoint: CraftAnoint) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [mode, setMode] = useState<'anywhere' | 'names' | 'modifiers'>('anywhere');
+  const [options, setOptions] = useState<CraftAnoint[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [hover, setHover] = useState<number | null>(null);
+  const [preview, setPreview] = useState<AnointWhatIf | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    input.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    const timer = window.setTimeout(
+      () => {
+        void bridge
+          .craftAnoints(query, mode)
+          .then((found) => {
+            if (!live) return;
+            setOptions(found.options ?? []);
+            setTotal(found.total ?? 0);
+            setError(found.ready ? null : (found.error ?? 'The engine could not answer that.'));
+          })
+          .catch((reason: unknown) => {
+            if (live) setError(reason instanceof Error ? reason.message : String(reason));
+          });
+      },
+      query ? 140 : 0,
+    );
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [query, mode]);
+
+  // One calculation per notable the pointer rests on, which the engine
+  // answers in about ten milliseconds. Debounced, because dragging down
+  // the list would otherwise ask for every row it crosses.
+  useEffect(() => {
+    if (hover === null) return;
+    let live = true;
+    const timer = window.setTimeout(() => {
+      void bridge
+        .anointWhatIf(slot, hover)
+        .then((answer) => {
+          if (live) setPreview(answer);
+        })
+        .catch((reason: unknown) => {
+          if (live) {
+            setPreview({
+              ready: false,
+              error: reason instanceof Error ? reason.message : String(reason),
+            });
+          }
+        });
+    }, 160);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [hover, slot]);
+
+  const previewBody = () => {
+    if (!preview) {
+      return <span className={styles.previewHint}>Rest on a notable to see what it would do.</span>;
+    }
+    if (!preview.ready) {
+      return <span className={styles.previewHint}>{preview.error}</span>;
+    }
+    if (preview.lines.length === 0) {
+      return <span className={styles.previewHint}>{preview.reason ?? 'Nothing would move.'}</span>;
+    }
+    return <Lines lines={preview.lines} />;
+  };
+
+  return (
+    <div className={styles.picker}>
+      <div className={styles.pickerHead}>
+        <input
+          ref={input}
+          className={styles.pickerSearch}
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search notables, modifiers and emotions"
+          aria-label="Search notables"
+          onKeyDown={(event) => event.key === 'Escape' && onClose()}
+        />
+        <button className={styles.pickerClose} onClick={onClose} aria-label="Close">
+          ×
+        </button>
+      </div>
+
+      <Segmented
+        value={mode}
+        options={[
+          { value: 'anywhere' as const, label: 'Anywhere', title: 'Name, modifiers and emotions' },
+          { value: 'names' as const, label: 'Names' },
+          { value: 'modifiers' as const, label: 'Modifiers' },
+        ]}
+        onChange={setMode}
+        aria-label="What to search"
+      />
+
+      <div className={styles.anointPreview} aria-live="polite">
+        {previewBody()}
+      </div>
+
+      {error && <p className={styles.note}>{error}</p>}
+      {!error && options === null && <p className={styles.note}>Asking the engine…</p>}
+      {!error && options?.length === 0 && (
+        <p className={styles.note}>No anointable notable matches that.</p>
+      )}
+
+      <div className={styles.options} onMouseLeave={() => setHover(null)}>
+        {options?.map((anoint) => (
+          <button
+            key={anoint.id}
+            className={styles.option}
+            data-current={anoint.name === selected || undefined}
+            onMouseEnter={() => setHover(anoint.id)}
+            onFocus={() => setHover(anoint.id)}
+            onClick={() => onPick(anoint)}
+          >
+            <span className={styles.optionLabel}>{anoint.name}</span>
+            <span className={styles.optionMeta}>
+              <span className={styles.recipe}>{anoint.recipe.join(' + ')}</span>
+              {anoint.allocated && (
+                <span className={styles.bound}>already on your tree</span>
+              )}
+            </span>
+            {anoint.lines.map((line, i) => (
+              <span key={i} className={styles.optionPreview}>
+                {line}
+              </span>
+            ))}
+          </button>
+        ))}
+      </div>
+
+      {/* A list that stops at a hundred and fifty of eight hundred and
+          says nothing reads as the whole answer. */}
+      {options && total > options.length && (
+        <p className={styles.note}>
+          Showing {options.length} of {total}. Narrow the search for the rest.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AnointRow({
+  slot,
+  busy,
+  open,
+  onOpen,
+  onClose,
+  onSet,
+}: {
+  slot: CraftAnointSlot;
+  busy: boolean;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onSet: (node: number | null) => void;
+}) {
+  const picker = open && (
+    <AnointPicker
+      slot={slot.index}
+      selected={slot.node}
+      onPick={(anoint) => onSet(anoint.id)}
+      onClose={onClose}
+    />
+  );
+
+  if (!slot.node) {
+    return (
+      <div className={styles.row} data-empty>
+        <button className={styles.add} onClick={onOpen} disabled={busy}>
+          {open ? 'Close' : `Anoint ${slot.index}: empty`}
+        </button>
+        {/* An anoint is an enchant line, and PoB replaces the line in that
+            slot whatever it holds. Said before the click. */}
+        {slot.other && (
+          <p className={styles.warn}>Anointing this would replace "{slot.other}".</p>
+        )}
+        {picker}
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.row}>
+      <div className={styles.rowHead}>
+        <button className={styles.rowName} onClick={onOpen} disabled={busy} title="Change it">
+          {/* Only the name: the item's own tooltip above already lists
+              what the notable grants, under its Allocates line. */}
+          <span className={styles.anointName}>{slot.node}</span>
+        </button>
+        <button
+          className={styles.clear}
+          onClick={() => onSet(null)}
+          disabled={busy}
+          aria-label={`Remove the anoint in slot ${slot.index}`}
+          title="Take it off"
+        >
+          ×
+        </button>
+      </div>
+      {picker}
+    </div>
+  );
+}
+
 export function CraftPanel({ onRefusal }: { onRefusal: (reason: string | null) => void }) {
   const state = useCraftStore((s) => s.state);
   const busy = useCraftStore((s) => s.busy);
@@ -421,6 +673,7 @@ export function CraftPanel({ onRefusal }: { onRefusal: (reason: string | null) =
   const setQuality = useCraftStore((s) => s.setQuality);
   const setRune = useCraftStore((s) => s.setRune);
   const setSocketCount = useCraftStore((s) => s.setSocketCount);
+  const setAnoint = useCraftStore((s) => s.setAnoint);
 
   const [open, setOpen] = useState<string | null>(null);
 
@@ -568,6 +821,44 @@ export function CraftPanel({ onRefusal }: { onRefusal: (reason: string | null) =
                   onSet={(name) => {
                     setOpen(null);
                     void setRune(row.index, name).then(onRefusal);
+                  }}
+                />
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Anoints are enchant lines rather than affixes, so an amulet
+          carries them whether or not it was crafted. PoB puts its Anoint
+          buttons under the socket section too. */}
+      {state.anoint && (
+        <section className={styles.sockets}>
+          <h4 className={styles.columnTitle}>
+            Anoint
+            <span className={styles.used}>
+              {state.anoint.slots.filter((row) => row.node).length} of{' '}
+              {state.anoint.slots.length}
+            </span>
+          </h4>
+
+          {/* One row per enchant line this item will take an anoint in,
+              which is one for most amulets: a second needs the item to
+              say it allows another instilled modifier. */}
+          <div className={styles.runeRows}>
+            {state.anoint.slots.map((row) => {
+              const id = `anoint:${row.index}`;
+              return (
+                <AnointRow
+                  key={id}
+                  slot={row}
+                  busy={busy}
+                  open={open === id}
+                  onOpen={() => setOpen(open === id ? null : id)}
+                  onClose={() => setOpen(null)}
+                  onSet={(node) => {
+                    setOpen(null);
+                    void setAnoint(row.index, node).then(onRefusal);
                   }}
                 />
               );

@@ -14,6 +14,8 @@ import type {
   ItemFilters,
   ItemSearchSnapshot,
   CraftAffixes,
+  AnointWhatIf,
+  CraftAnoints,
   CraftBases,
   CraftRunes,
   CraftState,
@@ -205,6 +207,31 @@ export const bridge = {
   /** The runes and soul cores the bench item's sockets will accept. */
   craftRunes: (query?: string) =>
     request<CraftRunes>('/craft/runes' + (query ? `?q=${encodeURIComponent(query)}` : '')),
+
+  /**
+   * The notables the bench item could be anointed with.
+   *
+   * A search rather than a list: there are 875 of them on the tree. The
+   * three modes are the desktop control's own, and "anywhere" matches the
+   * distilled emotions as well as the name and the modifiers.
+   */
+  craftAnoints: (query?: string, mode?: string) =>
+    request<CraftAnoints>(
+      `/craft/anoints?mode=${mode ?? 'anywhere'}` +
+        (query ? `&q=${encodeURIComponent(query)}` : ''),
+    ),
+
+  /**
+   * What one anoint would do, before it is applied.
+   *
+   * Both sides of the comparison put the bench item in its own slot, so
+   * the answer is the anoint's worth rather than the whole item's. No node
+   * asks what taking the current anoint off would cost.
+   */
+  anointWhatIf: (slot: number, node?: number) =>
+    request<AnointWhatIf>(
+      `/craft/anoint/whatif?slot=${slot}` + (node ? `&node=${node}` : ''),
+    ),
 
   /**
    * What a build code contains, without importing it.

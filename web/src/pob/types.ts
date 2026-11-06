@@ -728,6 +728,8 @@ export interface CraftState {
   /** Absent when the base has no rune sockets and cannot be given any. */
   sockets?: CraftSockets;
   runes?: CraftRuneRow[];
+  /** Absent when the item cannot be anointed at all. */
+  anoint?: { slots: CraftAnointSlot[] };
 }
 
 /** One modifier a slot could hold, with all of its tiers. */
@@ -769,6 +771,59 @@ export interface CraftBases {
   bases?: CraftBase[];
   rarities?: string[];
 }
+
+/** One notable the bench item could be anointed with. */
+export interface CraftAnoint {
+  id: number;
+  name: string;
+  /** What the notable grants, as the tree words it. */
+  lines: string[];
+  /** The distilled emotions the anoint costs. Three, mostly. */
+  recipe: string[];
+  /** Already on the tree, so anointing it would change nothing. */
+  allocated?: boolean;
+}
+
+export interface CraftAnoints {
+  ready: boolean;
+  error?: string;
+  options?: CraftAnoint[];
+  /** How many matched, which can be more than were sent. */
+  total?: number;
+  truncated?: boolean;
+}
+
+/** One anoint slot on the bench item, and what is in it. */
+export interface CraftAnointSlot {
+  /**
+   * Which enchant line this is, not which anoint: slot 2 is the second
+   * enchant line, and only the second anoint if the first line is one.
+   */
+  index: number;
+  /** The notable in it, by name. Absent when the slot is empty. */
+  node?: string;
+  /**
+   * What the line holds when it is not an anoint. Anointing replaces the
+   * line whatever is in it, so this is a warning rather than a label.
+   */
+  other?: string;
+}
+
+/** What one anoint would do, asked before it is applied. */
+export type AnointWhatIf =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      lines: ItemLine[];
+      droppedTips?: number;
+      unchanged?: boolean;
+      /**
+       * Why nothing would move. PoB's two early answers: the node is
+       * already allocated on the tree, or already anointed.
+       */
+      reason?: string;
+      buildMs?: number;
+    };
 
 /* ------------------------------------------------------------- the notes */
 

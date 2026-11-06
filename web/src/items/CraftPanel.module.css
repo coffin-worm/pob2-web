@@ -392,3 +392,44 @@
 .bound {
   color: var(--warning);
 }
+
+/* ---------------------------------------------------------- the anoints */
+
+.anointName {
+  color: var(--rarity-crafted);
+}
+
+.warn {
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-3);
+  color: var(--warning);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+/* The preview sits above the scrolling list rather than over it, so the
+   lines a pointer is reading never move out from under it. Its height is
+   fixed for the same reason: an answer of two lines and one of six must
+   not shift the list between them. */
+.anointPreview {
+  display: flex;
+  flex-direction: column;
+  min-height: 84px;
+  max-height: 140px;
+  overflow: auto;
+  padding: var(--space-3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.previewHint {
+  color: var(--text-disabled);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+/* The distilled emotions the anoint costs. */
+.recipe {
+  color: var(--text-muted);
+}

@@ -614,8 +614,7 @@ took Total Life from 91 to 301.
 The largest gap on this screen, and the one the desktop app spends the
 most surface on. It is now partly closed: an item can be made from a base
 and given prefixes and suffixes, which is the loop people actually want.
-Runes, anoints and corruption are still only reachable through the text
-box.
+Corruption and catalysts are still only reachable through the text box.
 
 Crafting in PoB happens on `displayItem` and nowhere else, which is the
 same bench this app already stages pasted and database items on. So the
@@ -701,10 +700,65 @@ Stacking does work as you would hope. Two Soul Cores of Jiquani in one
 chest read `10% increased maximum Life` rather than two lines of 5%,
 because `UpdateRunes` combines mods that share a stat order.
 
+### Anoints, and thirteen checkboxes folded into one box
+
+An anoint is not an affix. PoB keeps it as an enchant line reading
+`Allocates <notable>`, which is why the section sits outside the affix
+columns and shows on any amulet, crafted or not.
+
+What can be anointed is `IsAnointableNode`, and the whole test is that the
+node has a recipe: the distilled emotions it costs. 875 of the tree's
+nodes have one, which is why this is a search rather than a list. The
+three modes are the desktop control's own, over the same `matchOrPattern`
+the item database uses, so `(spirit|rage)` works here too.
+
+What the desktop control has above its list, and this does not, is
+thirteen checkboxes, one per emotion. "Anywhere" searches the recipe
+instead: type Greed and you get every notable that costs one, in the box
+that was already there. One control, the same question, and no row of
+thirteen icons to read before you can start.
+
+**Applying it is PoB's own three lines.** `anointItem` clones the item
+through `BuildRaw`, drops the enchant line in that slot, inserts
+`Allocates <notable>` and reparses. So the bench item is replaced rather
+than edited, which is what the Save button in PoB's dialog does with the
+result, and nothing here has to know what an enchant line looks like.
+
+**The slot rule is shared with the write side rather than written twice.**
+Slot 2 needs the item to say it allows another instilled modifier and a
+first line to sit after; 3 needs two; 4 needs three. One function answers
+both "which rows does the panel draw" and "will the engine accept this",
+so they cannot drift apart. It matters here more than most: an insert past
+the end of `enchantModLines` leaves a hole rather than failing.
+
+Worth saying because the desktop app does not: a slot index is an enchant
+line, not an anoint. Anointing replaces whatever is in that line, enchant
+or anoint, so where the line holds something else the row says what would
+be lost before the click rather than after it.
+
+### The tooltip, moved somewhere it can stay
+
+PoB prices an anoint on hover, in the tooltip, through the same
+substitution the item bench uses: both sides put the item in its own slot,
+so the answer is the anoint's worth rather than the whole item's. That is
+the right comparison and it is kept.
+
+The tooltip is not. It sits above the list here, fixed in height, because
+a panel that grows and shrinks under the pointer moves the row being read
+out from under it. Resting on Behemoth on a bare level 1 build reports
+`+2 Total Life (+2.6%)` in about ten milliseconds, and equipping it lands
+on exactly that: the slot comparison goes from `+13 Total Life` to `+15`.
+
+Two of PoB's answers are not comparisons at all, and they are passed
+through as they are: a notable already allocated on the tree, or already
+anointed, cannot give you the same thing twice.
+
 ### What it does not do
 
-- **No anoints.** `anointItem` is cleanly callable; only the notable list
-  needs exposing.
+- **No power ranking of the list.** PoB can sort all 875 by what each
+  would be worth, colouring the list by it, which is the same resumable
+  scan the item database already does here. The anoint list is
+  alphabetical and prices one notable at a time, on hover.
 - **No corrupting.** PoB's own code there still says it is PoE 1's, with a
   two-tab dialog and per-unique roll ranges.
 - **No catalysts.** The controls exist but the list is a hardcoded

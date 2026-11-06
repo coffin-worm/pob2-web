@@ -44,6 +44,9 @@ interface CraftStore {
 
   /** How many sockets of one kind the item has. */
   setSocketCount(kind: 'rune' | 'jewel', count: number): Promise<string | null>;
+
+  /** Anoint a slot, or, with a null node, take its anoint off. */
+  setAnoint(slot: number, node: number | null): Promise<string | null>;
 }
 
 export const useCraftStore = create<CraftStore>((set) => {
@@ -103,5 +106,11 @@ export const useCraftStore = create<CraftStore>((set) => {
     setRune: (index, name) => run('setRune', { index, name }),
 
     setSocketCount: (kind, count) => run('setSocketCount', { kind, count }),
+
+    // The key is left out rather than sent as null, because the engine's
+    // "no node" is the gesture for removing the anoint and a JSON null
+    // does not arrive on the other side as a missing field.
+    setAnoint: (slot, node) =>
+      run('setAnoint', node === null ? { slot } : { slot, node }),
   };
 });

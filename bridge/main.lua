@@ -382,6 +382,29 @@ routes["GET /craft/runes"] = function(_, query)
 	return 200, api.craftRunes(currentBuild(), query.q)
 end
 
+--- The notables the bench item could be anointed with.
+---
+--- A search rather than a list: there are 875 of them on the tree, and
+--- "anywhere" matches the distilled emotions as well as the name and the
+--- modifiers.
+routes["GET /craft/anoints"] = function(_, query)
+	return 200, api.craftAnoints(currentBuild(), query.q, query.mode, query.limit)
+end
+
+--- What one anoint would do, before it is applied.
+---
+--- Both sides of the comparison put the bench item in its own slot, so the
+--- answer is the anoint's worth rather than the item's. No node asks what
+--- taking the current anoint off would cost.
+routes["GET /craft/anoint/whatif"] = function(_, query)
+	local started = os.clock()
+	local answer = api.anointWhatIf(currentBuild(), query.slot, query.node)
+	if type(answer) == "table" then
+		answer.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	end
+	return 200, answer
+end
+
 --- What flipping one configuration option would do, without doing it.
 routes["GET /config/whatif"] = function(_, query)
 	local started = os.clock()
@@ -637,6 +660,7 @@ function love.load()
 	log("  GET /item/edit /item/staged")
 	log("  GET /skills /skills/group /gem /gems/search   GET /config /notes")
 	log("  GET /item/craft /craft/affixes /craft/bases /craft/runes")
+	log("  GET /craft/anoints /craft/anoint/whatif")
 	log("  GET /config/whatif /skills/whatif /tree/whatif /items/whatif /gem/whatif")
 	log("  GET /code /code/inspect   POST /code/import /code/character")
 	log("  GET /builds /compare")

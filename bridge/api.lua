@@ -2284,6 +2284,94 @@ function api.craftRunes(build, query)
 	}
 end
 
+--- Whether this item can be anointed at all.
+---
+--- PoB's own `isAnointable`, a file-local in the Items tab rather than a
+--- method, so it is repeated here: an amulet, or anything carrying the line
+--- that says Cassia can anoint it. The three further clauses in PoB's copy
+--- (not sanctified, not corrupted, not mirrored) are commented out there,
+--- so they are left out here too.
+local function isAnointable(item)
+	return (item and item.base and (item.canBeAnointed or item.base.type == "Amulet"))
+		and true or false
+end
+
+--- Whether a notable can be anointed: PoB's `IsAnointableNode`.
+---
+--- The whole test is that the node has a recipe, which is the distilled
+--- emotions the anoint costs. 875 nodes on the current tree have one.
+local function isAnointableNode(node)
+	return (node and node.recipe and #node.recipe >= 1) and true or false
+end
+
+--- The anoint slots this item has, and what is in each.
+---
+--- PoB keeps an anoint as an enchant line reading "Allocates <notable>",
+--- and `anointEnchantSlot` indexes `enchantModLines` rather than the
+--- anoints within it: slot 2 is the second enchant line, which is only the
+--- second anoint if the first line is one as well.
+---
+--- The gating is PoB's own, one button per slot: the second needs the line
+--- that allows an additional instilled modifier and a first line to sit
+--- after, the third needs two, the fourth three. Shared with the write
+--- side rather than written twice, so what the panel offers and what the
+--- engine will accept cannot drift apart.
+local function anointSlots(item)
+	local slots = asArray({})
+	if not isAnointable(item) then
+		return slots
+	end
+	local lines = item.enchantModLines or {}
+	for index = 1, 4 do
+		local allowed = index == 1
+			or (index == 2 and item.canHaveTwoEnchants and #lines > 0)
+			or (index == 3 and item.canHaveThreeEnchants and #lines > 1)
+			or (index == 4 and item.canHaveFourEnchants and #lines > 2)
+		if allowed then
+			local line = lines[index] and strip(lines[index].line or "")
+			local node = line and line:match("^Allocates (.+)$")
+			slots[#slots + 1] = {
+				index = index,
+				node = node,
+				-- What this enchant line holds when it is not an anoint.
+				-- Anointing replaces the line whatever is in it, which is
+				-- PoB's behaviour, so it is worth a warning before the
+				-- click rather than a surprise after it.
+				other = (line and not node and line:match("%S")) and line or nil,
+			}
+		end
+	end
+	return slots
+end
+
+--- One notable, as the anoint list needs it.
+local function anointEntry(build, node)
+	local lines = asArray({})
+	for _, line in ipairs(node.sd or {}) do
+		if line and line:match("%S") then
+			lines[#lines + 1] = strip(line)
+		end
+	end
+	-- Copied rather than passed through: tagging a list for the encoder
+	-- sets a metatable on it, and this one belongs to the tree.
+	local recipe = asArray({})
+	for _, emotion in ipairs(node.recipe or {}) do
+		recipe[#recipe + 1] = emotion
+	end
+	return {
+		id = node.id,
+		name = strip(node.dn or node.name or ""),
+		lines = lines,
+		-- The distilled emotions the anoint costs. Three, mostly.
+		recipe = recipe,
+		-- Already on the tree, so anointing it would change nothing. PoB
+		-- says so in its tooltip rather than hiding the node, and so does
+		-- this.
+		allocated = (build.spec and build.spec.allocNodes
+			and build.spec.allocNodes[node.id]) and true or nil,
+	}
+end
+
 --- The item on the bench, as something being crafted.
 ---
 --- Crafting in PoB always happens on `displayItem`, never on an equipped
@@ -2365,6 +2453,13 @@ function api.craftState(build)
 			natural = item.base and item.base.socketLimit or nil,
 		}
 		state.runes = runes
+	end
+
+	-- Anoints, which are enchant lines rather than affixes: an amulet
+	-- carries them whether or not it was crafted, so this sits outside the
+	-- `crafted` test below.
+	if isAnointable(item) then
+		state.anoint = { slots = anointSlots(item) }
 	end
 
 	if item.crafted then
@@ -2497,6 +2592,95 @@ function api.craftBases(build, typeName)
 		-- with no affix slots: the first has no modifiers to give and the
 		-- second carries its own as text.
 		rarities = asArray({ "NORMAL", "MAGIC", "RARE", "UNIQUE" }),
+	}
+end
+
+--- The notables this item could be anointed with.
+---
+--- PoB's list is the whole passive tree filtered by `IsAnointableNode`,
+--- which is "has a recipe". That is 875 nodes, so this is a search rather
+--- than a list, with the three modes the desktop control has and the same
+--- `matchOrPattern` behind them, so `(life|mana)` works here as it does in
+--- the item database.
+---
+--- "Anywhere" also matches the recipe. The desktop app filters emotions
+--- with thirteen checkboxes above its list; one box that searches them is
+--- the same question asked faster, and typing Greed finds every notable
+--- that costs one.
+function api.craftAnoints(build, query, mode, limit)
+	local tab = build and build.itemsTab
+	local item = tab and tab.displayItem
+	if not item then
+		return { ready = false }
+	end
+	if not isAnointable(item) then
+		return { ready = false, error = "this item cannot be anointed" }
+	end
+	local nodes = build.spec and build.spec.tree and build.spec.tree.nodes
+	if not nodes then
+		return { ready = false, error = "the tree is not loaded" }
+	end
+
+	mode = tostring(mode or "anywhere"):lower()
+	local needle = escapeNeedle(query)
+	local searching = needle:match("%S") and true or false
+	limit = math.min(400, math.max(1, math_floor(tonumber(limit) or 150)))
+
+	local function matches(text)
+		local ok, matched = pcall(string.matchOrPattern, tostring(text or ""):lower(), needle)
+		return (ok and matched) and true or false
+	end
+
+	-- Matching nodes are collected before any are dropped, then sorted,
+	-- then cut: `pairs` over the tree has no order, so cutting first would
+	-- hand back an arbitrary slice of the answer that reads like all of it.
+	local found = {}
+	for _, node in pairs(nodes) do
+		if isAnointableNode(node) then
+			local hit = not searching
+			if searching then
+				if mode == "anywhere" or mode == "names" then
+					hit = matches(node.dn)
+				end
+				if not hit and (mode == "anywhere" or mode == "modifiers") then
+					for _, line in ipairs(node.sd or {}) do
+						if matches(line) then
+							hit = true
+							break
+						end
+					end
+				end
+				if not hit and mode == "anywhere" then
+					for _, emotion in ipairs(node.recipe) do
+						if matches(emotion) then
+							hit = true
+							break
+						end
+					end
+				end
+			end
+			if hit then
+				found[#found + 1] = node
+			end
+		end
+	end
+
+	table.sort(found, function(a, b)
+		return tostring(a.dn or "") < tostring(b.dn or "")
+	end)
+
+	local options = asArray({})
+	for index = 1, math.min(limit, #found) do
+		options[#options + 1] = anointEntry(build, found[index])
+	end
+
+	return {
+		ready = true,
+		options = options,
+		total = #found,
+		-- Said outright: a list that stops at a hundred and fifty of eight
+		-- hundred and does not say so reads as the whole answer.
+		truncated = (#found > #options) or nil,
 	}
 end
 
@@ -3324,6 +3508,89 @@ function api.slotWhatIf(build, slotName)
 	return renderCompare(build, calcBase, output, header)
 end
 
+--- What anointing this notable would do.
+---
+--- PoB's own comparison, which is not the one the item bench makes: both
+--- sides substitute the bench item into its primary slot, so the difference
+--- is the anoint alone rather than the whole item against what is equipped.
+--- A nil node asks what taking the current anoint off would cost.
+function api.anointWhatIf(build, slot, nodeId)
+	local tab = build and build.itemsTab
+	local item = tab and tab.displayItem
+	if not item then
+		return { ready = false }
+	end
+	if not isAnointable(item) then
+		return { ready = false, error = "this item cannot be anointed" }
+	end
+
+	local node
+	if nodeId ~= nil and nodeId ~= "" then
+		local nodes = build.spec and build.spec.tree and build.spec.tree.nodes
+		node = nodes and nodes[tonumber(nodeId) or nodeId]
+		if not node then
+			return { ready = false, error = "no node with id " .. tostring(nodeId) }
+		end
+		if not isAnointableNode(node) then
+			return { ready = false, error = strip(node.dn or "that node") .. " cannot be anointed" }
+		end
+	end
+
+	-- PoB's two early answers, which are not failures. Nothing can give you
+	-- the same notable twice, so the comparison is skipped rather than run
+	-- and reported as an empty one.
+	if node then
+		if build.spec and build.spec.allocNodes and build.spec.allocNodes[node.id] then
+			return {
+				ready = true, lines = asArray({}), unchanged = true,
+				reason = "this node is already allocated on the tree",
+			}
+		end
+		local okAnoints, anoints = pcall(tab.getAnoint, tab, item)
+		for _, name in ipairs((okAnoints and anoints) or {}) do
+			if name == node.dn then
+				return {
+					ready = true, lines = asArray({}), unchanged = true,
+					reason = "this node is already anointed",
+				}
+			end
+		end
+	end
+
+	local calcsTab = build.calcsTab
+	if not calcsTab or not calcsTab.GetMiscCalculator then
+		return { ready = false, error = "the engine has no calculator yet" }
+	end
+	local calcFunc = calcsTab:GetMiscCalculator()
+	if not calcFunc then
+		return { ready = false, error = "the engine has not finished its first calculation" }
+	end
+
+	-- `anointItem` reads this field rather than taking an argument, so it is
+	-- set on every call: commands arrive here in any order and a slot left
+	-- over from the last one would anoint the wrong line.
+	tab.anointEnchantSlot = math_floor(tonumber(slot) or 1)
+
+	local repSlotName = item:GetPrimarySlot()
+	local buildFlag = build.buildFlag
+	local okBase, base = pcall(calcFunc, { repSlotName = repSlotName, repItem = item })
+	local okNew, output = pcall(function()
+		return calcFunc({ repSlotName = repSlotName, repItem = tab:anointItem(node) })
+	end)
+	build.buildFlag = buildFlag
+	if not okBase then
+		return { ready = false, error = tostring(base) }
+	end
+	if not okNew then
+		return { ready = false, error = tostring(output) }
+	end
+
+	local header = node
+		and ("^7Anointing " .. node.dn .. " will give you:")
+		or "^7Removing this anoint will give you:"
+	return renderCompare(build, base, output, header)
+end
+
 --- What a gem being off, or at 20 quality, would do.
 ---
 --- Unlike the tree and the item bench, the calculator has no argument for
@@ -3957,6 +4224,64 @@ function commands.setSocketCount(build, value)
 			item.jewelSocketCount = count
 		end
 		item:BuildAndParseRaw()
+	end)
+	if not ok then
+		return nil, tostring(err)
+	end
+	return true
+end
+
+--- Anoint the bench item, or take its anoint off.
+---
+--- `anointItem` builds a new item rather than changing this one: an anoint
+--- is an enchant line, enchant lines live in the item's text, so the text
+--- is rewritten and reparsed. The bench item is therefore replaced, which
+--- is what PoB's own Save button does with the result.
+---
+--- Anointing replaces whatever is in that enchant line, anoint or not. The
+--- slot list reports what each one holds so the warning can come before the
+--- click; the rule for which slots exist is shared with that list rather
+--- than repeated, because an insert past the end of `enchantModLines` would
+--- leave a hole rather than fail.
+function commands.setAnoint(build, value)
+	local tab = build.itemsTab
+	local item = tab and tab.displayItem
+	if not item then
+		return nil, "nothing is on the bench"
+	end
+	if not isAnointable(item) then
+		return nil, "this item cannot be anointed"
+	end
+
+	value = type(value) == "table" and value or {}
+	local slot = math_floor(tonumber(value.slot) or 1)
+	local allowed = false
+	for _, entry in ipairs(anointSlots(item)) do
+		if entry.index == slot then
+			allowed = true
+			break
+		end
+	end
+	if not allowed then
+		return nil, "this item has no anoint slot " .. tostring(value.slot or slot)
+	end
+
+	local node
+	local nodeId = value.node
+	if nodeId ~= nil and nodeId ~= false and nodeId ~= "" then
+		local nodes = build.spec and build.spec.tree and build.spec.tree.nodes
+		node = nodes and nodes[tonumber(nodeId) or nodeId]
+		if not node then
+			return nil, "no node with id " .. tostring(nodeId)
+		end
+		if not isAnointableNode(node) then
+			return nil, strip(node.dn or "that node") .. " cannot be anointed"
+		end
+	end
+
+	tab.anointEnchantSlot = slot
+	local ok, err = pcall(function()
+		tab:SetDisplayItem(tab:anointItem(node))
 	end)
 	if not ok then
 		return nil, tostring(err)
