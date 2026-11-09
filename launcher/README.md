@@ -114,7 +114,7 @@ one says which it is and what to do:
 ## Shipping it
 
 ```
-.\publish.ps1 -IncludeLove
+.\publish.ps1 -IncludeLove -Zip
 ```
 
 That builds the UI, publishes the launcher with .NET carried inside it,
@@ -131,6 +131,27 @@ The executable itself is 103 MB of that, because .NET is inside it.
 `-FrameworkDependent` takes .NET back out and leaves a 297 KB executable
 that needs the .NET 10 Desktop Runtime on the target. Worth it when the
 target is your own machine and nothing else.
+
+`-Zip` also writes `dist-app.zip`, and a `README.txt` goes into the folder
+so whoever opens it knows to double-click the executable and knows that
+the directories beside it are the application rather than clutter.
+
+### One file is deliberately left out
+
+`runtime/libcurl.dll` is not copied. It is PoB's network layer, and the
+headless engine does not have one: `HeadlessWrapper` stubs
+`require("lcurl.safe")` outright, with a comment saying it does not really
+need it. The published build was run without the file to check, and it
+works.
+
+The reason it is skipped rather than merely unnecessary is that Windows
+Defender flags a fresh copy of it as `Trojan:Win32/Posilod.CA!cl` and
+quarantines it part-way through the archive, which fails the zip. The same
+bytes sitting in the checkout are left alone, so this is a heuristic about
+new files at unfamiliar paths rather than a judgement about the file.
+Either way, carrying a DLL the engine never loads only to trip somebody's
+scanner is the wrong trade. Drop it from `$skip` in `publish.ps1` to ship
+it, and expect to need an exclusion.
 
 ## The icon, and how it was made
 

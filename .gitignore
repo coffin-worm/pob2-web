@@ -59,3 +59,4 @@ runtime/SimpleGraphic/Screenshots
 launcher/bin/
 launcher/obj/
 /dist-app/
+/dist-app.zip
