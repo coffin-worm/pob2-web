@@ -510,3 +510,82 @@
   font-size: var(--text-xs);
   line-height: 1.5;
 }
+
+/* Catalysts. One row per catalyst, each a button that applies it: the
+   whole thing is reversible, so there is no draft and no commit, unlike
+   corrupting right below it. */
+.catalystQuality {
+  flex: none;
+  width: 64px;
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-primary);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.catalystRows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.catalystRow {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-2) var(--space-3);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.catalystRow:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+/* The one already on the item, which is why it is not clickable. */
+.catalystRow[data-current] {
+  border-color: var(--accent);
+  cursor: default;
+}
+
+.catalystRow:disabled:not([data-current]) {
+  cursor: default;
+}
+
+.catalystName {
+  font-weight: 600;
+}
+
+.catalystScales {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.catalystDelta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .catalystRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

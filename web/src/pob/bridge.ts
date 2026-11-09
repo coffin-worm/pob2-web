@@ -18,6 +18,7 @@ import type {
   CraftAnoints,
   CorruptDraft,
   CorruptPreview,
+  CraftCatalysts,
   CraftCorruptions,
   CraftBases,
   CraftRunes,
@@ -256,6 +257,18 @@ export const bridge = {
   anointWhatIf: (slot: number, node?: number) =>
     request<AnointWhatIf>(
       `/craft/anoint/whatif?slot=${slot}` + (node ? `&node=${node}` : ''),
+    ),
+
+  /**
+   * What each of the thirteen catalysts would do to the bench item.
+   *
+   * All thirteen in one answer, priced at the same quality so they read
+   * against each other. PoB's dropdown applies one and redraws, so
+   * comparing two there means applying each in turn and remembering.
+   */
+  craftCatalysts: (quality?: number) =>
+    request<CraftCatalysts>(
+      '/craft/catalysts' + (quality === undefined ? '' : `?quality=${quality}`),
     ),
 
   /**

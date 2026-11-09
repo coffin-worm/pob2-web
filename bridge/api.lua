@@ -2729,6 +2729,75 @@ end
 --- item, which is the same bench this app already stages pasted and
 --- database items on. So this is a second view of one thing rather than a
 --- second place to put items.
+---------------------------------------------------------------- catalysts
+
+--- PoB's own catalyst dropdown, or nothing.
+---
+--- Every fact about catalysts in PoB is a local. The thirteen names live in
+--- `ItemsTab`, the thirteen tag sets in `Item`, and the scalar function
+--- that joins them is private to the latter. The dropdown is the one piece
+--- reachable from outside, and it carries the names in its own list, so
+--- that is where they are read rather than copied into this file.
+local function catalystControl(tab)
+	local control = tab and tab.controls and tab.controls.displayItemCatalyst
+	return (control and control.list and control.shown) and control or nil
+end
+
+--- Whether a catalyst can go on the bench item, by PoB's own test.
+---
+--- The dropdown's `shown` predicate rather than its `IsShown`, which also
+--- walks the anchor chain and so answers a question about the desktop
+--- layout. What the predicate asks is a ring, an amulet or a jewel whose
+--- modifiers carry tags to scale, and that is exactly what the game sells
+--- catalysts for: thirteen for jewellery, the same thirteen refined for
+--- jewels, and none for anything else.
+local function catalystApplies(tab)
+	local control = catalystControl(tab)
+	if not control then
+		return false
+	end
+	local ok, shown = pcall(control.shown)
+	return (ok and shown) and true or false
+end
+
+--- What the dropdown would default the quality to.
+---
+--- PoB's `selFunc` picks this the first time a catalyst goes on. It is
+--- repeated here only to seed a preview that is asked for before anything
+--- has been committed: the value that lands on the item still comes from
+--- the dropdown, so the two cannot drift apart where it counts.
+local function catalystDefaultQuality(item)
+	return (item.name or item.baseName or ""):match("Breach Ring") and 50 or 20
+end
+
+--- Bring PoB's affix dropdowns back in line with the item.
+---
+--- The bench sets affixes on the item and recrafts it, which is what the
+--- craft dialog does, but it never touches the nine dropdowns the desktop
+--- tab keeps beside them: in a headless engine those sit empty. That costs
+--- nothing until something asks PoB to re-fire them, and the catalyst
+--- dropdown does exactly that, because a catalyst changes what every affix
+--- would roll. An empty dropdown fired at the item writes its emptiness
+--- onto it, which is one modifier quietly gone.
+local function syncAffixControls(tab, item)
+	if not item.crafted then
+		return true
+	end
+	return pcall(tab.UpdateAffixControls, tab)
+end
+
+--- The thirteen, as the dropdown names them. Index 0 is its first entry,
+--- the placeholder that means no catalyst, and is left out here: the panel
+--- has its own word for nothing.
+local function catalystOptions(tab)
+	local control = catalystControl(tab)
+	local options = asArray({})
+	for index = 2, #(control and control.list or {}) do
+		options[#options + 1] = { id = index - 1, name = strip(control.list[index]) }
+	end
+	return options
+end
+
 function api.craftState(build)
 	local tab = build and build.itemsTab
 	local item = tab and tab.displayItem
@@ -2816,6 +2885,18 @@ function api.craftState(build)
 		-- implicits, so this is said rather than used to hide the panel.
 		corrupted = item.corrupted and true or nil,
 	}
+
+	-- Catalysts, which are jewellery quality: thirteen of them, each
+	-- scaling the modifiers that carry its own tag. Only what the panel
+	-- needs to offer the section is here, because pricing the thirteen
+	-- means thirteen calculator runs and that is /craft/catalysts.
+	if catalystApplies(tab) then
+		state.catalyst = {
+			catalyst = item.catalyst or 0,
+			quality = item.catalystQuality,
+			options = catalystOptions(tab),
+		}
+	end
 
 	-- Anoints, which are enchant lines rather than affixes: an amulet
 	-- carries them whether or not it was crafted, so this sits outside the
@@ -4034,6 +4115,124 @@ function api.corruptPreview(build, value)
 	}
 end
 
+--- The lines a catalyst would scale, as PoB would read them out.
+---
+--- `BuildAndParseRaw` leaves its scalar on every mod line it touched, so
+--- which modifiers a catalyst reaches is not worked out again here: it is
+--- read off the parse, and rendered with PoB's own range function so the
+--- numbers are the tooltip's rather than an approximation of them.
+local function catalystScaledLines(item)
+	local lines = asArray({})
+	for _, lineTable in ipairs({ item.implicitModLines or {}, item.explicitModLines or {} }) do
+		for _, modLine in ipairs(lineTable) do
+			local scalar = modLine.valueScalar
+			if scalar and scalar ~= 1 and modLine.line then
+				local ok, rendered = pcall(
+					itemLib.applyRange, (modLine.line:gsub("\n", " ")),
+					modLine.range or 1, scalar, modLine.corruptedRange
+				)
+				lines[#lines + 1] = strip(ok and rendered or modLine.line)
+			end
+		end
+	end
+	return lines
+end
+
+--- What each catalyst would do to the item on the bench.
+---
+--- Thirteen answers in one call, which the desktop app cannot give. Its
+--- dropdown applies one and redraws, so comparing two means applying each
+--- in turn and remembering what the last one said, and the tooltip's
+--- quality line reports the number without saying which modifiers it
+--- reached. Most of the thirteen scale nothing at all on a given ring, and
+--- that is worth seeing at a glance rather than one at a time.
+---
+--- Nothing on the bench is touched. Each candidate is a clone built from
+--- the item's own text with the catalyst set on it, handed to the
+--- calculator as a replacement for the slot the item would sit in, which
+--- is how PoB's own hover comparisons work.
+function api.craftCatalysts(build, value)
+	local tab = build and build.itemsTab
+	local item = tab and tab.displayItem
+	if not item then
+		return { ready = false }
+	end
+	if not catalystApplies(tab) then
+		return {
+			ready = false,
+			error = "a catalyst needs a ring, an amulet or a jewel whose modifiers carry tags",
+		}
+	end
+	local control = catalystControl(tab)
+	local calcsTab = build.calcsTab
+	if not calcsTab or not calcsTab.GetMiscCalculator then
+		return { ready = false, error = "the engine has no calculator yet" }
+	end
+	local calcFunc = calcsTab:GetMiscCalculator()
+	if not calcFunc then
+		return { ready = false, error = "the engine has not finished its first calculation" }
+	end
+
+	-- The quality every candidate is priced at, so the thirteen answers are
+	-- comparable: what was asked for, else what the item already carries,
+	-- else what the dropdown would pick.
+	local asked = tonumber(type(value) == "table" and value.quality or value)
+	local quality = math.min(99, math.max(0, math.floor(
+		asked or item.catalystQuality or catalystDefaultQuality(item)
+	)))
+
+	local slotName = tab:GetComparisonSlotNameForItem(item)
+	local raw = item:BuildRaw()
+	local buildFlag = build.buildFlag
+	local okBase, base = pcall(calcFunc, { repSlotName = slotName, repItem = item })
+	if not okBase then
+		build.buildFlag = buildFlag
+		return { ready = false, error = tostring(base) }
+	end
+
+	local options = asArray({})
+	-- Id 0 is the dropdown's placeholder entry, which takes the catalyst
+	-- off again. Offered only where there is one to take off, and priced
+	-- like the rest, because coming off is as much a change as going on.
+	local first = (item.catalyst and item.catalyst > 0) and 0 or 1
+	for id = first, #control.list - 1 do
+		local name = id == 0 and "No catalyst" or strip(control.list[id + 1])
+		local row = {
+			id = id,
+			name = name,
+			current = ((item.catalyst or 0) == id) or nil,
+		}
+		local clone = new("Item"):Item(raw)
+		clone.catalyst = id
+		clone.catalystQuality = (id > 0) and quality or nil
+		local okBuild, buildErr = pcall(clone.BuildAndParseRaw, clone)
+		if not okBuild then
+			row.error = tostring(buildErr)
+		else
+			row.scales = catalystScaledLines(clone)
+			local okNew, output = pcall(calcFunc, { repSlotName = slotName, repItem = clone })
+			if okNew then
+				-- The row already carries the name, so the header PoB writes
+				-- above its comparison reads as a continuation of it rather
+				-- than saying the same thing twice.
+				row.compare = renderCompare(build, base, output, "^7would give you:")
+			else
+				row.compare = { ready = false, error = tostring(output) }
+			end
+		end
+		options[#options + 1] = row
+	end
+	build.buildFlag = buildFlag
+
+	return {
+		ready = true,
+		slot = slotName,
+		quality = quality,
+		catalyst = item.catalyst or 0,
+		options = options,
+	}
+end
+
 --- What a gem being off, or at 20 quality, would do.
 ---
 --- Unlike the tree and the item bench, the calculator has no argument for
@@ -4776,6 +4975,75 @@ function commands.setCraftQuality(build, value)
 	local ok, err = pcall(item.BuildAndParseRaw, item)
 	if not ok then
 		return nil, tostring(err)
+	end
+	return true
+end
+
+--- Put a catalyst on the bench item, or take it off.
+---
+--- The dropdown's own `selFunc` rather than the two fields it sets, because
+--- it does three more things worth having: it picks the quality the first
+--- time a catalyst goes on, fifty for a Breach Ring and twenty otherwise;
+--- it forces every affix selector to re-read its values, since a catalyst
+--- changes what each affix would roll; and it rebuilds the item from its
+--- text. Writing `item.catalyst` by hand would leave the affix rows
+--- describing the item as it was.
+function commands.setCatalyst(build, value)
+	local tab = build and build.itemsTab
+	local item = tab and tab.displayItem
+	if not item then
+		return nil, "nothing is on the bench"
+	end
+	if not catalystApplies(tab) then
+		return nil, "a catalyst needs a ring, an amulet or a jewel whose modifiers carry tags"
+	end
+	local control = catalystControl(tab)
+
+	local wanted = tonumber(type(value) == "table" and value.catalyst or value)
+	if wanted == nil then
+		return nil, "expected { catalyst = 0..13 }"
+	end
+	wanted = math.floor(wanted)
+	if wanted < 0 or wanted > #control.list - 1 then
+		return nil, "there is no catalyst " .. tostring(wanted)
+	end
+
+	-- Before the dropdown fires, not after: its own handler re-reads every
+	-- affix control, so they have to already agree with the item. Reported
+	-- rather than swallowed, because the failure is silent otherwise: the
+	-- catalyst lands and a modifier is gone.
+	local okSync, syncErr = syncAffixControls(tab, item)
+	if not okSync then
+		return nil, "the affix controls could not be brought in line: " .. tostring(syncErr)
+	end
+
+	local okSel, selErr = pcall(control.selFunc, wanted + 1, control.list[wanted + 1])
+	if not okSel then
+		return nil, tostring(selErr)
+	end
+
+	-- Quality second, so the dropdown has already seeded its default and
+	-- this writes over it. PoB's box takes two digits and the scalar it
+	-- feeds, (100 + quality) / 100, has no cap of its own, so the same two
+	-- digits are the limit here.
+	local quality = type(value) == "table" and tonumber(value.quality) or nil
+	if quality and wanted > 0 then
+		local edit = tab.controls.displayItemCatalystQualityEdit
+		if not edit then
+			return nil, "the engine has no catalyst quality control"
+		end
+		local text = tostring(math.min(99, math.max(0, math.floor(quality))))
+		-- The quality box re-reads the affix controls too, for the same
+		-- reason, so they are brought back in line between the two.
+		local okAgain, againErr = syncAffixControls(tab, item)
+		if not okAgain then
+			return nil, "the affix controls could not be brought in line: " .. tostring(againErr)
+		end
+		edit:SetText(text)
+		local okEdit, editErr = pcall(edit.changeFunc, text)
+		if not okEdit then
+			return nil, tostring(editErr)
+		end
 	end
 	return true
 end

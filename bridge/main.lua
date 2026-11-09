@@ -429,6 +429,20 @@ routes["GET /craft/corrupt/preview"] = function(_, query)
 	return 200, answer
 end
 
+--- What each of the thirteen catalysts would do to the bench item.
+---
+--- All thirteen in one answer, priced at the same quality so they can be
+--- read against each other. The desktop dropdown applies one and redraws,
+--- so comparing two there means applying each in turn and remembering.
+routes["GET /craft/catalysts"] = function(_, query)
+	local started = os.clock()
+	local answer = api.craftCatalysts(currentBuild(), query)
+	if type(answer) == "table" then
+		answer.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	end
+	return 200, answer
+end
+
 --- What flipping one configuration option would do, without doing it.
 routes["GET /config/whatif"] = function(_, query)
 	local started = os.clock()
@@ -686,6 +700,7 @@ function love.load()
 	log("  GET /item/craft /craft/affixes /craft/bases /craft/runes")
 	log("  GET /craft/anoints /craft/anoint/whatif")
 	log("  GET /craft/corruptions /craft/corrupt/preview")
+	log("  GET /craft/catalysts")
 	log("  GET /config/whatif /skills/whatif /tree/whatif /items/whatif /gem/whatif")
 	log("  GET /code /code/inspect   POST /code/import /code/character")
 	log("  GET /builds /compare")

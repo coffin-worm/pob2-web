@@ -736,6 +736,13 @@ export interface CraftState {
    * means opening PoB's dialog, which is not free.
    */
   corrupt?: { corruptible: boolean; corrupted?: boolean };
+  /**
+   * Catalysts: jewellery quality, thirteen of them, each scaling the
+   * modifiers that carry its own tag. Absent for a base no catalyst
+   * touches. The prices behind the panel are their own call, because
+   * reading them means thirteen runs of the calculator.
+   */
+  catalyst?: { catalyst: number; quality?: number; options: CraftCatalystOption[] };
 }
 
 /** One modifier a slot could hold, with all of its tiers. */
@@ -830,6 +837,42 @@ export type AnointWhatIf =
       reason?: string;
       buildMs?: number;
     };
+
+/* --------------------------------------------------------- catalysts */
+
+/** One of PoB's thirteen catalysts, as its own dropdown names it. */
+export interface CraftCatalystOption {
+  /** 1 to 13, or 0 for taking the catalyst off again. */
+  id: number;
+  name: string;
+}
+
+/** One catalyst, priced against the item as it stands. */
+export interface CraftCatalystRow extends CraftCatalystOption {
+  /** The one already on the item. */
+  current?: boolean;
+  /**
+   * The item's own modifiers this catalyst would scale, read off PoB's
+   * parse and written out at the scaled value. Empty for most of the
+   * thirteen on most items, which is the useful part.
+   */
+  scales?: string[];
+  compare?: { ready: boolean; error?: string; lines?: ItemLine[]; unchanged?: boolean };
+  error?: string;
+}
+
+export interface CraftCatalysts {
+  ready: boolean;
+  error?: string;
+  /** The slot both sides of every comparison put the item in. */
+  slot?: string;
+  /** The quality all thirteen were priced at, so they can be read together. */
+  quality?: number;
+  /** What is on the item now, 0 for none. */
+  catalyst?: number;
+  options?: CraftCatalystRow[];
+  buildMs?: number;
+}
 
 /* --------------------------------------------------------- corrupting */
 

@@ -11,6 +11,8 @@ import type {
   CraftAffixRow,
   CraftAnoint,
   CraftAnointSlot,
+  CraftCatalystOption,
+  CraftCatalysts,
   CraftCorruptions,
   CraftRune,
   CraftRuneRow,
@@ -668,6 +670,192 @@ function AnointRow({
 }
 
 /**
+ * Catalysts: jewellery quality, thirteen of them.
+ *
+ * Each scales the item's own modifiers that carry its tag by the catalyst's
+ * quality, and most of the thirteen carry a tag the item has nothing of, so
+ * on any given ring most of them do nothing whatever. That is the fact the
+ * desktop tab cannot show you. Its dropdown applies one and redraws, and
+ * its tooltip then reports the quality number without saying which
+ * modifiers it reached, so finding the catalyst worth using means applying
+ * each in turn and remembering what the last one said.
+ *
+ * So all thirteen are priced in one call, at one quality, and the ones that
+ * reach nothing are counted rather than listed. What is usually a
+ * thirteen-way guess becomes a two or three-way choice.
+ */
+function CatalystSection({
+  token,
+  current,
+  options,
+  busy,
+  onRefusal,
+}: {
+  /** Changes when the bench item or its catalyst does, which refetches. */
+  token: string;
+  /** What is on the item now, 0 for none. */
+  current: number;
+  /** PoB's own names for the thirteen. */
+  options: CraftCatalystOption[];
+  busy: boolean;
+  onRefusal: (reason: string | null) => void;
+}) {
+  const setCatalyst = useCraftStore((s) => s.setCatalyst);
+
+  const [open, setOpen] = useState(false);
+  const [answer, setAnswer] = useState<CraftCatalysts | null>(null);
+  /**
+   * Only what the user typed. The engine seeds the rest, and keeping its
+   * number out of this state is what stops the fetch from chasing its own
+   * answer round in a circle.
+   */
+  const [asked, setAsked] = useState<number | null>(null);
+  const [showAll, setShowAll] = useState(false);
+
+  // Debounced, because every answer is thirteen runs of the calculator and
+  // the quality box fires on each keystroke.
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    const timer = window.setTimeout(() => {
+      void bridge
+        .craftCatalysts(asked ?? undefined)
+        .then((found) => {
+          if (live) setAnswer(found);
+        })
+        .catch((reason: unknown) => {
+          if (live) {
+            setAnswer({
+              ready: false,
+              error: reason instanceof Error ? reason.message : String(reason),
+            });
+          }
+        });
+    }, 180);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [open, token, asked]);
+
+  const quality = asked ?? answer?.quality ?? 20;
+  const rows = answer?.ready ? (answer.options ?? []) : [];
+  // A catalyst that reaches nothing on this item is still a thing you can
+  // put on, so it is offered; it is just not a thing worth reading, so it
+  // sits behind its own count until asked for. Taking one off is never
+  // hidden, whatever it scaled.
+  const worth = rows.filter((row) => (row.scales?.length ?? 0) > 0 || row.id === 0);
+  const shown = showAll ? rows : worth;
+  const idle = rows.length - worth.length;
+
+  const currentName = options.find((option) => option.id === current)?.name;
+
+  return (
+    <section className={styles.sockets}>
+      <h4 className={styles.columnTitle}>
+        Catalyst
+        {currentName && <span className={styles.used}>{currentName}</span>}
+      </h4>
+
+      <div className={styles.row} data-empty>
+        <button className={styles.add} onClick={() => setOpen(!open)} disabled={busy}>
+          {open ? 'Close' : currentName ? 'Change it...' : 'Catalysts...'}
+        </button>
+      </div>
+
+      {open && (
+        <div className={styles.corruptBody}>
+          <label className={styles.dial}>
+            <span className={styles.dialName}>Quality</span>
+            {/* Two digits, which is what PoB's own box takes: the scalar it
+                feeds is (100 + quality) / 100 and has no cap of its own. */}
+            <input
+              className={styles.catalystQuality}
+              type="number"
+              min={0}
+              max={99}
+              step={1}
+              value={quality}
+              disabled={busy}
+              onChange={(event) => setAsked(Number(event.target.value))}
+              aria-label="Catalyst quality"
+            />
+            <span className={styles.dialValue}>%</span>
+          </label>
+          {/* PoB hides its quality box until a catalyst is on the item, so
+              there is no way to ask what a given quality would be worth
+              before committing to one. Here it prices the whole list. */}
+          <p className={styles.note}>
+            All thirteen are priced at this quality, so they read against each other.
+            PoB defaults to +20%, or +50% on a Breach Ring, and hides the box until a
+            catalyst is on the item.
+          </p>
+
+          {answer && !answer.ready && <p className={styles.note}>{answer.error}</p>}
+          {!answer && <p className={styles.note}>Pricing all thirteen...</p>}
+
+          {answer?.ready && (
+            <>
+              <div className={styles.catalystRows}>
+                {shown.map((row) => (
+                  <button
+                    key={row.id}
+                    className={styles.catalystRow}
+                    data-current={row.current || undefined}
+                    disabled={busy || row.current}
+                    onClick={() => void setCatalyst(row.id, quality).then(onRefusal)}
+                  >
+                    <span className={styles.catalystName}>{row.name}</span>
+                    {row.scales && row.scales.length > 0 ? (
+                      <span className={styles.catalystScales}>
+                        {row.scales.map((line, i) => (
+                          <span key={i}>{line}</span>
+                        ))}
+                      </span>
+                    ) : (
+                      <span className={styles.catalystScales}>
+                        <span>
+                          {row.id === 0
+                            ? 'back to what it rolled'
+                            : 'nothing on this item carries its tag'}
+                        </span>
+                      </span>
+                    )}
+                    <span className={styles.catalystDelta}>
+                      {row.error ??
+                        (row.compare?.ready && !row.compare.unchanged ? (
+                          <Lines lines={row.compare.lines ?? []} />
+                        ) : (
+                          <span className={styles.previewHint}>
+                            {row.compare?.error ?? 'nothing the calculator tracks moves'}
+                          </span>
+                        ))}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {idle > 0 && (
+                <button className={styles.clear} onClick={() => setShowAll(!showAll)}>
+                  {showAll
+                    ? `Hide the ${idle} that scale nothing here`
+                    : `Show ${idle} more that scale nothing here`}
+                </button>
+              )}
+              {answer.slot && (
+                <p className={styles.note}>
+                  Priced against {answer.slot}, which is where this item would sit.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
  * Corrupting the item on the bench.
  *
  * The one crafting step with no way back, and the panel is shaped around
@@ -1169,6 +1357,20 @@ export function CraftPanel({ onRefusal }: { onRefusal: (reason: string | null) =
             })}
           </div>
         </section>
+      )}
+
+      {/* Catalysts sit above corrupting because that is the order the
+          steps come in: quality is reversible, a Vaal Orb is not. Offered
+          for a ring, an amulet or a jewel whose modifiers carry tags,
+          crafted or not, which is PoB's own test. */}
+      {state.catalyst && (
+        <CatalystSection
+          token={`${state.baseName ?? ''}:${state.catalyst.catalyst}:${state.catalyst.quality ?? ''}`}
+          current={state.catalyst.catalyst}
+          options={state.catalyst.options}
+          busy={busy}
+          onRefusal={onRefusal}
+        />
       )}
 
       {/* Corrupting is last because it is the step after everything else,

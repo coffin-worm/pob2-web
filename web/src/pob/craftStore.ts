@@ -57,6 +57,15 @@ interface CraftStore {
    * its Corrupted button.
    */
   corrupt(draft: CorruptDraft): Promise<string | null>;
+
+  /**
+   * Put a catalyst on the item, or take it off with 0.
+   *
+   * The quality goes with it, because PoB's two controls are one decision:
+   * picking a catalyst seeds a quality, and a quality on its own means
+   * nothing until one is picked.
+   */
+  setCatalyst(catalyst: number, quality?: number): Promise<string | null>;
 }
 
 export const useCraftStore = create<CraftStore>((set) => {
@@ -124,5 +133,8 @@ export const useCraftStore = create<CraftStore>((set) => {
       run('setAnoint', node === null ? { slot } : { slot, node }),
 
     corrupt: (draft) => run('corruptItem', draft),
+
+    setCatalyst: (catalyst, quality) =>
+      run('setCatalyst', quality === undefined ? { catalyst } : { catalyst, quality }),
   };
 });

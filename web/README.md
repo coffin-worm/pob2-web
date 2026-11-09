@@ -614,7 +614,7 @@ took Total Life from 91 to 301.
 The largest gap on this screen, and the one the desktop app spends the
 most surface on. It is now partly closed: an item can be made from a base
 and given prefixes and suffixes, which is the loop people actually want.
-Catalysts are still only reachable through the text box.
+Custom modifiers are still only reachable through the text box.
 
 Crafting in PoB happens on `displayItem` and nowhere else, which is the
 same bench this app already stages pasted and database items on. So the
@@ -753,6 +753,51 @@ Two of PoB's answers are not comparisons at all, and they are passed
 through as they are: a notable already allocated on the tree, or already
 anointed, cannot give you the same thing twice.
 
+### Catalysts, and thirteen answers where PoB gives one
+
+A catalyst is jewellery quality. Each of the thirteen scales the item's own
+modifiers that carry its tag, by its quality, and the game sells them for
+rings, amulets and jewels and nothing else. PoB has the controls: a
+dropdown of the thirteen and a quality box beside it.
+
+What it does not have is a way to compare them. Picking one applies it and
+redraws, and the tooltip then reports the quality it added without saying
+which modifiers that reached, so finding the catalyst worth using means
+applying each in turn and remembering what the last one said. Thirteen
+times, on every item.
+
+So they are all priced in one call, at one quality, and each row says what
+it would scale and what the build would gain. The rows that reach nothing
+are counted rather than listed, which is most of them: on a ring with life,
+fire damage, fire resistance and strength, four of the thirteen do
+anything at all and nine sit behind a line offering to show them. A
+thirteen-way guess becomes a three-way choice.
+
+Nothing on the bench is touched to work this out. Each candidate is a clone
+built from the item's own text with the catalyst set on it, handed to the
+calculator as a replacement for the slot the item would sit in, which is
+how PoB's own hover comparisons work. Which modifiers a catalyst reached is
+not worked out here either: `BuildAndParseRaw` leaves its scalar on every
+mod line it touched, so the rows are read off PoB's parse and written out
+with PoB's own range function.
+
+**The quality box prices the list, which is the other thing PoB cannot do.**
+It hides its box until a catalyst is already on the item, so there is no
+asking what +35% would be worth before committing to one. Here it is the
+question the whole list answers.
+
+**One sharp edge, found by driving it.** PoB's catalyst dropdown re-fires
+every affix dropdown when it changes, because a catalyst changes what each
+affix would roll. The desktop tab keeps those nine dropdowns in step with
+the item as a matter of course; the bench here sets affixes on the item and
+recrafts it, the way the craft dialog does, and never touches them, so in a
+headless engine they sit empty. Firing an empty dropdown at the item writes
+its emptiness onto it: the first time a catalyst went on a crafted ring, the
+life prefix quietly vanished. The fix is PoB's own `UpdateAffixControls`,
+called before the dropdown fires rather than after, and its failure is
+reported rather than swallowed, because the symptom is otherwise a
+modifier that is simply gone.
+
 ### Corrupting, and a dialog driven rather than copied
 
 Corruption is the one crafting step with no way back, and both the engine
@@ -819,8 +864,6 @@ leaving nine of ten, the way PoB rebuilds its own second dropdown.
   range it was given, so there is no path through `corruptItem` that clears
   one. The panel says so rather than offering a control that would not
   work.
-- **No catalysts.** The controls exist but the list is a hardcoded
-  thirteen-entry PoE 1 one.
 - **No item level**, because PoB has no control for it either: the field is
   parsed and written back but never edited, and nothing reads it.
 - **No "sort by stat" on the affix list.** PoB can rank a slot's
