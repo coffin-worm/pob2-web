@@ -433,3 +433,80 @@
 .recipe {
   color: var(--text-muted);
 }
+
+/* --------------------------------------------------------- corrupting */
+
+.corruptBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) 0 0;
+}
+
+.corruptRows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* The modifier line at its current roll, which is what the slider under
+   it is scaling. Long enough to want the whole row. */
+.rangeLine {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+/* Taller than the anoint strip: it holds the whole corrupted item and
+   then the delta under it, rather than a handful of stat lines. */
+.corruptPreview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 120px;
+  max-height: 320px;
+  overflow: auto;
+  padding: var(--space-3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.commitRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Deliberately the only destructive-looking button on the panel. Every
+   other control here can be undone by setting it back. */
+.commit {
+  flex: none;
+  padding: var(--space-2) var(--space-4);
+  color: var(--danger);
+  font: inherit;
+  font-weight: 600;
+  background: var(--bg-raised);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.commit:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.commit:disabled {
+  color: var(--text-disabled);
+  border-color: var(--border-subtle);
+  cursor: default;
+}
+
+.irreversible {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}

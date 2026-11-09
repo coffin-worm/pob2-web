@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { bridge } from './bridge';
 import { useItemsStore } from './itemsStore';
-import type { CraftBases, CraftState } from './types';
+import type { CorruptDraft, CraftBases, CraftState } from './types';
 
 /**
  * Crafting the bench item.
@@ -47,6 +47,16 @@ interface CraftStore {
 
   /** Anoint a slot, or, with a null node, take its anoint off. */
   setAnoint(slot: number, node: number | null): Promise<string | null>;
+
+  /**
+   * Corrupt the item, which is the one crafting step with no way back.
+   *
+   * So this is the only command here that takes a whole draft rather than
+   * one change: the implicits and the roll ranges are assembled in the
+   * panel and committed once, the way PoB's dialog has a Cancel next to
+   * its Corrupted button.
+   */
+  corrupt(draft: CorruptDraft): Promise<string | null>;
 }
 
 export const useCraftStore = create<CraftStore>((set) => {
@@ -112,5 +122,7 @@ export const useCraftStore = create<CraftStore>((set) => {
     // does not arrive on the other side as a missing field.
     setAnoint: (slot, node) =>
       run('setAnoint', node === null ? { slot } : { slot, node }),
+
+    corrupt: (draft) => run('corruptItem', draft),
   };
 });

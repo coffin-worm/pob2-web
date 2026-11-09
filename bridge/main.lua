@@ -405,6 +405,30 @@ routes["GET /craft/anoint/whatif"] = function(_, query)
 	return 200, answer
 end
 
+--- The corruption implicits the bench item could take, what it already
+--- carries, and the roll ranges a corruption would scale on a unique.
+---
+--- One route for the whole panel, because all of it comes off the same
+--- dialog and opening that dialog is the expensive part.
+routes["GET /craft/corruptions"] = function(_, query)
+	return 200, api.craftCorruptions(currentBuild(), query.source, query.q)
+end
+
+--- What corrupting the item would do, before it is done.
+---
+--- Takes a whole draft rather than one modifier: "1:ModId,2:ModId" for the
+--- implicits, "3:0.95" for the roll ranges. PoB prices one implicit at a
+--- time against the uncorrupted item, so two chosen together are never
+--- priced together there.
+routes["GET /craft/corrupt/preview"] = function(_, query)
+	local started = os.clock()
+	local answer = api.corruptPreview(currentBuild(), query)
+	if type(answer) == "table" then
+		answer.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	end
+	return 200, answer
+end
+
 --- What flipping one configuration option would do, without doing it.
 routes["GET /config/whatif"] = function(_, query)
 	local started = os.clock()
@@ -661,6 +685,7 @@ function love.load()
 	log("  GET /skills /skills/group /gem /gems/search   GET /config /notes")
 	log("  GET /item/craft /craft/affixes /craft/bases /craft/runes")
 	log("  GET /craft/anoints /craft/anoint/whatif")
+	log("  GET /craft/corruptions /craft/corrupt/preview")
 	log("  GET /config/whatif /skills/whatif /tree/whatif /items/whatif /gem/whatif")
 	log("  GET /code /code/inspect   POST /code/import /code/character")
 	log("  GET /builds /compare")

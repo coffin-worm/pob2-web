@@ -16,6 +16,9 @@ import type {
   CraftAffixes,
   AnointWhatIf,
   CraftAnoints,
+  CorruptDraft,
+  CorruptPreview,
+  CraftCorruptions,
   CraftBases,
   CraftRunes,
   CraftState,
@@ -73,6 +76,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return body as T;
+}
+
+/**
+ * A corruption draft, flattened for a query string.
+ *
+ * "1:ModId,2:ModId" and "3:0.95": keyed rather than positional, because a
+ * draft with only the second slot filled has to survive the trip.
+ */
+function corruptParams(draft: CorruptDraft): string {
+  const pairs = (table: Record<number, string | number>) =>
+    Object.entries(table)
+      .filter(([, value]) => value !== '' && value !== undefined)
+      .map(([index, value]) => `${index}:${value}`)
+      .join(',');
+
+  const params = new URLSearchParams({ mode: draft.mode });
+  if (draft.source) params.set('source', draft.source);
+  const implicits = pairs(draft.implicits);
+  const ranges = pairs(draft.ranges);
+  if (implicits) params.set('implicits', implicits);
+  if (ranges) params.set('ranges', ranges);
+  return String(params);
 }
 
 export const bridge = {
@@ -232,6 +257,30 @@ export const bridge = {
     request<AnointWhatIf>(
       `/craft/anoint/whatif?slot=${slot}` + (node ? `&node=${node}` : ''),
     ),
+
+  /**
+   * What the bench item could be corrupted with, and what it already has.
+   *
+   * One call for the whole panel: the implicit list, the roll ranges and
+   * the sources all come off PoB's own dialog, and opening that dialog is
+   * the expensive part.
+   */
+  craftCorruptions: (source?: string, query?: string) =>
+    request<CraftCorruptions>(
+      '/craft/corruptions?source=' +
+        encodeURIComponent(source ?? 'Corrupted') +
+        (query ? `&q=${encodeURIComponent(query)}` : ''),
+    ),
+
+  /**
+   * What corrupting would do, before it is done.
+   *
+   * The whole draft goes in one call, so two implicits chosen together are
+   * priced together. PoB can only price one at a time, against the
+   * uncorrupted item.
+   */
+  corruptPreview: (draft: CorruptDraft) =>
+    request<CorruptPreview>(`/craft/corrupt/preview?${corruptParams(draft)}`),
 
   /**
    * What a build code contains, without importing it.

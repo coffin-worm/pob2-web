@@ -730,6 +730,12 @@ export interface CraftState {
   runes?: CraftRuneRow[];
   /** Absent when the item cannot be anointed at all. */
   anoint?: { slots: CraftAnointSlot[] };
+  /**
+   * Whether the base can be corrupted, and whether it already is.
+   * The lists behind the panel are their own call: reading them
+   * means opening PoB's dialog, which is not free.
+   */
+  corrupt?: { corruptible: boolean; corrupted?: boolean };
 }
 
 /** One modifier a slot could hold, with all of its tiers. */
@@ -822,6 +828,85 @@ export type AnointWhatIf =
        * already allocated on the tree, or already anointed.
        */
       reason?: string;
+      buildMs?: number;
+    };
+
+/* --------------------------------------------------------- corrupting */
+
+/** One corruption implicit the bench item could take. */
+export interface CraftCorruption {
+  modId: string;
+  /** What it reads, with its range still in it. */
+  lines: string[];
+  /**
+   * An item carries one modifier per group, which is why picking the same
+   * group in a second slot is not offered.
+   */
+  group?: string;
+}
+
+/** One of the bench item's explicits that a corruption would scale. */
+export interface CraftCorruptRange {
+  /** Its place in the item's explicit lines, which is how PoB keys it. */
+  index: number;
+  /** The line as the item stores it, range and all. */
+  line?: string;
+  /** Where the roll sits now, between 0.78 and 1.22. */
+  value: number;
+  /** The same line read out at that roll. */
+  scaled: string;
+}
+
+/** A corruption implicit the item already has. */
+export interface CraftCorruptCurrent {
+  line: string;
+  /** Absent where the line did not match any modifier PoB knows. */
+  modId?: string;
+  group?: string;
+}
+
+export interface CraftCorruptions {
+  ready: boolean;
+  error?: string;
+  /** "Corrupted", plus "Glimpse of Chaos" on a helmet. */
+  sources?: { id: string; name: string }[];
+  /** How many implicit slots the chosen source offers. */
+  slots?: number;
+  options?: CraftCorruption[];
+  total?: number;
+  /** Uniques only: the rolls a corruption would scale. */
+  ranges?: CraftCorruptRange[];
+  /** What the item already carries, so the draft can start from it. */
+  current?: CraftCorruptCurrent[];
+  corrupted?: boolean;
+}
+
+/** A corruption as it is asked for: implicits, or roll ranges, never both. */
+export interface CorruptDraft {
+  source?: string;
+  mode: 'implicits' | 'ranges';
+  /** Keyed by slot, because filling only the second one is a thing people do. */
+  implicits: Record<number, string>;
+  /** Keyed by the explicit's index on the item. */
+  ranges: Record<number, number>;
+}
+
+/** What corrupting would do, asked before it is done. */
+export type CorruptPreview =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      /** The corrupted item, as PoB would draw it. */
+      item: ItemLine[];
+      droppedTips?: number;
+      /** The slot both sides of the comparison put it in. */
+      slot?: string;
+      compare: {
+        ready: boolean;
+        error?: string;
+        lines?: ItemLine[];
+        unchanged?: boolean;
+      };
       buildMs?: number;
     };
 

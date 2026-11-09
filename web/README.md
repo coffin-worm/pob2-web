@@ -614,7 +614,7 @@ took Total Life from 91 to 301.
 The largest gap on this screen, and the one the desktop app spends the
 most surface on. It is now partly closed: an item can be made from a base
 and given prefixes and suffixes, which is the loop people actually want.
-Corruption and catalysts are still only reachable through the text box.
+Catalysts are still only reachable through the text box.
 
 Crafting in PoB happens on `displayItem` and nowhere else, which is the
 same bench this app already stages pasted and database items on. So the
@@ -753,14 +753,72 @@ Two of PoB's answers are not comparisons at all, and they are passed
 through as they are: a notable already allocated on the tree, or already
 anointed, cannot give you the same thing twice.
 
+### Corrupting, and a dialog driven rather than copied
+
+Corruption is the one crafting step with no way back, and both the engine
+side and the panel are shaped around that.
+
+PoB keeps it in a popup, and the two things it does are closures inside
+that popup rather than methods: `corruptItem`, which clones the item and
+sets the Corrupted line, and `applyCorruptionMods`, which lays the
+implicits out in stat order and keeps any anoint. Nothing outside can call
+either one.
+
+So the dialog is driven instead. The bridge opens it headless, sets its
+controls, presses its Corrupted button and closes it again. That is not a
+shortcut, it is the only way to get PoB's own answers: the dialog holds the
+modifier list already filtered by what the base can spawn, the sort, the
+one-modifier-per-group rule between the slots, and the roll-range rows for
+the explicits that actually scale. Rebuilding those here would be four
+chances to disagree with the game about what a Vaal Orb can do.
+
+**The two halves are PoB's split, not a layout choice.** Its Corrupted
+button writes whichever half of the dialog is showing and never both, so a
+corruption is implicits or roll ranges. The panel says so with a pair of
+segments rather than letting you fill in two things and quietly dropping
+one. They do compose across two corruptions, which is PoB's own comment on
+the matter: it skips the implicits when writing ranges so you can make a
+vaal-rolled item that still has its enchants.
+
+### Priced as a whole, which PoB cannot do
+
+Every change here is a draft held in the browser until one button commits
+it, because that is the shape the step deserves and it is why PoB's dialog
+has a Cancel where nothing else on the tab does.
+
+Drafting it in one place has a second effect. The preview sends the whole
+draft and gets back the whole answer: the corrupted item as PoB would draw
+it, and what the build would gain, in one call. PoB can give you either but
+never both of the same thing. Its button hover draws the item with no
+comparison, and its per-modifier hover compares that one modifier against
+the uncorrupted item, so two implicits chosen together are never priced
+together there.
+
+Verified in the browser on Atziri's Step: fire resistance and movement
+speed drafted together previewed `+23% Fire Resistance` and `+4.0%
+Movement Speed Modifier` in one answer, and committing produced exactly
+that. Dragging maximum life to 1.22 afterwards took `+85` to `+104` for
+`+20 Total Life (+13.0%)`, with the implicits still on it.
+
+**Two things said here that the desktop app leaves you to find out.** Its
+dialog opens empty whatever the item holds, so corrupting a corrupted item
+there quietly drops the implicits that were on it; matching the lines back
+to the modifiers that made them is cheap, so the panel starts from what is
+there. And the group rule is applied as you choose rather than only on
+save: picking fire resistance in one slot takes it out of the other,
+leaving nine of ten, the way PoB rebuilds its own second dropdown.
+
 ### What it does not do
 
-- **No power ranking of the list.** PoB can sort all 875 by what each
-  would be worth, colouring the list by it, which is the same resumable
-  scan the item database already does here. The anoint list is
+- **No power ranking of the anoint list.** PoB can sort all 875 by what
+  each would be worth, colouring the list by it, which is the same
+  resumable scan the item database already does here. The anoint list is
   alphabetical and prices one notable at a time, on hover.
-- **No corrupting.** PoB's own code there still says it is PoE 1's, with a
-  two-tab dialog and per-unique roll ranges.
+- **No taking a roll range back to exactly 1.00.** PoB writes a range only
+  where it is not 1, and an item rebuilt from its own text arrives with the
+  range it was given, so there is no path through `corruptItem` that clears
+  one. The panel says so rather than offering a control that would not
+  work.
 - **No catalysts.** The controls exist but the list is a hardcoded
   thirteen-entry PoE 1 one.
 - **No item level**, because PoB has no control for it either: the field is

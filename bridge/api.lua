@@ -2372,6 +2372,357 @@ local function anointEntry(build, node)
 	}
 end
 
+---------------------------------------------------------------- corrupting
+
+-- `data.itemMods.Corruption` is keyed by modifier id, and the dialog's own
+-- lists carry the modifier tables rather than their keys. One reverse map,
+-- built once, so a choice can travel over HTTP as an id and come back as
+-- the identical table the dialog is holding.
+local corruptionIds
+
+local function corruptionId(mod)
+	if not corruptionIds then
+		corruptionIds = {}
+		for modId, entry in pairs(data.itemMods.Corruption or {}) do
+			corruptionIds[entry] = modId
+		end
+	end
+	return corruptionIds[mod]
+end
+
+--- One corruption implicit, as the list needs it.
+local function corruptionEntry(mod)
+	local lines = asArray({})
+	for _, line in ipairs(mod) do
+		if line and line:match("%S") then
+			lines[#lines + 1] = strip(line)
+		end
+	end
+	return {
+		modId = corruptionId(mod),
+		lines = lines,
+		-- One modifier per group, which is why taking the same group in a
+		-- second slot is not offered.
+		group = mod.group,
+	}
+end
+
+--- A corruption, as asked for over the wire.
+---
+--- The same shape either way: a JSON body gives real tables, a query string
+--- gives "1:ModId,2:ModId", and both say the same thing. Keyed by slot
+--- rather than positional, because a draft with only the second slot filled
+--- is a thing a person does.
+local function corruptionDraft(value)
+	value = type(value) == "table" and value or {}
+	local draft = {
+		source = value.source,
+		-- PoB's Corrupted button writes one half of its dialog or the
+		-- other, never both, and the half it writes is whichever one is
+		-- showing. So the mode is not a convenience here, it is the rule.
+		mode = (value.mode == "ranges") and "ranges" or "implicits",
+		implicits = {},
+		ranges = {},
+	}
+	local function each(field, fn)
+		local raw = value[field]
+		if type(raw) == "table" then
+			for key, entry in pairs(raw) do
+				local index = tonumber(key)
+				if index then fn(index, entry) end
+			end
+		elseif type(raw) == "string" then
+			for chunk in raw:gmatch("[^,]+") do
+				local key, entry = chunk:match("^(%d+):(.*)$")
+				if key then fn(tonumber(key), entry) end
+			end
+		end
+	end
+	each("implicits", function(index, entry)
+		if entry ~= nil and entry ~= "" then
+			draft.implicits[index] = tostring(entry)
+		end
+	end)
+	each("ranges", function(index, entry)
+		local number = tonumber(entry)
+		if number then draft.ranges[index] = number end
+	end)
+	return draft
+end
+
+--- The roll-range rows the dialog built, by explicit modifier index.
+---
+--- One per explicit that actually scales, keyed by its place in
+--- `explicitModLines`, so the set has holes in it and has to be read back
+--- off the controls rather than counted.
+local function corruptionRangeRows(controls)
+	local rows, ordered = {}, {}
+	for key, control in pairs(controls) do
+		local index = tonumber(tostring(key):match("^rollRangeSlider(%d+)$") or "")
+		if index then
+			rows[index] = control
+			ordered[#ordered + 1] = index
+		end
+	end
+	table.sort(ordered)
+	return rows, ordered
+end
+
+--- How many implicit slots the dialog is offering.
+local function corruptionSlots(controls)
+	local slots = 0
+	for index = 1, 8 do
+		local drop = controls["enchant" .. index]
+		if drop and drop.shown then slots = index end
+	end
+	return slots
+end
+
+--- PoB's corruption dialog, opened, driven, and closed again.
+---
+--- Driven rather than reimplemented, which is the only honest option here:
+--- `corruptItem` and `applyCorruptionMods` are closures inside
+--- `CorruptDisplayItem` rather than methods, so nothing outside can call
+--- them. What is reachable is the dialog itself, and it holds everything
+--- that matters: the modifier list already filtered by what this base can
+--- spawn and sorted PoB's way, the group exclusion between slots, the
+--- roll-range rows for the explicits that scale, and a Corrupted button
+--- that is the real write. So the dialog is opened headless, its controls
+--- are set, and its own button is pressed.
+---
+--- `body` is handed the controls and its return value comes back out. The
+--- dialog is closed on the way out whatever happens, including the extra
+--- close the Corrupted button does for itself.
+local function withCorruptionDialog(build, value, body)
+	local tab = build and build.itemsTab
+	local item = tab and tab.displayItem
+	if not item then
+		return nil, "nothing is on the bench"
+	end
+	if not item.base then
+		return nil, "this item has no base, so it cannot be corrupted"
+	end
+	if not item.corruptible then
+		return nil, "a " .. tostring(item.base.type or "item") .. " cannot be corrupted"
+	end
+
+	local draft = corruptionDraft(value)
+	local depth = #main.popups
+	local opened, openErr = pcall(tab.CorruptDisplayItem, tab)
+	local controls = main.popups[1] and main.popups[1].controls
+	if not opened or not controls or not controls.save then
+		while #main.popups > depth do main:ClosePopup() end
+		return nil, "the corruption dialog would not open: " .. tostring(openErr)
+	end
+
+	local ok, result, failure = pcall(function()
+		-- Source first: on a helmet it swaps the whole list for Glimpse of
+		-- Chaos's eight, and it rebuilds the slots underneath.
+		if draft.source and draft.source ~= "" then
+			local want = (draft.source == "SpecialCorrupted") and "Glimpse of Chaos" or "Corrupted"
+			local found
+			for index, entry in ipairs(controls.source.list or {}) do
+				if entry == want then found = index end
+			end
+			if not found then
+				return nil, "this item has no " .. tostring(draft.source) .. " corruption"
+			end
+			controls.source.selIndex = found
+			controls.source.selFunc(found, want)
+		end
+
+		if draft.mode == "ranges" then
+			local _, ordered = corruptionRangeRows(controls)
+			if #ordered == 0 then
+				return nil, "this item has no modifiers that a corruption would scale"
+			end
+			-- Which half of the dialog is showing is also which half its
+			-- button writes, so the mode is set by pressing PoB's own tab.
+			controls.rolls.onClick()
+			for index, wanted in pairs(draft.ranges) do
+				local slider = controls["rollRangeSlider" .. index]
+				if not slider then
+					return nil, "modifier " .. tostring(index)
+						.. " does not scale, so it has no roll range"
+				end
+				local range = math.min(1.22, math.max(0.78, tonumber(wanted) or 1))
+				slider.val = (range - 0.78) / 0.44
+				slider.changeFunc(slider.val)
+			end
+		else
+			-- Ascending, because each choice takes its group out of the
+			-- other slots' lists: in any other order the same draft would
+			-- be accepted or refused depending on which key came first.
+			local slots = {}
+			for index in pairs(draft.implicits) do slots[#slots + 1] = index end
+			table.sort(slots)
+
+			-- Read off the dialog rather than off the draft: a Glimpse of
+			-- Chaos helmet opens on the special list without being asked,
+			-- so the source that is active is not always the one named.
+			local active = controls.source.list[controls.source.selIndex]
+			local wantType = (active == "Glimpse of Chaos") and "SpecialCorrupted" or "Corrupted"
+			local sourceName = { Corrupted = "Corrupted", SpecialCorrupted = "Glimpse of Chaos" }
+
+			local taken = {}
+			for _, index in ipairs(slots) do
+				local modId = draft.implicits[index]
+				local drop = controls["enchant" .. index]
+				if not drop or not drop.shown then
+					return nil, "this item has no corruption slot " .. tostring(index)
+				end
+				local mod = data.itemMods.Corruption[modId]
+				if not mod then
+					return nil, "no corruption modifier called " .. tostring(modId)
+				end
+				-- The two sources are two separate lists, so a modifier
+				-- from the other one is a wrong source rather than a base
+				-- that cannot take it.
+				if mod.type ~= wantType then
+					return nil, strip(mod[1] or modId) .. " comes from "
+						.. (sourceName[mod.type] or tostring(mod.type))
+						.. ", not " .. (sourceName[wantType] or wantType)
+				end
+				if taken[mod.group] then
+					return nil, "slot " .. tostring(taken[mod.group])
+						.. " already has a modifier from this group, and an item can carry one"
+				end
+				drop:SelByValue(mod, "mod")
+				local chosen = drop.list[drop.selIndex]
+				if not chosen or chosen.mod ~= mod then
+					return nil, strip(mod[1] or modId) .. " cannot be corrupted onto this base"
+				end
+				taken[mod.group] = index
+				-- Rebuilding the other slots' lists around this choice is
+				-- the dropdown's own callback.
+				drop.selFunc(drop.selIndex, chosen)
+			end
+		end
+
+		return body(controls)
+	end)
+
+	while #main.popups > depth do
+		main:ClosePopup()
+	end
+
+	if not ok then
+		return nil, tostring(result)
+	end
+	if failure then
+		return nil, failure
+	end
+	return result
+end
+
+--- The corruption implicits the bench item could take, and what it carries.
+---
+--- The filtering is PoB's and it is a game rule: a modifier of the right
+--- type whose spawn weight on this base is above zero, which is the game's
+--- own answer to what a Vaal Orb can put on a pair of boots. The sort is
+--- PoB's too. Both are read off the dialog rather than rebuilt here.
+function api.craftCorruptions(build, source, query)
+	local tab = build and build.itemsTab
+	local item = tab and tab.displayItem
+	local needle = escapeNeedle(query)
+	local searching = needle:match("%S") and true or false
+
+	local function matches(lines)
+		for _, line in ipairs(lines) do
+			local ok, hit = pcall(string.matchOrPattern, line:lower(), needle)
+			if ok and hit then return true end
+		end
+		return false
+	end
+
+	local result, err = withCorruptionDialog(build, { source = source }, function(controls)
+		local sources = asArray({})
+		for _, entry in ipairs(controls.source.list or {}) do
+			sources[#sources + 1] = {
+				id = (entry == "Glimpse of Chaos") and "SpecialCorrupted" or "Corrupted",
+				name = entry,
+			}
+		end
+
+		local options, total = asArray({}), 0
+		for _, listMod in ipairs(controls.enchant1.list or {}) do
+			-- The dialog's first entry is its "None", which is an empty
+			-- slot rather than something to put in one.
+			if listMod.mod then
+				local entry = corruptionEntry(listMod.mod)
+				if not searching or matches(entry.lines) then
+					total = total + 1
+					options[#options + 1] = entry
+				end
+			end
+		end
+
+		-- The roll ranges, which are the dialog's other half: one row per
+		-- explicit that a corruption would scale, between 0.78 and 1.22 of
+		-- what it rolled. Uniques only, because only they keep a roll as a
+		-- range the whole way through rather than as a number.
+		local ranges = asArray({})
+		local _, ordered = corruptionRangeRows(controls)
+		for _, index in ipairs(ordered) do
+			local modLine = item.explicitModLines and item.explicitModLines[index]
+			ranges[#ranges + 1] = {
+				index = index,
+				line = modLine and strip(modLine.line) or nil,
+				value = (modLine and modLine.corruptedRange) or 1,
+				scaled = (strip(controls["rollRangeLabel" .. index].label or "")
+					:gsub("%s*\n%s*", " ")),
+			}
+		end
+
+		return {
+			sources = sources,
+			slots = corruptionSlots(controls),
+			options = options,
+			total = total,
+			ranges = ranges,
+		}
+	end)
+
+	if not result then
+		return { ready = false, error = err }
+	end
+
+	-- What the item already carries, matched back to the modifiers that
+	-- would have produced it. PoB's dialog opens empty whatever the item
+	-- holds, so corrupting a corrupted item there quietly drops what was
+	-- on it; said here instead, and the panel starts from it.
+	local current = asArray({})
+	local seen = {}
+	for _, modLine in ipairs(item.enchantModLines or {}) do
+		local line = strip(modLine.line or "")
+		if not line:match("^Allocates ") then
+			local bare = (line:gsub("^{tags:[^}]*}", ""))
+			local entry = { line = bare }
+			for modId, mod in pairs(data.itemMods.Corruption or {}) do
+				for _, candidate in ipairs(mod) do
+					if candidate == bare then
+						entry.modId = modId
+						entry.group = mod.group
+						break
+					end
+				end
+				if entry.modId then break end
+			end
+			-- A modifier with two lines arrives as two enchant lines, and
+			-- it is still one choice.
+			if not entry.modId or not seen[entry.modId] then
+				if entry.modId then seen[entry.modId] = true end
+				current[#current + 1] = entry
+			end
+		end
+	end
+
+	result.ready = true
+	result.current = current
+	result.corrupted = item.corrupted or nil
+	return result
+end
+
 --- The item on the bench, as something being crafted.
 ---
 --- Crafting in PoB always happens on `displayItem`, never on an equipped
@@ -2454,6 +2805,17 @@ function api.craftState(build)
 		}
 		state.runes = runes
 	end
+
+	-- Corrupting, which is a single irreversible step rather than a set
+	-- of slots, so only the two facts the panel needs to offer it are here:
+	-- the lists behind it come from /craft/corruptions, which has to open
+	-- PoB's own dialog to read them.
+	state.corrupt = {
+		corruptible = item.corruptible and true or false,
+		-- Already corrupted. PoB lets you corrupt again, which replaces the
+		-- implicits, so this is said rather than used to hide the panel.
+		corrupted = item.corrupted and true or nil,
+	}
 
 	-- Anoints, which are enchant lines rather than affixes: an amulet
 	-- carries them whether or not it was crafted, so this sits outside the
@@ -3591,6 +3953,87 @@ function api.anointWhatIf(build, slot, nodeId)
 	return renderCompare(build, base, output, header)
 end
 
+--- What corrupting the item would do, before it is done.
+---
+--- The dialog's Corrupted button is the only way to its `corruptItem`, so
+--- the preview presses it, keeps the item that came out, and puts the old
+--- one back on the bench. The same object goes back, so nothing downstream
+--- sees a new item.
+---
+--- The item comes out whole, which means one call can answer both halves of
+--- the question: the item as PoB would draw it, and what the build would
+--- gain. PoB cannot quite say that. Its button hover draws the item with no
+--- comparison, and its per-modifier hover compares that one modifier
+--- against the uncorrupted item, so two implicits chosen together are never
+--- priced together.
+function api.corruptPreview(build, value)
+	local tab = build and build.itemsTab
+	local calcsTab = build and build.calcsTab
+	if not calcsTab or not calcsTab.GetMiscCalculator then
+		return { ready = false, error = "the engine has no calculator yet" }
+	end
+	local calcFunc = calcsTab:GetMiscCalculator()
+	if not calcFunc then
+		return { ready = false, error = "the engine has not finished its first calculation" }
+	end
+
+	-- buildFlag is restored by hand: the rebuilds below set it, and leaving
+	-- it set would make the UI think the build itself had changed.
+	local buildFlag = build.buildFlag
+	local staged, err = withCorruptionDialog(build, value, function(controls)
+		local before = tab.displayItem
+		controls.save.onClick()
+		local after = tab.displayItem
+		tab:SetDisplayItem(before)
+		if after == before then
+			return nil, "the dialog did not produce an item"
+		end
+		return { before = before, after = after }
+	end)
+	if not staged then
+		build.buildFlag = buildFlag
+		return { ready = false, error = err }
+	end
+
+	local tooltip = new("Tooltip"):Tooltip()
+	local drew, drawErr = pcall(tab.AddItemTooltip, tab, tooltip, staged.after)
+	if not drew then
+		build.buildFlag = buildFlag
+		return { ready = false, error = tostring(drawErr) }
+	end
+	-- The item only. PoB's own tooltip puts its "Equipping this item will
+	-- give you" block underneath, and that compares the whole item against
+	-- what is in the slot now, which is a different question from the one
+	-- this panel is asking and is already answered on the bench above it.
+	local drawn, tips = tooltipLines(tooltip)
+	local lines = asArray({})
+	for _, line in ipairs(drawn) do
+		if (line.block or 1) == 1 then lines[#lines + 1] = line end
+	end
+
+	-- The slot PoB would compare against, which is the equipped one where
+	-- the item is equipped and the primary one otherwise. Both sides use
+	-- it, so the answer is the corruption rather than the whole item.
+	local slotName = tab:GetComparisonSlotNameForItem(staged.before)
+	local okBase, base = pcall(calcFunc, { repSlotName = slotName, repItem = staged.before })
+	local okNew, output = pcall(calcFunc, { repSlotName = slotName, repItem = staged.after })
+	build.buildFlag = buildFlag
+	if not okBase then
+		return { ready = false, error = tostring(base) }
+	end
+	if not okNew then
+		return { ready = false, error = tostring(output) }
+	end
+
+	return {
+		ready = true,
+		item = lines,
+		droppedTips = tips,
+		slot = slotName,
+		compare = renderCompare(build, base, output, "^7Corrupting this will give you:"),
+	}
+end
+
 --- What a gem being off, or at 20 quality, would do.
 ---
 --- Unlike the tree and the item bench, the calculator has no argument for
@@ -4285,6 +4728,25 @@ function commands.setAnoint(build, value)
 	end)
 	if not ok then
 		return nil, tostring(err)
+	end
+	return true
+end
+
+--- Corrupt the bench item.
+---
+--- One command for what PoB's dialog does on Save, because that is what it
+--- is: the implicits, or the roll ranges, are assembled first and committed
+--- once. Everything until this call is a draft held in the browser, which
+--- is the one place in this panel where that is right: corrupting is the
+--- only crafting step the game will not let you take back, and PoB puts a
+--- Cancel next to it for exactly that reason.
+function commands.corruptItem(build, value)
+	local ok, err = withCorruptionDialog(build, value, function(controls)
+		controls.save.onClick()
+		return true
+	end)
+	if not ok then
+		return nil, err
 	end
 	return true
 end

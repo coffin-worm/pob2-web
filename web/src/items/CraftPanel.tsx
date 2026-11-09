@@ -6,10 +6,12 @@ import { Select } from '../ui/Select';
 import { Lines } from '../ui/TooltipLines';
 import type {
   AnointWhatIf,
+  CorruptPreview,
   CraftAffixOption,
   CraftAffixRow,
   CraftAnoint,
   CraftAnointSlot,
+  CraftCorruptions,
   CraftRune,
   CraftRuneRow,
 } from '../pob/types';
@@ -665,6 +667,308 @@ function AnointRow({
   );
 }
 
+/**
+ * Corrupting the item on the bench.
+ *
+ * The one crafting step with no way back, and the panel is shaped around
+ * that. Everything here is a draft held in the browser: the implicits, or
+ * the roll ranges, are assembled, priced as a whole, and committed by one
+ * button. PoB's dialog works the same way for the same reason, which is
+ * why it has a Cancel next to its Corrupted button while nothing else on
+ * the tab does.
+ *
+ * The two halves are PoB's own split and not a layout choice. Its
+ * Corrupted button writes whichever half is showing, never both, so a
+ * corruption is implicits or rolls and the control has to say which.
+ */
+function CorruptSection({
+  token,
+  alreadyCorrupted,
+  busy,
+  onRefusal,
+}: {
+  /** Changes when the bench item does, which resets the draft. */
+  token: string;
+  alreadyCorrupted?: boolean;
+  busy: boolean;
+  onRefusal: (reason: string | null) => void;
+}) {
+  const corrupt = useCraftStore((s) => s.corrupt);
+
+  const [open, setOpen] = useState(false);
+  const [lists, setLists] = useState<CraftCorruptions | null>(null);
+  const [source, setSource] = useState('Corrupted');
+  const [mode, setMode] = useState<'implicits' | 'ranges'>('implicits');
+  const [implicits, setImplicits] = useState<Record<number, string>>({});
+  const [ranges, setRanges] = useState<Record<number, number>>({});
+  const [preview, setPreview] = useState<CorruptPreview | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    void bridge
+      .craftCorruptions(source)
+      .then((found) => {
+        if (!live) return;
+        setLists(found);
+
+        // The draft starts from what the item already carries. PoB's
+        // dialog opens empty whatever is on the item, so corrupting a
+        // corrupted item there quietly drops its implicits; matching them
+        // back to their modifiers is cheap and this is what it is for.
+        // Only the ones this source offers: a modifier from the other list
+        // is not a choice you could make here.
+        const offered = new Set((found.options ?? []).map((option) => option.modId));
+        const seeded: Record<number, string> = {};
+        let slot = 0;
+        for (const entry of found.current ?? []) {
+          if (entry.modId && offered.has(entry.modId) && slot < (found.slots ?? 0)) {
+            slot += 1;
+            seeded[slot] = entry.modId;
+          }
+        }
+        setImplicits(seeded);
+
+        const rolls: Record<number, number> = {};
+        for (const row of found.ranges ?? []) rolls[row.index] = row.value;
+        setRanges(rolls);
+      })
+      .catch((reason: unknown) => {
+        if (live) {
+          setLists({
+            ready: false,
+            error: reason instanceof Error ? reason.message : String(reason),
+          });
+        }
+      });
+    return () => {
+      live = false;
+    };
+  }, [open, source, token]);
+
+  // One price for the whole draft, which PoB cannot give: its per-modifier
+  // tooltip compares that one modifier against the uncorrupted item, so two
+  // implicits chosen together are never priced together there.
+  useEffect(() => {
+    if (!open || !lists?.ready) return;
+    let live = true;
+    const timer = window.setTimeout(() => {
+      void bridge
+        .corruptPreview({ source, mode, implicits, ranges })
+        .then((answer) => {
+          if (live) setPreview(answer);
+        })
+        .catch((reason: unknown) => {
+          if (live) {
+            setPreview({
+              ready: false,
+              error: reason instanceof Error ? reason.message : String(reason),
+            });
+          }
+        });
+    }, 160);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [open, lists?.ready, source, mode, implicits, ranges]);
+
+  const slots = lists?.slots ?? 0;
+  const options = lists?.options ?? [];
+  const rangeRows = lists?.ranges ?? [];
+  const sources = lists?.sources ?? [];
+
+  const choose = (slot: number, modId: string | null) =>
+    setImplicits((was) => {
+      const next = { ...was };
+      if (modId) next[slot] = modId;
+      else delete next[slot];
+      return next;
+    });
+
+  // Which group each slot has used up. An item carries one modifier per
+  // group, which is the rule PoB applies by rebuilding the other slot's
+  // list after every choice, so the list here shrinks the same way. The
+  // engine refuses a clash either way; this is so you never get that far.
+  const taken = new Map<string, number>();
+  for (const [slot, modId] of Object.entries(implicits)) {
+    const group = options.find((option) => option.modId === modId)?.group;
+    if (group) taken.set(group, Number(slot));
+  }
+
+  const commit = () => {
+    void corrupt({ source, mode, implicits, ranges }).then(onRefusal);
+  };
+
+  const previewBody = () => {
+    if (!preview) {
+      return <span className={styles.previewHint}>Working out what that would do…</span>;
+    }
+    if (!preview.ready) {
+      return <span className={styles.previewHint}>{preview.error}</span>;
+    }
+    return (
+      <>
+        <Lines lines={preview.item} />
+        {preview.compare.ready && !preview.compare.unchanged ? (
+          <Lines lines={preview.compare.lines ?? []} />
+        ) : (
+          <span className={styles.previewHint}>
+            {preview.compare.error ?? 'Nothing the calculator tracks would move.'}
+          </span>
+        )}
+      </>
+    );
+  };
+
+  return (
+    <section className={styles.sockets}>
+      <h4 className={styles.columnTitle}>
+        Corrupt
+        {alreadyCorrupted && <span className={styles.used}>already corrupted</span>}
+      </h4>
+
+      <div className={styles.row} data-empty>
+        <button className={styles.add} onClick={() => setOpen(!open)} disabled={busy}>
+          {open ? 'Close' : alreadyCorrupted ? 'Corrupt again...' : 'Corrupt...'}
+        </button>
+      </div>
+
+      {open && (
+        <div className={styles.corruptBody}>
+          {lists && !lists.ready && <p className={styles.note}>{lists.error}</p>}
+          {!lists && <p className={styles.note}>Asking the engine…</p>}
+
+          {lists?.ready && (
+            <>
+              {/* Only a helmet has a second source, and its eight are not
+                  filtered by what the base can spawn: PoB skips the weight
+                  check for them, so every helmet is offered all eight. */}
+              {sources.length > 1 && (
+                <Segmented
+                  value={source}
+                  options={sources.map((entry) => ({ value: entry.id, label: entry.name }))}
+                  onChange={setSource}
+                  aria-label="Which corruption"
+                />
+              )}
+
+              {rangeRows.length > 0 && (
+                <Segmented
+                  value={mode}
+                  options={[
+                    {
+                      value: 'implicits' as const,
+                      label: 'Implicits',
+                      title: 'Add corruption implicits',
+                    },
+                    {
+                      value: 'ranges' as const,
+                      label: 'Roll ranges',
+                      title: 'Scale what the item already rolled',
+                    },
+                  ]}
+                  onChange={setMode}
+                  aria-label="What to corrupt"
+                />
+              )}
+
+              {mode === 'implicits' ? (
+                <div className={styles.corruptRows}>
+                  {Array.from({ length: slots }, (_, i) => i + 1).map((slot) => {
+                    const offered = options.filter(
+                      (option) => !option.group || (taken.get(option.group) ?? slot) === slot,
+                    );
+                    const index =
+                      offered.findIndex((option) => option.modId === implicits[slot]) + 1;
+                    return (
+                      <label className={styles.dial} key={slot}>
+                        <span className={styles.dialName}>
+                          {slots > 1 ? `Implicit ${slot}` : 'Implicit'}
+                        </span>
+                        <Select
+                          value={index}
+                          options={[
+                            { id: 0, name: 'nothing' },
+                            ...offered.map((option, i) => ({
+                              id: i + 1,
+                              name: option.lines.join(', '),
+                            })),
+                          ]}
+                          onChange={(picked) =>
+                            choose(slot, picked === 0 ? null : offered[picked - 1].modId)
+                          }
+                          disabled={busy}
+                          aria-label={`Corruption implicit ${slot}`}
+                          width={320}
+                        />
+                      </label>
+                    );
+                  })}
+                  <p className={styles.note}>
+                    {options.length} of PoB's corruption modifiers can spawn on this base.
+                    An item carries one from each group, so a choice here takes itself out
+                    of the other slot.
+                  </p>
+                </div>
+              ) : (
+                <div className={styles.corruptRows}>
+                  {rangeRows.map((row) => (
+                    <label className={styles.dial} key={row.index}>
+                      <span className={styles.rangeLine}>{row.scaled}</span>
+                      <input
+                        className={styles.tier}
+                        type="range"
+                        min={0.78}
+                        max={1.22}
+                        step={0.01}
+                        value={ranges[row.index] ?? row.value}
+                        disabled={busy}
+                        onChange={(event) =>
+                          setRanges((was) => ({
+                            ...was,
+                            [row.index]: Number(event.target.value),
+                          }))
+                        }
+                        aria-label={`Roll range for ${row.line ?? `modifier ${row.index}`}`}
+                      />
+                      <span className={styles.dialValue}>
+                        ×{(ranges[row.index] ?? row.value).toFixed(2)}
+                      </span>
+                    </label>
+                  ))}
+                  {/* PoB writes a range only where it is not exactly 1, so
+                      once a roll has been corrupted there is no putting it
+                      back to where it started. Said rather than hidden. */}
+                  <p className={styles.note}>
+                    A corruption rolls each of these between 0.78 and 1.22 of what it is
+                    now. PoB only writes a range that is not exactly 1.00, so a roll it
+                    has already scaled cannot be set back to untouched.
+                  </p>
+                </div>
+              )}
+
+              <div className={styles.corruptPreview} aria-live="polite">
+                {previewBody()}
+              </div>
+
+              <div className={styles.commitRow}>
+                <button className={styles.commit} onClick={commit} disabled={busy}>
+                  Corrupt it
+                </button>
+                <p className={styles.irreversible}>
+                  Corrupting cannot be taken off again. The implicits can be replaced by
+                  corrupting a second time, the Corrupted line cannot.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function CraftPanel({ onRefusal }: { onRefusal: (reason: string | null) => void }) {
   const state = useCraftStore((s) => s.state);
   const busy = useCraftStore((s) => s.busy);
@@ -865,6 +1169,18 @@ export function CraftPanel({ onRefusal }: { onRefusal: (reason: string | null) =
             })}
           </div>
         </section>
+      )}
+
+      {/* Corrupting is last because it is the step after everything else,
+          and it is offered for any base the game lets a Vaal Orb touch:
+          not a flask, not a charm, crafted or not. */}
+      {state.corrupt?.corruptible && (
+        <CorruptSection
+          token={`${state.baseName ?? ''}:${state.corrupt.corrupted ? 'c' : ''}`}
+          alreadyCorrupted={state.corrupt.corrupted}
+          busy={busy}
+          onRefusal={onRefusal}
+        />
       )}
     </div>
   );
