@@ -123,17 +123,39 @@ and a copy of LOVE. The result needs nothing installed except the WebView2
 runtime, which ships with Edge and is therefore already on any current
 Windows machine.
 
-It comes out around half a gigabyte, nearly all of which is `src/`: the
-tree art and the game data. Nothing here makes that smaller.
+A real run comes out at 0.55 GB: `src/` is 410 MB of it, the engine's
+runtime 28, the built UI 12 and LOVE 11. Nothing here makes the game data
+smaller.
 
-`-FrameworkDependent` drops .NET back out, which saves seventy megabytes
-and requires the .NET 10 Desktop Runtime on the target. Worth it when the
+The executable itself is 103 MB of that, because .NET is inside it.
+`-FrameworkDependent` takes .NET back out and leaves a 297 KB executable
+that needs the .NET 10 Desktop Runtime on the target. Worth it when the
 target is your own machine and nothing else.
+
+## The icon, and how it was made
+
+`icon.ico` is the web UI's own `favicon.svg` at seven sizes, 16 through
+256. Getting there was less direct than it sounds, and the method is
+written down because the next person will hit the same wall.
+
+A stock Windows box has no SVG rasteriser: no ImageMagick, no Inkscape, no
+Pillow in the system Python. The artwork is also not a shape you can
+hand-port, because it is a masked silhouette filled by a dozen blurred
+ellipses, and the gradient everybody recognises it by only exists once
+those blurs are composited.
+
+So a real browser did the rasterising. A throwaway local server handed it
+the SVG, the page drew it into a canvas at each size, and posted the raw
+RGBA straight back; a short script assembled the icon from those buffers.
+The 256 goes in as PNG and the rest as plain DIBs, which every Windows
+shell path has read since long before PNG entries existed. An icon is the
+one asset where a format question is not worth any cleverness at all.
+
+WinForms does not adopt the application icon for the window by itself, so
+the form reads it back out of its own executable. Otherwise the file on
+disk has the bolt and the title bar has the default.
 
 ## Known gaps
 
-- **No icon.** The window and the taskbar show the default. There is a
-  `favicon.svg` in `web/public` and no `.ico` anywhere, and converting one
-  properly wants a real icon editor rather than a one-liner.
 - **No file association and no installer.** It is a folder you unzip.
 - **No hot reload**, by design. Use the dev server for that.

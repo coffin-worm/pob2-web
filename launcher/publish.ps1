@@ -42,16 +42,27 @@ try {
 finally { Pop-Location }
 
 Step 'Publishing the launcher'
-$selfContained = -not $FrameworkDependent
+# Lower-cased deliberately: PowerShell renders $true as "True" and the
+# dotnet CLI wants the switch spelled the way a shell would spell it.
+$selfContained = if ($FrameworkDependent) { 'false' } else { 'true' }
 $staging = "$PSScriptRoot\bin\publish"
 Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue
+# No symbols: a shipped folder has no use for them and the file beside the
+# executable only invites the question.
 dotnet publish "$PSScriptRoot\PathOfBuilding2Web.csproj" `
     -c Release -r win-x64 --self-contained $selfContained `
+    -p:DebugType=none -p:DebugSymbols=false `
     -o $staging
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 
 Step "Assembling $Output"
 New-Item -ItemType Directory -Force -Path $Output | Out-Null
+# The loose files go first. Copy-Item adds and overwrites but never
+# removes, so a file this script used to produce and no longer does would
+# sit in the output forever, which is how an earlier run left a stray
+# debug symbol and a megabyte of API documentation in a shipped folder.
+# The directories below are robocopy /MIR and mirror themselves.
+Get-ChildItem $Output -File | Remove-Item -Force
 Copy-Item "$staging\*" $Output -Recurse -Force
 
 # robocopy, because these are tens of thousands of files and Copy-Item is
@@ -84,3 +95,8 @@ Step ("Done. {0} is {1:N2} GB." -f $Output, $size)
 if (-not $IncludeLove) {
     Write-Host '    LOVE was not included, so the target machine needs it installed.'
 }
+
+# robocopy says 1 for "files were copied", which is a success it reports as
+# a non-zero code. Left alone it becomes this script's exit code and every
+# caller reads the run as failed.
+exit 0

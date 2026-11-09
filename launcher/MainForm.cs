@@ -51,6 +51,17 @@ sealed class MainForm : Form
         _dist = dist;
 
         Text = "Path of Building 2";
+        // WinForms does not take the application icon for the window by
+        // itself, so the title bar and the taskbar would keep the default
+        // one while the file on disk had ours.
+        try
+        {
+            if (Environment.ProcessPath is { } exe) Icon = Icon.ExtractAssociatedIcon(exe);
+        }
+        catch
+        {
+            // Not worth refusing to open over.
+        }
         MinimumSize = new Size(980, 640);
         StartPosition = FormStartPosition.Manual;
         Restore(Geometry.Load());

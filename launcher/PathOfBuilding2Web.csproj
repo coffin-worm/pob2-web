@@ -11,11 +11,19 @@
     <AssemblyName>PathOfBuilding2Web</AssemblyName>
     <RootNamespace>PoB2Web</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- The web UI's own favicon, rasterised at seven sizes. See the
+         README: there is no SVG rasteriser on a stock Windows box, so it
+         was rendered in a browser and assembled by hand. -->
+    <ApplicationIcon>icon.ico</ApplicationIcon>
 
     <!-- Nothing here formats a number for a human, and the ICU payload is
          most of the size of a framework-dependent build. -->
     <InvariantGlobalization>true</InvariantGlobalization>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- The WebView2 package's XML documentation is for whoever writes
+         against it, not for whoever runs this, and it is most of a
+         megabyte sitting in the shipped folder looking like a mistake. -->
+    <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
 
     <!-- A single file next to the folders it serves. Self-contained is the
          other publish profile; see the README. -->
