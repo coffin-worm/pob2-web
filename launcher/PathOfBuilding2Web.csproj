@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <AssemblyName>PathOfBuilding2Web</AssemblyName>
+    <RootNamespace>PoB2Web</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- Nothing here formats a number for a human, and the ICU payload is
+         most of the size of a framework-dependent build. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+
+    <!-- A single file next to the folders it serves. Self-contained is the
+         other publish profile; see the README. -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3485.44" />
+  </ItemGroup>
+
+  <!-- The package ships the WinForms control and the WPF one together, and
+       the WPF one drags in a WindowsBase that does not agree with the one
+       in the framework, which is a build warning on every build forever.
+       Nothing here is WPF, so it goes. The package adds its references by
+       full path rather than by name, hence the matching on the tail. -->
+  <Target Name="DropWebView2Wpf" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <WebView2WpfReference
+        Include="@(Reference)"
+        Condition="$([System.String]::new('%(Identity)').EndsWith('Microsoft.Web.WebView2.Wpf.dll'))" />
+      <Reference Remove="@(WebView2WpfReference)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

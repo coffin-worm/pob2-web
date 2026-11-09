@@ -11,6 +11,12 @@ npm install
 npm run dev
 ```
 
+That is the development loop, with hot reload. To just use it, there is a
+launcher: one Windows executable that serves the built files and starts
+the engine beside them, in a WebView2 window with no terminal and no Node.
+See [`launcher/`](../launcher/README.md), which also explains why it has
+no local web server in it.
+
 ## Why this might be worth doing
 
 The Lua UI's ceiling is not its renderer: SimpleGraphic draws textured

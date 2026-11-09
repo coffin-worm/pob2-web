@@ -54,3 +54,8 @@ runtime/SimpleGraphic/Screenshots
 
 .emmyrc.json
 .luarc.json
+
+# The launcher's build output, and the folder publish.ps1 assembles.
+launcher/bin/
+launcher/obj/
+/dist-app/
