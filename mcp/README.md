@@ -66,7 +66,7 @@ can accumulate.
 
 ## The tools
 
-Fifteen, over the bridge's forty-five routes. The grouping is the point: the
+Sixteen, over the bridge's forty-five routes. The grouping is the point: the
 engine exposes a route per control, and a model handed forty tools spends
 its context on the schema list and still picks the wrong one. So these are
 grouped by the question somebody actually has, and the routes that differ
@@ -90,6 +90,7 @@ discriminator.
 | `pob_craft_price` | What an anoint, a corruption or a catalyst would be worth |
 | `pob_craft_apply` | Make that change to the bench item |
 | `pob_stage_item` | Put an item on the bench |
+| `pob_equip_staged` | Take the bench item and wear it |
 
 `pob_what_if` takes a `change` of `passive`, `config`, `slot`, `gem` or
 `socket_group`; `pob_craft_price` takes `anoint`, `corruption` or
@@ -119,9 +120,9 @@ to carry none is refused, and the engine says why.
 
 `pob_craft_apply` makes the change rather than pricing it, and it is the
 other half of the loop: read what a row could hold, price it, apply it, read
-what the item is now worth. It covers the seven things PoB can change about
-a bench item: an affix row, a rune socket, the socket count, an anoint, a
-corruption, the quality, and a catalyst.
+what the item is now worth, and `pob_equip_staged` to wear it. It covers the
+seven things PoB can change about a bench item: an affix row, a rune socket,
+the socket count, an anoint, a corruption, the quality, and a catalyst.
 
 An affix row is addressed by series and tier rather than by the id of each
 tier, so `affix: "IncreasedLife1", tier: 8, roll: 1` is the top tier of that
@@ -173,17 +174,19 @@ every slot it fits about 0.6 kB.
 
 ## Writing
 
-Three tools change anything, and none of them writes to disk.
+Four tools change anything, and none of them writes to disk.
 
 `pob_open_build` replaces what the engine has open. `pob_stage_item`
 replaces what is on the bench and `pob_craft_apply` changes it, and the
 bench is not part of the build: no slot changes, no item is equipped, and
-the character's numbers do not move until one is.
+the character's numbers do not move. `pob_equip_staged` is the one that
+moves them, and it is the only tool here that changes the build itself: the
+bench item joins the build's item list and goes into a slot.
 
-On an engine this server started, all three are harmless. On an engine it
+On an engine this server started, all four are harmless. On an engine it
 merely attached to, somebody may have a window on that build, so
-`pob_open_build` and `pob_stage_item` refuse until called again with
-`confirm: true`.
+`pob_open_build`, `pob_stage_item` and `pob_equip_staged` refuse until
+called again with `confirm: true`.
 
 `pob_craft_apply` asks only when there is work to lose: an item this server
 staged is its own to change, and an empty bench holds nobody's craft, so the
@@ -192,10 +195,10 @@ server attached to. That is a heuristic rather than a fact, and it says so:
 the app could have put something else on the bench between two calls and
 nothing here would know.
 
-The bridge's remaining write commands are not exposed, which includes
-everything that touches the user's files, and everything that would change
-the build itself. So a crafted item stays on the bench: nothing here equips
-it.
+Nothing saves. The bridge's `saveBuild`, `saveBuildAs` and `deleteBuild`
+are not exposed and neither is anything else that touches the user's files,
+so every change here lives in the engine's memory: closing without saving
+undoes it, and so does opening the build again.
 
 ## Checking it
 
@@ -213,11 +216,6 @@ stray line on it corrupts the session.
 
 ## Known gaps
 
-- **A crafted item cannot be worn.** `equipStagedItem` is the one command
-  that would take an item off the bench and into a slot, and it is not
-  exposed, because that changes the build rather than the bench. So a craft
-  can be read, priced and made, and then has to be rebuilt by hand in the
-  app to keep.
 - **No comparison.** `/compare` holds the build against a saved comparison,
   stat by stat, which is exactly the shape a model wants and is not wired up.
 - **No notes.** `/notes` is readable and is not exposed.

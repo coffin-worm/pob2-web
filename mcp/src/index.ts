@@ -52,8 +52,9 @@ async function main() {
         'something. Crafting works the same way and happens on a bench that ' +
         'is not part of the build: pob_stage_item puts an item there, ' +
         'pob_craft_price says what a craft would be worth, and ' +
-        'pob_craft_apply makes it. Every number comes from the engine; none ' +
-        'of it is estimated here.',
+        'pob_craft_apply makes it, and pob_equip_staged is the only tool that ' +
+        'changes the character rather than the bench. Every number comes from ' +
+        'the engine; none of it is estimated here.',
     },
   );
 

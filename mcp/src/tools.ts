@@ -1,7 +1,7 @@
 /**
  * What a client can ask.
  *
- * Fifteen tools over forty-odd routes, which is deliberate. The engine
+ * Sixteen tools over forty-odd routes, which is deliberate. The engine
  * answers a UI and exposes a route per control; a model handed forty tools
  * spends its context on the schema list and still picks the wrong one. So
  * these are grouped by the question somebody actually has, and the routes
@@ -1261,6 +1261,67 @@ export function register(server: McpServer, bridge: Bridge) {
         value: { catalyst: args.catalyst, quality: args.quality },
       });
       return after();
+    },
+  );
+
+  server.registerTool(
+    'pob_equip_staged',
+    {
+      title: 'Wear the bench item',
+      description:
+        'Take the item off the bench and put it on the character. This is ' +
+        'the one crafting tool that changes the build rather than the bench: ' +
+        'the item joins the build\'s item list and goes into a slot, so every ' +
+        'number the build reports moves.\n\n' +
+        'Nothing is written to disk. The saved build file is untouched and ' +
+        'saving is not exposed, so this is undone by closing without saving, ' +
+        'or by opening the build again with pob_open_build.\n\n' +
+        'Give a `slot` to choose where it goes, or leave it out for the ' +
+        "engine's own choice, which is the first empty slot that will take " +
+        'it. Price it first with pob_craft what="worth", which reports the ' +
+        'item against every slot it fits.',
+      inputSchema: {
+        slot: z
+          .string()
+          .optional()
+          .describe(
+            'An engine slot name, e.g. "Ring 2" or "Body Armour". Omit for ' +
+              "the engine's own choice.",
+          ),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Required when the engine is one this server did not start.'),
+      },
+      annotations: writes,
+    },
+    async ({ slot, confirm }) => {
+      // Guarded on the engine and not on the bench, unlike pob_craft_apply:
+      // what this changes is the build, so who staged the item does not
+      // come into it.
+      if (!(await bridge.ours()) && confirm !== true) {
+        return no(
+          'That engine was already running when this server attached to it, ' +
+            'so somebody may have a window open on the build. Equipping this ' +
+            'would change the character they are looking at. Call again with ' +
+            'confirm=true if that is wanted.',
+        );
+      }
+
+      await bridge.post<BridgeSnapshot>('/action', {
+        action: 'equipStagedItem',
+        value: slot === undefined ? {} : { slot },
+      });
+      // The engine clears the bench on its way through AddDisplayItem, so
+      // the claim on it is no longer ours to hold.
+      bridge.releaseBench();
+
+      const items = await bridge.get<ItemsSnapshot>('/items');
+      if (!items.ready) return ok('Equipped. The engine has no item list to show.');
+      return ok(
+        `Equipped${slot === undefined ? '' : ` in ${slot}`}, and the bench is ` +
+          `empty again.\n\n${show.equipment(items)}`,
+      );
     },
   );
 }
