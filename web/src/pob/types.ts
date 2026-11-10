@@ -54,6 +54,12 @@ export interface HeaderState {
    * member.
    */
   exportBuffs?: boolean;
+  /**
+   * PoB's own campaign estimate, "Act 5" or "Endgame", worked out from the
+   * allocated passive points. It is what the elemental resistance penalty
+   * should follow.
+   */
+  act?: string | null;
 
   characterLevel: number;
   /** buildMode.characterLevelAutoMode: level derived from the tree, or typed. */
@@ -91,6 +97,8 @@ export interface HeaderActions {
   setBuildName(name: string): void;
   /** PoB's "Export Support", from the Import tab. */
   setExportBuffs(enabled: boolean): void;
+  /** Set the elemental resistance penalty from the act estimate. */
+  estimateResistancePenalty(): void;
 }
 
 export const LEVEL_MIN = 1;

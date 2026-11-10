@@ -36,7 +36,10 @@ export default function App() {
   const refreshCalcs = useCalcsStore((s) => s.refresh);
   const refreshAlloc = useTreeStore((s) => s.refreshAlloc);
 
-  const [tab, setTab] = useState<Tab>('tree');
+  // The builds list, not the tree. Opening on the tree shows you whichever
+  // build the engine happened to have last, which is rarely the one you
+  // came to open, and there is no way to tell from looking at it.
+  const [tab, setTab] = useState<Tab>('builds');
 
   useEffect(() => startPolling(), []);
   useEffect(() => startStatsPolling(), []);
@@ -54,7 +57,7 @@ export default function App() {
       {/* Outside the column layout: a dialog the engine is waiting on
           blocks every screen, not the one you happen to be looking at. */}
       <EngineDialog />
-      <Header {...state} />
+      <Header {...state} nameIt={() => setTab('builds')} />
       <div className={styles.columns}>
         <Sidebar />
         <main className={styles.body}>

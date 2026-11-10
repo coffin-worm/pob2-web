@@ -2,13 +2,16 @@ import { Button } from '../ui/Button';
 import { NumberField } from '../ui/NumberField';
 import { Segmented } from '../ui/Segmented';
 import { Select } from '../ui/Select';
-import { ArrowLeft } from '../ui/icons';
 import { LEVEL_MAX, LEVEL_MIN, type HeaderActions, type HeaderState } from '../pob/types';
 import { BuildTitle } from './BuildTitle';
 import { PointBudgets } from './PointBudgets';
 import styles from './Header.module.css';
 
-type Props = HeaderState & HeaderActions;
+type Props = HeaderState &
+  HeaderActions & {
+    /** Go where a build can be given a name: the Builds view. */
+    nameIt: () => void;
+  };
 
 /**
  * The top bar.
@@ -41,9 +44,11 @@ export function Header(props: Props) {
   return (
     <header className={styles.header}>
       <div className={styles.left}>
-        <Button variant="icon" onClick={props.back} title="Back to build list">
-          <ArrowLeft />
-        </Button>
+        {/* No back button. It drove PoB's own "back" control, which on the
+            desktop returns to its build list screen; this app has a Builds
+            view instead, so all it did here was raise a confirmation
+            dialog and then load the scratch build. The Builds tab is the
+            way back. */}
         <BuildTitle name={buildName} unsaved={unsaved} onRename={props.setBuildName} />
       </div>
 
@@ -93,11 +98,21 @@ export function Header(props: Props) {
         <span className={styles.divider} />
 
         <PointBudgets points={points} />
-        <Button variant="ghost" onClick={props.saveAs} disabled={!dbFileName}>
+        {/* Both of these used to drive PoB's own save controls, which open
+            a dialog with a text box in it. This app renders a dialog's
+            buttons and cannot fill a text box, so "Save as" on a build
+            with no file put up a prompt there was no way to answer. The
+            Builds view has a working name field, so anything that needs a
+            name goes there instead. */}
+        <Button variant="ghost" onClick={props.nameIt}>
           Save as
         </Button>
-        <Button variant="primary" onClick={props.save} disabled={!unsaved && !!dbFileName}>
-          Save
+        <Button
+          variant="primary"
+          onClick={dbFileName ? props.save : props.nameIt}
+          disabled={!unsaved && !!dbFileName}
+        >
+          {dbFileName ? 'Save' : 'Name and save'}
         </Button>
       </div>
     </header>

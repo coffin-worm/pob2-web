@@ -179,6 +179,36 @@ Writes that touch the user's files are in that list too (`saveBuild`,
 `saveBuildAs`, `deleteBuild`), so a client meant to be read-only should pick
 what it exposes rather than passing actions through.
 
+## Importing a character
+
+`importCharacter` takes `{ json, tree, items }` plus PoB's four import
+checkboxes (`deleteJewels`, `deleteSkills`, `deleteEquipment`,
+`ignoreWeaponSwap`) and imports into the build that is already open, which
+is what the desktop's two buttons do. `POST /code/character` is the older
+route and goes through HeadlessWrapper's `loadBuildFromJSON`, which opens a
+new build first; use that for a pasted blob and the command for the import
+panel.
+
+It validates the payload before touching anything, which PoB does not.
+`ImportItemsAndSkills` deletes the equipment and the skill groups and only
+then reads `charData.equipment`, so a payload missing that key leaves a
+gutted build behind a Lua error.
+
+**Both paths then correct PoB's resistance penalty, which is a bug
+upstream.** `EstimatePlayerProgress` records its answer as a string in
+`build.Act`, either `"Endgame"` or `"Act 5"` (`Build.lua:1124`, the only
+assignment). The import reads it back expecting a *number* for the act case
+(`ImportTab.lua:992-1000`): one branch handles the string `"Endgame"`, the
+other handles `type(Act) == "number"`, and `"Act 5"` is neither, so the
+index never moves off the 7 it was initialised with. Every character import
+therefore lands on Endgame, taking 60% off every elemental resistance. On a
+character partway through the campaign that reads as the whole calculation
+being wrong rather than as one dropdown being wrong.
+
+`estimateResistancePenalty` applies the same correction on its own, for a
+build imported before this existed. `GET /state` carries `act`, so a client
+can show the estimate and notice when the two disagree.
+
 ## The files
 
 | File | What it is |

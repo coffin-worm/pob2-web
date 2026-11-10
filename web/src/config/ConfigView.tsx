@@ -131,6 +131,12 @@ function Option({
 
 export function ConfigView() {
   const outputRevision = useBridgeStore((s) => s.outputRevision);
+  const actEstimate = useBridgeStore((s) => s.act) ?? null;
+  const characterLevel = useBridgeStore((s) => s.characterLevel);
+  const estimatePenalty = useBridgeStore((s) => s.estimateResistancePenalty);
+  // Somebody planning an endgame build at level 40 means the Endgame
+  // penalty, and should be able to say so once.
+  const [penaltyDismissed, setPenaltyDismissed] = useState(false);
   const snapshot = useConfigStore((s) => s.snapshot);
   const refresh = useConfigStore((s) => s.refresh);
   const setVar = useConfigStore((s) => s.set);
@@ -171,6 +177,43 @@ export function ConfigView() {
   }
 
   const matching = sections.reduce((n, section) => n + section.options.length, 0);
+
+  /**
+   * Whether the resistance penalty disagrees with PoB's own act estimate.
+   *
+   * Both halves come from the engine: `act` is what EstimatePlayerProgress
+   * worked out, and the option is whatever is set. PoB's list runs Act 1
+   * at 0% down to Act 6 at -50%, with Endgame at -60%, so the act number
+   * is the penalty's index and the arithmetic below is just that mapping
+   * read the other way round.
+   */
+  const penaltyOption = snapshot.sections
+    .flatMap((section) => section.options)
+    .find((option) => option.var === 'resistancePenalty');
+  const wanted =
+    actEstimate === 'Endgame'
+      ? -60
+      : actEstimate
+        ? -10 * (Number(actEstimate.replace('Act ', '')) - 1)
+        : null;
+  const penaltyMismatch =
+    // Not on a build nobody has built yet. A new build is level 1 with no
+    // points, which estimates to Act 1, and PoB's default of Endgame is a
+    // deliberate choice for planning rather than a mistake: saying so on
+    // every empty build would be a banner that is always there, which is
+    // a banner nobody reads.
+    characterLevel > 1 &&
+    !penaltyDismissed &&
+    actEstimate &&
+    penaltyOption &&
+    wanted !== null &&
+    Number(penaltyOption.value) !== wanted
+      ? {
+          act: actEstimate,
+          current: `${String(penaltyOption.value)}%`,
+          suggested: `${wanted}%`,
+        }
+      : null;
 
   return (
     <div className={styles.view}>
@@ -220,6 +263,36 @@ export function ConfigView() {
           under the same name ({snapshot.duplicates.join(', ')}); the second copy is hidden
           here because both would write to one value.
         </p>
+      )}
+
+      {/* The resistance penalty is the one option that is usually wrong
+          without anybody touching it. PoB works the act out from the
+          allocated points, then fails to read its own answer back
+          (bridge/api.lua says exactly how), so an import lands on Endgame
+          and takes sixty points off every elemental resistance. That
+          shows up as the whole build looking wrong rather than as one
+          dropdown, so it says so here, where the dropdown is. */}
+      {penaltyMismatch && (
+        <div className={styles.mismatch} role="status">
+          <span>
+            PoB puts this character in <strong>{penaltyMismatch.act}</strong>, but the
+            elemental resistance penalty is set to{' '}
+            <strong>{penaltyMismatch.current}</strong>. Every elemental resistance on the
+            left is reduced by that.
+          </span>
+          <span className={styles.mismatchActions}>
+            <Button variant="primary" onClick={() => estimatePenalty()}>
+              Use {penaltyMismatch.suggested}
+            </Button>
+            <button
+              className={styles.dismiss}
+              onClick={() => setPenaltyDismissed(true)}
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </span>
+        </div>
       )}
 
       {refusal && (

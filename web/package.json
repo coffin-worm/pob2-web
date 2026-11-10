@@ -9,7 +9,10 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "tree-art": "python tools/tree_art.py --tree-data ../src/TreeData --out public/tree-art",
-    "engine-tests": "docker compose -f ../docker-compose.yml up"
+    "engine-tests": "docker compose -f ../docker-compose.yml up",
+    "test:engine": "vitest run --config tests/engine/vitest.config.ts",
+    "test:e2e": "playwright test -c tests/e2e/playwright.config.ts",
+    "test": "npm run test:engine && npm run test:e2e"
   },
   "dependencies": {
     "@radix-ui/react-select": "^2.4.1",
@@ -19,12 +22,14 @@
     "zustand": "^5.0.16"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "oxlint": "^1.89.0",
     "typescript": "~7.0.2",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
   }
 }

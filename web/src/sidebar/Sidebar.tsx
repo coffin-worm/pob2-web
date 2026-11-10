@@ -61,11 +61,19 @@ export function Sidebar() {
       </div>
 
       {warnings.length > 0 && (
-        <ul className={styles.warnings}>
-          {warnings.map((warning) => (
-            <li key={warning}>{warning}</li>
-          ))}
-        </ul>
+        <div className={styles.warningBox} role="status">
+          <div className={styles.warningHead}>
+            <svg viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+              <path d="M8 1.5a.9.9 0 0 1 .78.45l6.1 10.6A.9.9 0 0 1 14.1 14H1.9a.9.9 0 0 1-.78-1.45l6.1-10.6A.9.9 0 0 1 8 1.5Zm0 3.6a.75.75 0 0 0-.75.78l.2 3.6a.55.55 0 0 0 1.1 0l.2-3.6A.75.75 0 0 0 8 5.1Zm0 5.6a.85.85 0 1 0 0 1.7.85.85 0 0 0 0-1.7Z" />
+            </svg>
+            {warnings.length === 1 ? 'The engine raised a warning' : `${warnings.length} warnings`}
+          </div>
+          <ul className={styles.warnings}>
+            {warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {ready && lines.length > 0 ? (

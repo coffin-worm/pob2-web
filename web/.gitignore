@@ -25,3 +25,7 @@ dist-ssr
 
 # Extracted passive-tree artwork (npm run tree-art)
 public/tree-art/
+
+# Test output (npm run test:e2e)
+test-results/
+playwright-report/

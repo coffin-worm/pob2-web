@@ -172,6 +172,10 @@ function api.snapshot(build)
 		-- the party tab. Here because a checkbox needs to know its own
 		-- state, and one boolean is cheaper than a route for it.
 		exportBuffs = build.partyTab and build.partyTab.enableExportBuffs and true or false,
+		-- PoB's own campaign estimate, "Act 5" or "Endgame", worked out
+		-- from the allocated passive points. It decides the elemental
+		-- resistance penalty, so it is worth being able to see.
+		act = type(build.Act) == "string" and build.Act or nil,
 
 		characterLevel = build.characterLevel or 1,
 		levelAutoMode = build.characterLevelAutoMode and true or false,
@@ -5842,6 +5846,66 @@ local IMPORT_BOXES = {
 	{ key = "ignoreWeaponSwap", control = "charImportItemsIgnoreWeaponSwap", default = false },
 }
 
+--- Set the elemental resistance penalty from PoB's own act estimate.
+---
+--- Working around a bug in PoB, which is why this is here at all.
+--- `EstimatePlayerProgress` records its answer as a string: `build.Act` is
+--- "Endgame" or "Act 5" (Build.lua:1124, the only place it is assigned).
+--- The import then reads it expecting a number for the act case
+--- (ImportTab.lua:992-1000): one branch handles the string "Endgame", the
+--- other handles `type(Act) == "number"`, and "Act 5" is neither. So the
+--- index never moves off the 7 it was initialised with, and every
+--- character import lands on Endgame, -60% to all elemental resistances.
+---
+--- On a character who has just finished Act 4 that is thirty points of
+--- resistance that are not missing in the game, which reads as the whole
+--- calculation being wrong rather than as one dropdown.
+---
+--- Corrected here because `src/` stays unmodified. It reads PoB's own
+--- estimate and drives PoB's own control, which is the gesture ImportTab
+--- was making; only the parse is ours. `EstimatePlayerProgress` is run
+--- first so this is right for an items-only import too, where PoB would
+--- never have refreshed the estimate at all.
+local function fixResistancePenalty(build)
+	local controls = build and build.configTab and build.configTab.varControls
+	local control = controls and controls["resistancePenalty"]
+	if not control then
+		return
+	end
+
+	pcall(build.EstimatePlayerProgress, build)
+
+	local act = build.Act
+	local index
+	if act == "Endgame" then
+		index = 7
+	elseif type(act) == "string" then
+		index = tonumber(act:match("^Act (%d+)$"))
+	elseif type(act) == "number" then
+		index = act
+	end
+	if not index then
+		return
+	end
+
+	pcall(control.SetSel, control, math.min(7, math.max(1, math.floor(index))))
+end
+
+--- Set the resistance penalty from the act estimate, on its own.
+---
+--- Exposed as well as run on import, because a build imported before this
+--- existed still carries the wrong value and re-importing to fix a
+--- dropdown is a silly thing to have to do.
+function commands.estimateResistancePenalty(build)
+	local controls = build and build.configTab and build.configTab.varControls
+	if not controls or not controls["resistancePenalty"] then
+		return nil, "this engine has no resistance penalty control"
+	end
+	fixResistancePenalty(build)
+	build.buildFlag = true
+	return true
+end
+
 --- Import a character, the way the desktop tab's two buttons do.
 ---
 --- Deliberately not `loadBuildFromJSON`, which is HeadlessWrapper's
@@ -5951,6 +6015,7 @@ function commands.importCharacter(build, value)
 		end
 	end
 
+	fixResistancePenalty(build)
 	build.buildFlag = true
 	return true
 end

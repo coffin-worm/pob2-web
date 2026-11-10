@@ -1686,6 +1686,73 @@ that case, but the fix that matters is that `promptMsg` travels with the
 state, so a build whose calculations have died says so instead of looking
 merely empty.
 
+## The import tab, and sixty points of resistance
+
+The import panel started as one button that imported a character and
+replaced the build doing it. The desktop has two buttons, four checkboxes,
+a league filter, three places an imported code can land, and a Share
+button, and the difference that mattered was not any of those.
+
+**Importing used to reset the build.** `POST /code/character` goes through
+HeadlessWrapper's `loadBuildFromJSON`, which calls `SetMode` before it
+imports, so every character import opened an empty build and filled it.
+The desktop imports into the build you already have, and that is the whole
+reason it has two buttons: re-importing a tree after a respec, or items
+after a trade, only means anything if the other half survives.
+
+**And PoB sets the resistance penalty wrong, every time.**
+`EstimatePlayerProgress` works the act out from the allocated passive
+points and records it as a string in `build.Act`: `"Endgame"`, or
+`"Act 5"`. The import then reads it back expecting a number for the act
+case. One branch handles the string `"Endgame"`, the other handles
+`type(Act) == "number"`, and `"Act 5"` is neither, so the index never moves
+off the 7 it was initialised with and every import lands on Endgame.
+
+That is **-60% to every elemental resistance**. On the character this was
+found with, level 54 and just out of Act 4, PoB said Fire -11% where the
+game said +9%: the estimate was right, `Act 5`, and the mapping threw it
+away. It does not read as one dropdown being wrong, it reads as the whole
+calculation being wrong, which is why it is worth this much text.
+
+`src/` stays unmodified, so the correction is in `bridge/api.lua`: it reads
+PoB's own estimate, parses it, and drives PoB's own control, which is the
+gesture `ImportTab` was making. Both import paths do it,
+`estimateResistancePenalty` does it on demand for a build imported before
+the fix, and `GET /state` carries `act` so the Configuration tab can notice
+when the two disagree and offer the number PoB itself worked out.
+
+## Tests
+
+`web/tests/` holds two layers, and neither mocks the engine, because every
+bug in the section above was an integration bug. A mock that agreed with my
+idea of what PoB does would have agreed with me about the resistance
+penalty too.
+
+`npm run test:engine` boots a real engine and drives the bridge over HTTP:
+ten tests, about four seconds. The ones worth having are the refusals.
+Every way an import can be malformed is asserted to leave the build name,
+level and class exactly as they were, because PoB deletes the equipment and
+the skill groups *before* it reads the payload, and a regression there
+would quietly gut a build rather than fail loudly.
+
+`npm run test:e2e` runs Playwright against the real UI and a real engine:
+sixteen tests, about thirty-seven seconds. Nine views open with no console
+error, a pasted code is read, rubbish and an unknown host are refused,
+Ctrl+V stages an item, and saving writes a file the engine then lists.
+
+Two things keep a test run from touching anything of yours. Both layers
+point `POB_USER_PATH` at a temporary directory, so no test writes to the
+real builds folder. And the e2e server runs its own engine on a port of its
+own rather than the dev server's 49090, which the bridge plugin would
+otherwise reuse: without that, a test run while you had the app open would
+have driven your live build. The e2e setup refuses to start if something
+else is already on its port.
+
+No test reaches a build site. pobb.in, Maxroll, poe.ninja, poe2db, Pastebin
+and Rentry are blocked at the browser, and a run fails if one is requested.
+
+`npx playwright install chromium` is needed once per machine.
+
 ## Known gaps
 
 - **Ten screens of perhaps a dozen.** Notes and the party/minion views are

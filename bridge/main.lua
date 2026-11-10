@@ -645,6 +645,11 @@ routes["POST /code/character"] = function(payload)
 	if not ok then
 		return 400, { error = "that is not a character export PoB understands: " .. tostring(err) }
 	end
+	-- The same correction the importCharacter command makes, because the
+	-- bug is PoB's and this route reaches it too: its import leaves the
+	-- elemental resistance penalty on Endgame whatever the character's
+	-- progress is. bridge/api.lua says why.
+	pcall(api.apply, currentBuild(), "estimateResistancePenalty")
 	settle(4)
 	return 200, api.snapshot(currentBuild())
 end

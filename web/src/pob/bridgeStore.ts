@@ -135,6 +135,7 @@ export const useBridgeStore = create<BridgeStore>((set) => {
     setLoadout: (loadoutId) => command('setLoadout', loadoutId)(),
     setBuildName: (name) => command('setBuildName', name)(),
     setExportBuffs: (enabled) => command('setExportBuffs', { enabled })(),
+    estimateResistancePenalty: command('estimateResistancePenalty'),
   };
 });
 
