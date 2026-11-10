@@ -95,6 +95,32 @@ export function ItemsView() {
     void refreshStaged();
   }, [refreshStaged]);
 
+  // Ctrl+V anywhere on this screen, which is how the desktop app takes an
+  // item: copy it in the game, press paste, and it is on the bench. Here
+  // that gesture used to be a button, then a textarea, then a click, which
+  // is three steps for something that has one. The box below stays as the
+  // fallback for anywhere the clipboard event does not arrive.
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      // Pasting into a field means it for that field.
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, [contenteditable="true"]')) return;
+
+      const text = event.clipboardData?.getData('text/plain') ?? '';
+      // The game's own copy format, and PoB's own export format, both open
+      // with one of these two lines. Checked here rather than at the engine
+      // so a stray Ctrl+V of a URL is ignored instead of refused out loud.
+      if (!/^[ \t]*(?:Item Class|Rarity):/m.test(text)) return;
+
+      event.preventDefault();
+      // Staged rather than equipped, the same as the box below.
+      void stage(text).then(setRefusal);
+    };
+
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, [stage]);
+
   // In the one-column layout the item panel is well below the slots, so
   // clicking a slot's inspect button would otherwise do something the user
   // cannot see. Only on a change of selection: re-running it on every

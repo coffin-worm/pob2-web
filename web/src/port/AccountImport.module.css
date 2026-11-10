@@ -68,37 +68,6 @@
   font-size: var(--text-sm);
 }
 
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  margin: var(--space-2) 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.row {
-  display: grid;
-  grid-template-columns: minmax(8rem, max-content) 1fr auto;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-2) var(--space-3);
-  background: var(--bg-sunken);
-  border-radius: var(--radius-sm);
-}
-
-.name {
-  color: var(--text-primary);
-  font-size: var(--text-base);
-  font-weight: var(--weight-medium);
-}
-
-.meta {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  font-variant-numeric: tabular-nums;
-}
-
 .error {
   display: flex;
   align-items: flex-start;
@@ -126,14 +95,48 @@
   color: var(--text-primary);
 }
 
-/* The row collapses rather than squeezing the name on a narrow window. */
-@media (max-width: 36rem) {
-  .row {
-    grid-template-columns: 1fr auto;
-  }
+/* The two dropdowns, which are the desktop tab's league and character. */
+.choose {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
+}
 
-  .meta {
-    grid-column: 1 / -1;
-    order: 3;
+/* One import button with the checkboxes that change what it does. The
+ * label column is empty on the second row, so the buttons line up under
+ * each other the way they do in the desktop tab. */
+.importRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.importLabel {
+  min-width: 4rem;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.check input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+@media (max-width: 48rem) {
+  .importLabel {
+    min-width: 0;
   }
 }

@@ -1,6 +1,7 @@
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
+import { buildSites } from './plugins/build-sites.ts'
 import { poeAccount } from './plugins/poe-account.ts'
 import { pobBridge } from './plugins/pob-bridge.ts'
 import { treeArt } from './plugins/tree-art.ts'
@@ -22,5 +23,9 @@ export default defineConfig({
     // network layer is stubbed out headless, so the transport lives here and
     // the import still goes through PoB's importer.
     poeAccount({ repoRoot }),
+    // Sharing a build to pobb.in and the rest, and reading one back from a
+    // link. PoB's own upload and download go through LaunchSubScript,
+    // which is a stub headless, so the transport lives here as well.
+    buildSites({ repoRoot }),
   ],
 })

@@ -47,6 +47,13 @@ export interface HeaderState {
   unsaved: boolean;
   /** Null until the build has been saved once; gates "Save" vs "Save As". */
   dbFileName: string | null;
+  /**
+   * PoB's "Export Support". The checkbox sits on the Import tab and the
+   * value lives on the party tab, where the calculator reads it: with it
+   * on, this build's buffs are exported to whoever imports it as a party
+   * member.
+   */
+  exportBuffs?: boolean;
 
   characterLevel: number;
   /** buildMode.characterLevelAutoMode: level derived from the tree, or typed. */
@@ -82,6 +89,8 @@ export interface HeaderActions {
   setAscendancy(ascendClassId: number): void;
   setLoadout(loadoutId: number): void;
   setBuildName(name: string): void;
+  /** PoB's "Export Support", from the Import tab. */
+  setExportBuffs(enabled: boolean): void;
 }
 
 export const LEVEL_MIN = 1;

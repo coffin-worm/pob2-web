@@ -40,9 +40,15 @@ sealed class MainForm : Form
     /// window serves from <see cref="PoeAccount"/>.
     /// </summary>
     const string Account = "/poe";
+    /// <summary>
+    /// The third: sharing a build to pobb.in and the rest and reading one
+    /// back from a link, served from <see cref="BuildSites"/>.
+    /// </summary>
+    const string Sites = "/sites";
 
     readonly Engine _engine;
     readonly PoeAccount _poe;
+    readonly BuildSites _sites;
     readonly string _dist;
     readonly WebView2 _view = new() { Dock = DockStyle.Fill, Visible = false };
     readonly Splash _splash = new() { Dock = DockStyle.Fill };
@@ -57,6 +63,7 @@ sealed class MainForm : Form
     {
         _engine = engine;
         _poe = new PoeAccount(root, Trace);
+        _sites = new BuildSites(root, Trace);
         _dist = dist;
 
         Text = "Path of Building 2";
@@ -189,6 +196,11 @@ sealed class MainForm : Form
                 args.Response = await FromAccount(
                     core, args.Request.Method, uri.PathAndQuery[Account.Length..]);
             }
+            else if (uri.AbsolutePath.StartsWith(Sites + "/", StringComparison.Ordinal))
+            {
+                args.Response = await FromSites(
+                    core, args.Request, uri.PathAndQuery[Sites.Length..]);
+            }
             else
             {
                 args.Response = FromDisk(core, uri.AbsolutePath);
@@ -262,6 +274,31 @@ sealed class MainForm : Form
     }
 
     /// <summary>
+    /// Answered by the build-site transport, which never touches the engine.
+    /// </summary>
+    /// <remarks>
+    /// Shaped like <see cref="FromAccount"/> and for the same reason. The one
+    /// difference is the body: <c>POST /share</c> carries the build code, and
+    /// a GET has no content stream at all, so it may be null.
+    /// </remarks>
+    async Task<CoreWebView2WebResourceResponse> FromSites(
+        CoreWebView2 core, CoreWebView2WebResourceRequest request, string pathAndQuery)
+    {
+        var body = "";
+        if (request.Content is { } content && request.Method is not ("GET" or "HEAD"))
+        {
+            using var reader = new StreamReader(content, Encoding.UTF8);
+            body = await reader.ReadToEndAsync();
+        }
+
+        var reply = await _sites.HandleAsync(request.Method, pathAndQuery, body);
+        return core.Environment.CreateWebResourceResponse(
+            new MemoryStream(Encoding.UTF8.GetBytes(reply.Body)),
+            reply.Status, Reason(reply.Status),
+            $"Content-Type: {reply.ContentType}\r\nCache-Control: no-store");
+    }
+
+    /// <summary>
     /// The reason phrase, for the statuses the transport answers with.
     /// </summary>
     static string Reason(int status) => status switch
@@ -272,6 +309,7 @@ sealed class MainForm : Form
         404 => "Not Found",
         429 => "Too Many Requests",
         500 => "Internal Server Error",
+        502 => "Bad Gateway",
         _ => "Error",
     };
 
@@ -408,6 +446,7 @@ sealed class MainForm : Form
             // The account token is held in memory and nowhere else, so
             // closing the window is what signs you out.
             _poe.Dispose();
+            _sites.Dispose();
             _client.Dispose();
             _view.Dispose();
         }

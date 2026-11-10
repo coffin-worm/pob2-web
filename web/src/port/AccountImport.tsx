@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { bridge } from '../pob/bridge';
 import { Button } from '../ui/Button';
+import { Select } from '../ui/Select';
 import styles from './AccountImport.module.css';
 
 /**
@@ -64,12 +65,28 @@ export function AccountImport() {
   const [status, setStatus] = useState<Status | null>(null);
   const [characters, setCharacters] = useState<Character[] | null>(null);
   const [listing, setListing] = useState(false);
-  const [importing, setImporting] = useState<string | null>(null);
+  const [importing, setImporting] = useState<'tree' | 'items' | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** Set when the sign-in tab is opened, so the poll knows to watch. */
   const [waiting, setWaiting] = useState(false);
   /** The sign-in URL, once asked for, to paste into another browser. */
   const [linkCopied, setLinkCopied] = useState(false);
+
+  /** Which character the two import buttons act on. */
+  const [selected, setSelected] = useState('');
+  /** A league to narrow the list by, or everything. */
+  const [league, setLeague] = useState('');
+  /** What the last import brought in, so the panel can say so. */
+  const [imported, setImported] = useState<'tree' | 'items' | null>(null);
+
+  // PoB's own four checkboxes, at PoB's own defaults. Three delete what is
+  // there before importing, which is what makes an import an import rather
+  // than a merge; the fourth is off because most builds have no weapon
+  // swap and leaving it on would silently drop one that did.
+  const [deleteJewels, setDeleteJewels] = useState(true);
+  const [deleteSkills, setDeleteSkills] = useState(true);
+  const [deleteEquipment, setDeleteEquipment] = useState(true);
+  const [ignoreWeaponSwap, setIgnoreWeaponSwap] = useState(false);
 
   const poll = useRef<number | undefined>(undefined);
   /**
@@ -161,14 +178,46 @@ export function AccountImport() {
     void refreshStatus();
   };
 
-  const importCharacter = async (name: string) => {
-    setImporting(name);
+  /** Every league the account has a character in, newest list first. */
+  const leagues = useMemo(() => {
+    const seen = new Set<string>();
+    for (const char of characters ?? []) if (char.league) seen.add(char.league);
+    return ['', ...[...seen].sort()];
+  }, [characters]);
+
+  const shown = useMemo(
+    () => (characters ?? []).filter((char) => !league || char.league === league),
+    [characters, league],
+  );
+
+  /**
+   * The character the buttons act on.
+   *
+   * Derived rather than kept in sync: `selected` is only an override, and
+   * falling back to the first of the list means changing the league filter
+   * cannot leave a character selected that is no longer on screen.
+   */
+  const current = shown.find((char) => char.name === selected) ?? shown[0];
+
+  /**
+   * Import one half of the chosen character, as the desktop's two buttons do.
+   *
+   * Separate halves because they answer separate questions: a respec means
+   * re-importing the tree and keeping the gear, a trade means the other way
+   * round. Importing both at once is two clicks, which is what the desktop
+   * asks for too.
+   *
+   * The character JSON is fetched as text and forwarded untouched.
+   * Reshaping it here would put a second opinion about GGG's schema in the
+   * browser, where it would drift from the engine's.
+   */
+  const importPart = async (part: 'tree' | 'items') => {
+    if (!current) return;
+    setImporting(part);
     setError(null);
+    setImported(null);
     try {
-      // Fetched as text and forwarded untouched. Reshaping it here would put
-      // a second opinion about GGG's schema in the browser, where it would
-      // drift from the engine's.
-      const response = await fetch(`/poe/character?name=${encodeURIComponent(name)}`, {
+      const response = await fetch(`/poe/character?name=${encodeURIComponent(current.name)}`, {
         cache: 'no-store',
       });
       const text = await response.text();
@@ -180,7 +229,15 @@ export function AccountImport() {
             : message.error ?? response.statusText,
         );
       }
-      await bridge.importCharacter(text);
+      await bridge.importCharacterInto(text, {
+        tree: part === 'tree',
+        items: part === 'items',
+        deleteJewels,
+        deleteSkills,
+        deleteEquipment,
+        ignoreWeaponSwap,
+      });
+      setImported(part);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -244,8 +301,9 @@ export function AccountImport() {
       {signedIn && (
         <>
           <p className={styles.hint}>
-            Signed in. Importing a character replaces the open build, the same as the
-            desktop app's import does.
+            Signed in. These import into the build you have open, the same as the
+            desktop app: the tree and the gear are separate imports, so bringing one
+            over again keeps the other.
           </p>
           <div className={styles.actions}>
             <Button onClick={() => void listCharacters()} disabled={listing}>
@@ -259,33 +317,98 @@ export function AccountImport() {
           )}
 
           {characters && characters.length > 0 && (
-            <ul className={styles.list}>
-              {characters.map((char) => (
-                <li key={char.name} className={styles.row}>
-                  <span className={styles.name}>{char.name}</span>
-                  <span className={styles.meta}>
-                    {[
-                      `level ${char.level}`,
-                      char.class,
-                      char.league,
-                      // Worth marking: these import fine but are not what
-                      // someone usually means by "my character".
-                      char.expired && 'expired',
-                      char.deleted && 'deleted',
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </span>
-                  <Button
-                    variant="primary"
-                    disabled={importing !== null}
-                    onClick={() => void importCharacter(char.name)}
-                  >
-                    {importing === char.name ? 'Importing…' : 'Import'}
-                  </Button>
-                </li>
-              ))}
-            </ul>
+            <>
+              <div className={styles.choose}>
+                <Select
+                  label="League"
+                  value={Math.max(0, leagues.indexOf(league))}
+                  onChange={(id) => setLeague(leagues[id] ?? '')}
+                  options={leagues.map((name, id) => ({
+                    id,
+                    name: name || 'Every league',
+                  }))}
+                  aria-label="League"
+                />
+                <Select
+                  label="Character"
+                  value={Math.max(0, shown.findIndex((char) => char.name === current?.name))}
+                  onChange={(id) => setSelected(shown[id]?.name ?? '')}
+                  options={shown.map((char, id) => ({
+                    id,
+                    name:
+                      `${char.name} — ${char.class} lvl ${char.level}` +
+                      // Worth marking: these import fine, but they are not
+                      // what somebody usually means by "my character".
+                      (char.expired ? ' (expired)' : '') +
+                      (char.deleted ? ' (deleted)' : ''),
+                  }))}
+                  aria-label="Character"
+                  width={340}
+                />
+              </div>
+
+              <div className={styles.importRow}>
+                <span className={styles.importLabel}>Import:</span>
+                <Button
+                  variant="primary"
+                  disabled={!current || importing !== null}
+                  onClick={() => void importPart('tree')}
+                >
+                  {importing === 'tree' ? 'Importing…' : 'Passive Tree and Jewels'}
+                </Button>
+                <label className={styles.check}>
+                  <input
+                    type="checkbox"
+                    checked={deleteJewels}
+                    onChange={(e) => setDeleteJewels(e.target.checked)}
+                  />
+                  Delete jewels
+                </label>
+              </div>
+
+              <div className={styles.importRow}>
+                <span className={styles.importLabel} />
+                <Button
+                  variant="primary"
+                  disabled={!current || importing !== null}
+                  onClick={() => void importPart('items')}
+                >
+                  {importing === 'items' ? 'Importing…' : 'Items and Skills'}
+                </Button>
+                <label className={styles.check}>
+                  <input
+                    type="checkbox"
+                    checked={deleteSkills}
+                    onChange={(e) => setDeleteSkills(e.target.checked)}
+                  />
+                  Delete skills
+                </label>
+                <label className={styles.check}>
+                  <input
+                    type="checkbox"
+                    checked={deleteEquipment}
+                    onChange={(e) => setDeleteEquipment(e.target.checked)}
+                  />
+                  Delete equipment
+                </label>
+                <label className={styles.check}>
+                  <input
+                    type="checkbox"
+                    checked={ignoreWeaponSwap}
+                    onChange={(e) => setIgnoreWeaponSwap(e.target.checked)}
+                  />
+                  Ignore weapon swap
+                </label>
+              </div>
+
+              {imported && (
+                <p className={styles.status}>
+                  {imported === 'tree'
+                    ? 'Passive tree and jewels imported.'
+                    : 'Items and skills imported.'}
+                </p>
+              )}
+            </>
           )}
         </>
       )}

@@ -168,6 +168,10 @@ function api.snapshot(build)
 		-- than on a timer.
 		outputRevision = build.outputRevision or 0,
 		dbFileName = build.dbFileName or nil,
+		-- PoB's "Export Support", which lives on the Import tab and writes
+		-- the party tab. Here because a checkbox needs to know its own
+		-- state, and one boolean is cheaper than a route for it.
+		exportBuffs = build.partyTab and build.partyTab.enableExportBuffs and true or false,
 
 		characterLevel = build.characterLevel or 1,
 		levelAutoMode = build.characterLevelAutoMode and true or false,
@@ -5821,6 +5825,187 @@ function commands.newBuildFolder(build, value)
 	if not ok then
 		return nil, tostring(err)
 	end
+	return true
+end
+
+------------------------------------------------------- character import
+
+--- PoB's own four import checkboxes, and what it builds them as.
+---
+--- Each is read by the import methods as `controls.<name>.state`, so the
+--- way to ask for a different import is to set them and call the method,
+--- which is exactly what the desktop buttons do.
+local IMPORT_BOXES = {
+	{ key = "deleteJewels", control = "charImportTreeClearJewels", default = true },
+	{ key = "deleteSkills", control = "charImportItemsClearSkills", default = true },
+	{ key = "deleteEquipment", control = "charImportItemsClearItems", default = true },
+	{ key = "ignoreWeaponSwap", control = "charImportItemsIgnoreWeaponSwap", default = false },
+}
+
+--- Import a character, the way the desktop tab's two buttons do.
+---
+--- Deliberately not `loadBuildFromJSON`, which is HeadlessWrapper's
+--- convenience and opens a *new* build before importing into it. The
+--- desktop imports into the build you already have, and that difference is
+--- the whole point of having two buttons: importing a tree without
+--- touching the items, or re-importing items after a respec, only means
+--- anything if what is already there survives. A caller that wants a fresh
+--- build says so by opening one first.
+---
+--- The checkboxes are always set rather than left alone, because a control
+--- keeps whatever the last call gave it, and an import that quietly
+--- depended on the previous one would be a bad thing to debug.
+function commands.importCharacter(build, value)
+	local tab = build and build.importTab
+	if not tab or not tab.controls then
+		return nil, "this engine has no import tab"
+	end
+
+	value = type(value) == "table" and value or {}
+	local json = value.json
+	if type(json) ~= "string" or json:match("^%s*$") then
+		return nil, "expected { json = ... }"
+	end
+
+	local dkjson = require("dkjson")
+	local decoded = dkjson.decode(json)
+	if type(decoded) ~= "table" then
+		return nil, "that is not JSON PoB can read"
+	end
+	-- The API wraps the character in an envelope. The import methods want
+	-- what is inside it, and a caller holding either shape is reasonable.
+	if type(decoded.character) == "table" then
+		decoded = decoded.character
+	end
+
+	local tree = value.tree ~= false
+	local items = value.items ~= false
+	if not tree and not items then
+		return nil, "nothing to import: ask for the tree, the items, or both"
+	end
+
+	-- Checked before anything is touched, because PoB's import deletes
+	-- first and reads the payload second: `ImportItemsAndSkills` clears the
+	-- equipment and the skill groups and only then reaches
+	-- `ipairs(charData.equipment)`, so a payload missing that key leaves a
+	-- gutted build behind a Lua error. Validating here turns that into
+	-- nothing happening.
+	if items then
+		if type(decoded.equipment) ~= "table" then
+			return nil, "that character has no equipment list, so there is nothing to import"
+		end
+		-- A character with no skills at all is a real thing, and PoB's own
+		-- loop over this would rather have an empty table than a nil.
+		if decoded.skills == nil then decoded.skills = {} end
+	end
+	if tree then
+		if type(decoded.passives) ~= "table" then
+			return nil, "that character has no passive data, so there is no tree to import"
+		end
+		if type(decoded.class) ~= "string" then
+			return nil, "that character has no class, so the tree cannot be imported"
+		end
+		if type(decoded.passives.hashes) ~= "table" then
+			return nil, "that character's passive data has no node list"
+		end
+		if decoded.jewels == nil then decoded.jewels = {} end
+		-- PoB iterates these three without guarding them, and the game's
+		-- own API omits them for a character that has none. Defaulting is
+		-- the difference between importing a tree with no masteries and
+		-- failing on a nil halfway through deleting the old one.
+		if decoded.passives.specialisations == nil then decoded.passives.specialisations = {} end
+		if decoded.passives.skill_overrides == nil then decoded.passives.skill_overrides = {} end
+		if decoded.passives.jewel_data == nil then decoded.passives.jewel_data = {} end
+		if decoded.passives.quest_stats == nil then decoded.passives.quest_stats = {} end
+	end
+
+	for _, box in ipairs(IMPORT_BOXES) do
+		local control = tab.controls[box.control]
+		-- Loudly, rather than skipping it: a missing control would mean
+		-- the import quietly ignoring what was asked for, and PoB renaming
+		-- one should break here and not somewhere further downstream.
+		if not control then
+			return nil, "this engine's import tab has no " .. box.control
+		end
+		local wanted = value[box.key]
+		if wanted == nil then
+			control.state = box.default
+		else
+			control.state = wanted and true or false
+		end
+	end
+
+	-- Items first, then the tree, which is the order HeadlessWrapper uses
+	-- and the one that works: both set the character level, and the tree's
+	-- is the one PoB goes on to estimate quest progress from.
+	if items then
+		local ok, err = pcall(tab.ImportItemsAndSkills, tab, decoded)
+		if not ok then
+			return nil, "the items would not import: " .. tostring(err)
+		end
+	end
+	if tree then
+		local ok, err = pcall(tab.ImportPassiveTreeAndJewels, tab, decoded)
+		if not ok then
+			return nil, "the tree would not import: " .. tostring(err)
+		end
+	end
+
+	build.buildFlag = true
+	return true
+end
+
+--- Import a code over the build that is already open, keeping its file.
+---
+--- The difference from `POST /code/import` is the two arguments to Init:
+--- that route goes through `loadBuildFromXML`, which opens an unsaved
+--- build with a name derived from the code, and this keeps the current
+--- file name and build name so a later save writes back to the same file.
+--- They are PoB's own "Import to a new build" and "Import to this build",
+--- and the desktop warns about this one because it erases what is there.
+---
+--- Shutdown first, as ImportTab does: Init on a live build leaves the old
+--- tabs and their controls behind.
+function commands.importCodeHere(build, value)
+	local code = type(value) == "table" and value.code or value
+	if type(code) ~= "string" or code:match("^%s*$") then
+		return nil, "expected { code = ... }"
+	end
+
+	local detail = api.inspectCode(code)
+	if not detail.valid then
+		return nil, detail.error or "that code is not valid"
+	end
+	local xml, err = api.decodeCode(code)
+	if not xml then
+		return nil, tostring(err)
+	end
+
+	local fileName, buildName = build.dbFileName, build.buildName
+	local ok, failure = pcall(function()
+		build:Shutdown()
+		build:Init(fileName, buildName, xml, false)
+	end)
+	if not ok then
+		return nil, tostring(failure)
+	end
+	return true
+end
+
+--- PoB's "Export Support", which is a party setting rather than an export one.
+---
+--- The checkbox lives on the Import tab and writes `partyTab`, where the
+--- calculator reads it: with it on, this build's own buffs are exported to
+--- whoever imports it as a party member.
+function commands.setExportBuffs(build, value)
+	local party = build and build.partyTab
+	if not party then
+		return nil, "this engine has no party tab"
+	end
+	local wanted = value
+	if type(value) == "table" then wanted = value.enabled end
+	party.enableExportBuffs = wanted and true or false
+	build.buildFlag = true
 	return true
 end
 

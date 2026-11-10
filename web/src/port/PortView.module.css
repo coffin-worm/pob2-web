@@ -139,3 +139,34 @@
   line-height: 1;
   cursor: pointer;
 }
+
+/* The Export Support checkbox, which sits in a row of buttons. */
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.check input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/* The link a share came back with: one line, selectable, and wide enough
+ * to read without scrolling it. */
+.link {
+  flex: 1;
+  min-width: 12rem;
+  height: var(--row-height);
+  padding: 0 var(--space-3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}

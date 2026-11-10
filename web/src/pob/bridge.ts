@@ -307,19 +307,75 @@ export const bridge = {
   /** The current build as a code, exactly as the desktop app exports it. */
   buildCode: () => request<BuildCode>('/code'),
 
-  /** Replace the open build with one decoded from a code. */
+  /**
+   * Open a code as a new build.
+   *
+   * PoB's "Import to a new build": the result is unsaved and named after
+   * the code's own class, so saving it writes a new file.
+   */
   importCode: (code: string) =>
     request<BridgeSnapshot>('/code/import', {
       method: 'POST',
       body: JSON.stringify({ code }),
     }),
 
-  /** Import a character from a pasted game API response. */
+  /**
+   * Import a code over the open build, keeping its file and its name.
+   *
+   * PoB's "Import to this build", and it erases what is there, which is
+   * why the desktop asks before doing it.
+   */
+  importCodeHere: (code: string) =>
+    request<BridgeSnapshot>('/action', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'importCodeHere', value: { code } }),
+    }),
+
+  /** PoB's "Import as comparison": load it beside the build, not over it. */
+  importCodeAsComparison: (code: string) =>
+    request<BridgeSnapshot>('/action', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'addCompare', value: { code } }),
+    }),
+
+  /**
+   * Import a character from a pasted game API response.
+   *
+   * The route behind this goes through HeadlessWrapper's
+   * `loadBuildFromJSON`, which opens a *new* build before importing into
+   * it. That is right for a pasted blob and wrong for the import panel,
+   * where the desktop imports into the build you already have. Use
+   * `importCharacterInto` for that.
+   */
   importCharacter: (json: string) =>
     request<BridgeSnapshot>('/code/character', {
       method: 'POST',
       body: JSON.stringify({ json }),
     }),
+
+  /**
+   * Import a character into the open build, the way the desktop tab does.
+   *
+   * The two halves are separate because the desktop's two buttons are:
+   * re-importing a tree after a respec, or items after a trade, should not
+   * throw away the other half. The four flags are PoB's own checkboxes.
+   */
+  importCharacterInto: (
+    json: string,
+    options: {
+      tree?: boolean;
+      items?: boolean;
+      deleteJewels?: boolean;
+      deleteSkills?: boolean;
+      deleteEquipment?: boolean;
+      ignoreWeaponSwap?: boolean;
+    } = {},
+  ) =>
+    request<BridgeSnapshot>('/action', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'importCharacter', value: { json, ...options } }),
+    }),
+
 
   /** The builds folder, as PoB's own scanner sees it. */
   builds: (sort?: BuildSort) =>
