@@ -17,6 +17,12 @@ the engine beside them, in a WebView2 window with no terminal and no Node.
 See [`launcher/`](../launcher/README.md), which also explains why it has
 no local web server in it.
 
+This UI is one client of the engine, not the only one. The engine's own HTTP
+interface is documented in [`bridge/`](../bridge/README.md), and
+[`mcp/`](../mcp/README.md) is an MCP server over the reading half of it, so
+an AI client can inspect a build and ask the engine what a change would be
+worth.
+
 ## Why this might be worth doing
 
 The Lua UI's ceiling is not its renderer: SimpleGraphic draws textured

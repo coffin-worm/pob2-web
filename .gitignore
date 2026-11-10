@@ -60,3 +60,7 @@ launcher/bin/
 launcher/obj/
 /dist-app/
 /dist-app.zip
+
+# The MCP server's dependencies and build output.
+mcp/node_modules/
+mcp/dist/

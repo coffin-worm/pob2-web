@@ -59,6 +59,56 @@ local function log(fmt, ...)
 	io.stdout:flush()
 end
 
+--- Where something else can find this engine.
+---
+--- The port is not always knowable from outside. The dev server fixes it at
+--- 49090 and proxies it, but the launcher asks the OS for a free one and
+--- keeps it to itself, so anything else wanting to talk to a live engine
+--- would have to guess.
+---
+--- Written to the temp directory rather than beside the builds, because it
+--- describes a process and not a document: it should not survive a reboot,
+--- and it should not follow the user's Documents folder into a sync client.
+---
+--- Last writer wins, which is the policy that matches the question being
+--- asked. Two engines can run at once, and the one started most recently is
+--- the one whose build somebody is looking at. A reader health-checks the
+--- port before trusting it anyway, because a process killed outright never
+--- gets to clean up after itself.
+local function announceFile()
+	local temp = os.getenv("TEMP") or os.getenv("TMPDIR") or "/tmp"
+	return (temp:gsub("[\\/]+$", "")) .. "/pob2-bridge.json"
+end
+
+local function announce(port)
+	local path = announceFile()
+	local handle = io.open(path, "w")
+	if not handle then
+		log("could not write %s, so clients will have to guess the port", path)
+		return
+	end
+	-- ROOT is forward-slashed by checkoutRoot, so it needs no JSON escaping.
+	handle:write(string.format(
+		'{"port":%d,"root":"%s","started":%d}\n', port, ROOT, os.time()))
+	handle:close()
+	log("announced at %s", path)
+end
+
+--- Take the announcement back, but only if it is still ours.
+---
+--- An engine started after this one has already overwritten the file, and
+--- deleting it then would strand a live engine that did nothing wrong.
+local function unannounce(port)
+	local path = announceFile()
+	local handle = io.open(path, "r")
+	if not handle then return end
+	local body = handle:read("*a") or ""
+	handle:close()
+	if tonumber(body:match('"port"%s*:%s*(%d+)')) == port then
+		os.remove(path)
+	end
+end
+
 local api, server
 local booted, bootErr = false, nil
 -- File-local, not a global: this shares a Lua state with the whole of PoB.
@@ -692,6 +742,7 @@ function love.load()
 	end
 	server = srv
 	log("listening on http://127.0.0.1:%d", server.port)
+	announce(server.port)
 	log("  GET /health /state /stats /calcs /calcs/breakdown /paths")
 	log("  GET /tree /tree/alloc   GET /items /item")
 	log("  GET /items/search /items/filters")
@@ -717,7 +768,10 @@ function love.run()
 			love.event.pump()
 			for name, a in love.event.poll() do
 				if name == "quit" then
-					if server then server:close() end
+					if server then
+						unannounce(server.port)
+						server:close()
+					end
 					return a or 0
 				end
 			end
