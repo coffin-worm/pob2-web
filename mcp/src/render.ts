@@ -16,11 +16,22 @@ import type {
   CalcBreakdown,
   CalcSection,
   ConfigOption,
+  CorruptPreview,
+  CraftAffixes,
+  CraftAffixRow,
+  CraftAnoints,
+  CraftBases,
+  CraftCatalysts,
+  CraftCompare,
+  CraftCorruptions,
+  CraftRunes,
+  CraftState,
   GemInstance,
   ItemLine,
   ItemSlot,
   ItemSummary,
   SocketGroup,
+  StagedItem,
   StatLine,
   TreeNode,
   WhatIf,
@@ -524,4 +535,495 @@ export function breakdown(answer: CalcBreakdown): string {
     );
   }
   return tidy(out);
+}
+
+/* --------------------------------------------------------------- the bench */
+
+/**
+ * A comparison that sits inside a larger answer, as the shape above wants.
+ *
+ * The engine spells a nested comparison with a plain boolean `ready` rather
+ * than as a discriminated union, because it sits beside the thing it
+ * describes instead of standing in for the whole answer. Same information,
+ * so it is converted here rather than handled twice everywhere below.
+ */
+function nested(compare: CraftCompare | undefined): WhatIf {
+  if (!compare) return { ready: false, error: 'the engine priced nothing' };
+  if (!compare.ready) {
+    return compare.error === undefined ? { ready: false } : { ready: false, error: compare.error };
+  }
+  return { ready: true, lines: compare.lines ?? [], unchanged: compare.unchanged ?? false };
+}
+
+/**
+ * What a rune grants, minus the line its own name already is.
+ *
+ * A rune is named after what it does, so printing the name and then the
+ * lines reads as the engine saying the same thing twice.
+ */
+function rest(lines: string[] | undefined, label: string): string {
+  return (lines ?? [])
+    .map((line) => strip(line))
+    .filter((line) => line !== label)
+    .join('; ');
+}
+
+/** One prefix or suffix slot, as what is in it. */
+function affixRow(row: CraftAffixRow): string {
+  if (row.modId === undefined) return `${row.index}. empty`;
+  const marks = [
+    row.affix ? `"${strip(row.affix)}"` : '',
+    row.tier !== undefined && row.tierCount !== undefined
+      ? `tier ${row.tier} of ${row.tierCount}`
+      : '',
+    row.level === undefined ? '' : `item level ${row.level}`,
+    // Where in the tier's own range it landed, which is the difference
+    // between a tier worth keeping and the same tier wasted.
+    row.roll === undefined ? '' : `roll ${row.roll.toFixed(2)}`,
+    row.unknown ? 'the item can no longer roll this' : '',
+  ].filter(Boolean);
+  const text = (row.lines ?? []).map((line) => strip(line)).join('; ');
+  return (
+    `${row.index}. ${text || strip(row.label ?? row.modId)}` +
+    (marks.length > 0 ? ` (${marks.join(', ')})` : '')
+  );
+}
+
+/**
+ * The bench item, as something being crafted.
+ *
+ * `crafted` is the dividing line and is worth saying out loud: only a magic
+ * or rare built in PoB's own craft dialog has affix rows. Anything copied
+ * out of the game carries its modifiers as text, and the whole affix half
+ * of this answer is empty for it.
+ */
+export function bench(state: CraftState): string {
+  if (!state.ready) return 'Nothing is on the bench.';
+
+  const name = strip(state.name ?? 'unnamed');
+  const what = [
+    state.rarity ? state.rarity.toLowerCase() : '',
+    // PoB spells a rare's name as "Name, Base", so the base is usually in it.
+    state.baseName && !name.includes(strip(state.baseName)) ? strip(state.baseName) : '',
+    // And the type is "Ring" for something already called a Lazuli Ring.
+    state.itemType && !`${name} ${state.baseName ?? ''}`.includes(strip(state.itemType))
+      ? strip(state.itemType)
+      : '',
+  ].filter(Boolean);
+
+  const out: string[] = [
+    `On the bench: ${name}${what.length > 0 ? ` (${what.join(', ')})` : ''}`,
+    [
+      // Quality 0 is the absence of quality, and saying so is noise.
+      state.quality === undefined || state.quality === 0 ? '' : `Quality ${state.quality}.`,
+      state.corrupted ? 'Corrupted.' : '',
+    ]
+      .filter(Boolean)
+      .join(' '),
+  ];
+
+  if (state.crafted) {
+    // affixLimit is the item's whole budget, prefixes and suffixes
+    // together, so each half counts its own rows instead.
+    const rows = (kind: string, list: CraftAffixRow[] | undefined) => {
+      if (!list || list.length === 0) return;
+      const filled = list.filter((row) => row.modId !== undefined).length;
+      out.push('', `### ${kind} (${filled} of ${list.length})`, ...list.map(affixRow));
+    };
+    rows('Prefixes', state.prefixes);
+    rows('Suffixes', state.suffixes);
+    if (state.affixLimit !== undefined) {
+      out.push('', `It can carry ${state.affixLimit} affixes in all.`);
+    }
+  } else {
+    out.push(
+      '',
+      'It has no affix rows: only a magic or rare built in the craft dialog ' +
+        'does. Its modifiers are text, which pob_items shows in full.',
+    );
+  }
+
+  if (state.sockets) {
+    const { rune, jewel, max, natural } = state.sockets;
+    out.push(
+      '',
+      '### Rune sockets',
+      `${rune} rune and ${jewel} jewel, of at most ${max}` +
+        (natural === undefined ? '' : `, ${natural} of them on the base itself`),
+      ...(state.runes ?? []).map((row) => {
+        if (row.name === undefined) return `${row.index}. empty`;
+        const label = strip(row.label ?? row.name);
+        const lines = rest(row.lines, label);
+        return `${row.index}. ${label}${lines ? `: ${lines}` : ''}`;
+      }),
+    );
+  }
+
+  if (state.anoint) {
+    out.push(
+      '',
+      '### Anoint',
+      ...state.anoint.slots.map((slot) => {
+        if (slot.node) return `Line ${slot.index}: ${strip(slot.node)}`;
+        if (slot.other) {
+          return (
+            `Line ${slot.index}: ${strip(slot.other)} ` +
+            '(not an anoint, and anointing would replace it)'
+          );
+        }
+        return `Line ${slot.index}: empty`;
+      }),
+    );
+  }
+
+  if (state.corrupt) {
+    out.push(
+      '',
+      '### Corruption',
+      state.corrupt.corrupted
+        ? 'Already corrupted, so nothing more can be.'
+        : state.corrupt.corruptible
+          ? 'Can be corrupted.'
+          : 'This base cannot be corrupted.',
+    );
+  }
+
+  if (state.catalyst) {
+    const on = state.catalyst.options.find((entry) => entry.id === state.catalyst?.catalyst);
+    out.push(
+      '',
+      '### Catalysts',
+      state.catalyst.catalyst === 0 || !on
+        ? 'None on it.'
+        : strip(on.name) +
+          (state.catalyst.quality === undefined ? '' : ` at ${state.catalyst.quality} quality`) +
+          '.',
+    );
+  }
+
+  return tidy(out);
+}
+
+/**
+ * The bench item against every slot it fits.
+ *
+ * The whole point of staging rather than equipping: one answer that prices
+ * the same item in each slot that will take it, so a ring does not have to
+ * be tried in one hand and then in the other.
+ */
+export function staged(answer: StagedItem): string {
+  if (!answer.ready) {
+    return answer.error === undefined
+      ? 'Nothing is on the bench.'
+      : `The engine could not price the bench item: ${strip(answer.error)}`;
+  }
+
+  const base =
+    answer.base && !answer.name.includes(answer.base) ? `, ${strip(answer.base)}` : '';
+  const out: string[] = [
+    `On the bench: ${strip(answer.name)} (${answer.rarity.toLowerCase()}${base})`,
+    '',
+    tooltip(answer.lines, 1),
+  ];
+
+  if (answer.fitsNothing) {
+    out.push('', 'No slot on this character will take it.');
+    return tidy(out);
+  }
+  if (answer.limited && answer.limit !== undefined) {
+    out.push(
+      '',
+      `This unique is limited to ${answer.limit}, and that many are already worn, ` +
+        'so only the slots holding one are offered.',
+    );
+  }
+
+  for (const slot of answer.slots) {
+    const marks = [
+      slot.primary ? 'where PoB would put it' : '',
+      slot.empty ? 'empty now' : '',
+      slot.similar ? 'holds something similar' : '',
+      slot.removing ? 'it is already here, so this is what removing it does' : '',
+      slot.weaponSet === 2 ? 'weapon set II' : '',
+    ].filter(Boolean);
+    out.push(
+      '',
+      `## ${strip(slot.label)}${marks.length > 0 ? ` (${marks.join(', ')})` : ''}`,
+      comparison(nested(slot.compare)),
+    );
+  }
+
+  return tidy(out);
+}
+
+/* -------------------------------------------------------- the option lists */
+
+/**
+ * What one affix row could hold.
+ *
+ * The tier ids are deliberately not printed. They are what PoB's own
+ * dropdown is keyed by, and nothing this server exposes can put one in a
+ * slot, so eight of them per modifier would cost a reader context and buy
+ * nothing. What is worth reading is the series, how many tiers it has, the
+ * levels they start at, and what the top one rolls.
+ */
+export function affixOptions(answer: CraftAffixes): string {
+  if (!answer.ready) {
+    return answer.error === undefined
+      ? 'Nothing is on the bench, or it has no affix rows.'
+      : `The engine would not list that row: ${strip(answer.error)}`;
+  }
+  const options = answer.options ?? [];
+  const where = `${answer.kind ?? 'that'} slot ${answer.index ?? '?'}`;
+  if (options.length === 0) return `Nothing can go in ${where}.`;
+
+  const total = answer.total ?? options.length;
+  const head =
+    `${total} modifiers could go in ${where}` +
+    (total > options.length ? `, of which ${options.length} are here` : '') +
+    '.' +
+    // PoB spells an empty slot as a modifier called None.
+    (answer.selected === undefined || answer.selected === 'None'
+      ? ''
+      : ` In it now: ${strip(answer.selected)}.`);
+
+  const lines = options.map((option) => {
+    const levels = option.levels.filter((level) => level > 0);
+    const span =
+      levels.length === 0
+        ? ''
+        : `, item level ${Math.min(...levels)} to ${Math.max(...levels)}`;
+    const top = option.preview.map((line) => strip(line)).join('; ');
+    return (
+      `- ${strip(option.label)}` +
+      (option.affix ? ` (${strip(option.affix)})` : '') +
+      `: ${option.tierCount} tier${option.tierCount === 1 ? '' : 's'}${span}` +
+      (top ? `\n    top tier: ${top}` : '')
+    );
+  });
+
+  return `${head}\n\n${lines.join('\n')}`;
+}
+
+/** The item types, or the bases under one of them. */
+export function bases(answer: CraftBases): string {
+  if (!answer.ready) return 'The engine has no base list.';
+  const list = answer.bases ?? [];
+  if (answer.type === undefined || list.length === 0) {
+    const types = answer.types ?? [];
+    if (types.length === 0) return 'The engine has no item types.';
+    const lines = types.map((type) => `- ${type}`).join('\n');
+    return `${types.length} item types. Pass one as "type" for its bases.\n\n${lines}`;
+  }
+  const lines = list
+    .map((entry) => {
+      const label = strip(entry.label || entry.name);
+      const marks = [
+        // The engine keys a base by its name, and a label that reads
+        // differently would be a name pob_stage_item refuses.
+        label === entry.name ? '' : `named ${entry.name}`,
+        entry.level === undefined || entry.level === 0 ? '' : `level ${entry.level}`,
+      ].filter(Boolean);
+      return `- ${label}${marks.length > 0 ? ` (${marks.join(', ')})` : ''}`;
+    })
+    .join('\n');
+  return (
+    `${list.length} ${answer.type} bases` +
+    (answer.rarities === undefined ? '' : `, craftable as ${answer.rarities.join(', ')}`) +
+    `.\n\n${lines}`
+  );
+}
+
+export function runes(answer: CraftRunes): string {
+  if (!answer.ready) {
+    return answer.error === undefined
+      ? 'Nothing is on the bench, or it has no sockets.'
+      : `The engine would not list the runes: ${strip(answer.error)}`;
+  }
+  const options = answer.options ?? [];
+  if (options.length === 0) return 'No rune or soul core fits this item.';
+  const lines = options.map((rune) => {
+    const marks = [
+      rune.type ? rune.type.toLowerCase() : '',
+      rune.req === undefined ? '' : `needs level ${rune.req}`,
+      rune.limit === undefined ? '' : `at most ${rune.limit} per item`,
+      rune.socketBound ? 'cannot be taken out again' : '',
+    ].filter(Boolean);
+    const label = strip(rune.label || rune.name);
+    const lines = rest(rune.lines, label);
+    return (
+      `- ${label}` +
+      (marks.length > 0 ? ` (${marks.join(', ')})` : '') +
+      (lines ? `: ${lines}` : '')
+    );
+  });
+  return `${answer.total ?? options.length} fit these sockets.\n\n${lines.join('\n')}`;
+}
+
+/**
+ * The notables the bench item could be anointed with.
+ *
+ * A search and not a list: there are 875 of them on the tree. Each carries
+ * its node id, because that is what prices it.
+ */
+export function anoints(answer: CraftAnoints): string {
+  if (!answer.ready) {
+    return answer.error === undefined
+      ? 'Nothing is on the bench, or it cannot be anointed.'
+      : `The engine would not list the anoints: ${strip(answer.error)}`;
+  }
+  const options = answer.options ?? [];
+  if (options.length === 0) return 'No notable matches.';
+
+  const lines = options.map((option) => {
+    const recipe = option.recipe.length > 0 ? ` [${option.recipe.join(', ')}]` : '';
+    const already = option.allocated ? ' (already on the tree, so it would add nothing)' : '';
+    const grants = option.lines.map((line) => strip(line)).join('; ');
+    return `- ${strip(option.name)} (id ${option.id})${already}: ${grants}${recipe}`;
+  });
+
+  const total = answer.total ?? options.length;
+  const more = total > options.length ? ` Showing ${options.length}.` : '';
+  return `${total} notables match.${more}\n\n${lines.join('\n')}`;
+}
+
+/**
+ * What the bench item could be corrupted with.
+ *
+ * The modifier ids are printed here, unlike the affix list: a corruption
+ * draft is priced by id, so these are the one set of ids a reader can
+ * actually use.
+ */
+export function corruptions(answer: CraftCorruptions): string {
+  if (!answer.ready) {
+    return answer.error === undefined
+      ? 'Nothing is on the bench.'
+      : `The engine would not open the corruption list: ${strip(answer.error)}`;
+  }
+
+  const sources = answer.sources ?? [];
+  const out: string[] = [
+    [
+      answer.corrupted ? 'This item is already corrupted.' : '',
+      answer.slots === undefined ? '' : `${answer.slots} implicit slots.`,
+      sources.length > 1
+        ? `Sources: ${sources.map((source) => `${source.name} (${source.id})`).join(', ')}.`
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' '),
+  ];
+
+  const current = answer.current ?? [];
+  if (current.length > 0) {
+    out.push(
+      '',
+      '### Implicits it already carries',
+      ...current.map(
+        (entry) =>
+          `- ${strip(entry.line)}` +
+          (entry.modId === undefined ? '' : ` (${entry.modId})`) +
+          (entry.group === undefined ? '' : ` [group ${entry.group}]`),
+      ),
+    );
+  }
+
+  const ranges = answer.ranges ?? [];
+  if (ranges.length > 0) {
+    out.push(
+      '',
+      '### Rolls a corruption would scale',
+      'Between 0.78 and 1.22, and priced as ranges rather than as implicits.',
+      ...ranges.map(
+        (range) => `- ${range.index}: ${strip(range.scaled)} (at ${range.value.toFixed(2)})`,
+      ),
+    );
+  }
+
+  const options = answer.options ?? [];
+  if (options.length > 0) {
+    const total = answer.total ?? options.length;
+    const shown = total > options.length ? `, showing ${options.length}` : '';
+    out.push(
+      '',
+      `### Implicits it could take (${total}${shown})`,
+      ...options.map(
+        (option) =>
+          `- ${option.modId}: ${option.lines.map((line) => strip(line)).join('; ')}` +
+          (option.group === undefined ? '' : ` [group ${option.group}]`),
+      ),
+    );
+  }
+
+  return tidy(out);
+}
+
+/**
+ * All thirteen catalysts, priced together.
+ *
+ * The useful part is how few of them do anything: a catalyst only scales
+ * the modifiers carrying its own tag, and most items carry two or three
+ * tags. So the ones that move nothing are named in a single line rather
+ * than given a comparison each, and what is left is the real choice.
+ */
+export function catalysts(answer: CraftCatalysts): string {
+  if (!answer.ready) {
+    return answer.error === undefined
+      ? 'Nothing is on the bench.'
+      : `The engine would not price the catalysts: ${strip(answer.error)}`;
+  }
+  const options = answer.options ?? [];
+  if (options.length === 0) return 'No catalyst applies to this item.';
+
+  const out: string[] = [
+    `Priced at ${answer.quality ?? '?'} quality` +
+      (answer.slot === undefined ? '' : `, compared in ${answer.slot}`) +
+      '.',
+  ];
+
+  const idle: string[] = [];
+  for (const row of options) {
+    // Taking the catalyst off is offered as one of the thirteen, and on an
+    // item that has none it is a choice that cannot be made.
+    if (row.id === 0 && (answer.catalyst ?? 0) === 0) continue;
+
+    const compare = nested(row.compare);
+    const scales = (row.scales ?? []).map((line) => strip(line));
+    if (row.error === undefined && scales.length === 0 && compare.ready && compare.unchanged) {
+      idle.push(strip(row.name));
+      continue;
+    }
+
+    out.push('', `### ${strip(row.name)}${row.current ? ' (on it now)' : ''}`);
+    if (row.error !== undefined) {
+      out.push(`The engine could not price it: ${strip(row.error)}`);
+      continue;
+    }
+    if (scales.length > 0) out.push(`Scales: ${scales.join('; ')}`);
+    out.push(comparison(compare));
+  }
+
+  if (idle.length > 0) {
+    out.push(
+      '',
+      `### Nothing to scale (${idle.length})`,
+      `${idle.join(', ')}: this item carries no modifier they touch.`,
+    );
+  }
+
+  return tidy(out);
+}
+
+/** What corrupting would do: the item it would become, and the difference. */
+export function corruptPreview(answer: CorruptPreview): string {
+  if (!answer.ready) {
+    return `The engine could not corrupt that: ${strip(answer.error ?? 'no reason given')}`;
+  }
+  return tidy([
+    '## The item, corrupted',
+    tooltip(answer.item, 1),
+    '',
+    `## What it would do${answer.slot === undefined ? '' : ` in ${answer.slot}`}`,
+    comparison(nested(answer.compare)),
+  ]);
 }

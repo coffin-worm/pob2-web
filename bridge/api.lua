@@ -5247,6 +5247,23 @@ end
 --- means wearing it and then putting the old one back. Every database item
 --- carries the raw text it was parsed from, so this is stageItemText with
 --- the text looked up rather than pasted.
+--- Put an item on the bench from its raw text.
+---
+--- `CreateDisplayItemFromRaw` does not report anything. On text whose base
+--- PoB does not know it leaves `displayItem` nil, and on text that is not
+--- an item at all it leaves whatever was already there, so checking only
+--- for nil calls a failure a success and answers about the previous item.
+--- Comparing against what was on the bench catches both: a parse that
+--- worked always replaces the object, even when the text is identical.
+local function stage(tab, raw)
+	local before = tab.displayItem
+	tab:CreateDisplayItemFromRaw(raw, true)
+	if not tab.displayItem or tab.displayItem == before then
+		return nil, "that is not an item PoB recognises"
+	end
+	return true
+end
+
 function commands.stageDbItem(build, value)
 	local tab = build.itemsTab
 	local name = type(value) == "table" and value.name or value
@@ -5260,18 +5277,14 @@ function commands.stageDbItem(build, value)
 		return nil, "no database item named " .. name
 	end
 
-	tab:CreateDisplayItemFromRaw(source.raw, true)
-	if not tab.displayItem then
-		return nil, "that is not an item PoB recognises"
+	local made, err = stage(tab, source.raw)
+	if not made then
+		return nil, err
 	end
 	return true
 end
 
 --- Add an item from its in-game text, as pasting into PoB does.
----
---- CreateDisplayItemFromRaw leaves displayItem nil when the base is not one
---- PoB knows, which is the only failure worth reporting: everything else it
---- parses leniently and flags as unsupported on the item itself.
 function commands.addItemText(build, value)
 	local tab = build.itemsTab
 	local raw = type(value) == "table" and value.text or value
@@ -5279,9 +5292,9 @@ function commands.addItemText(build, value)
 		return nil, "expected { text = ... }"
 	end
 
-	tab:CreateDisplayItemFromRaw(raw, true)
-	if not tab.displayItem then
-		return nil, "that is not an item PoB recognises"
+	local made, err = stage(tab, raw)
+	if not made then
+		return nil, err
 	end
 	tab:AddDisplayItem()
 	return true
@@ -5289,10 +5302,10 @@ end
 
 --- Put pasted text on the bench without equipping it.
 ---
---- The same CreateDisplayItemFromRaw addItemText makes; the difference is
---- that this one stops there. `displayItem` is where the desktop tab keeps
---- the item being worked on, and leaving it there is what gives
---- /item/staged something to answer about.
+--- The same item addItemText makes; the difference is that this one stops
+--- there. `displayItem` is where the desktop tab keeps the item being
+--- worked on, and leaving it there is what gives /item/staged something to
+--- answer about.
 function commands.stageItemText(build, value)
 	local tab = build.itemsTab
 	local raw = type(value) == "table" and value.text or value
@@ -5300,9 +5313,9 @@ function commands.stageItemText(build, value)
 		return nil, "expected { text = ... }"
 	end
 
-	tab:CreateDisplayItemFromRaw(raw, true)
-	if not tab.displayItem then
-		return nil, "that is not an item PoB recognises"
+	local made, err = stage(tab, raw)
+	if not made then
+		return nil, err
 	end
 	return true
 end

@@ -140,7 +140,16 @@ a time against the uncorrupted item.
 | `GET /craft/corruptions` | `source?`, `q?` | The implicits it could take, and its roll ranges |
 
 Crafting in PoB always happens on the bench, never on an item already in a
-slot.
+slot. Nothing puts an equipped item there: the bench is `displayItem`, and
+the commands that fill it are `stageItemText`, `stageDbItem` and
+`craftItem`. To work on something already worn, read it back as text with
+`GET /item/edit` and stage a copy.
+
+Two of these routes answer about a narrower item than the name suggests.
+`/craft/affixes` needs an item PoB itself built, because only a magic or
+rare made in the craft dialog has affix rows; anything copied out of the
+game carries its modifiers as text. `/craft/catalysts` is the same, since
+the control it reads is one PoB hides for a pasted item.
 
 ## Writing
 

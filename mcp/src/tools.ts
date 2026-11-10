@@ -1,7 +1,7 @@
 /**
  * What a client can ask.
  *
- * Eleven tools over forty-odd routes, which is deliberate. The engine
+ * Fourteen tools over forty-odd routes, which is deliberate. The engine
  * answers a UI and exposes a route per control; a model handed forty tools
  * spends its context on the schema list and still picks the wrong one. So
  * these are grouped by the question somebody actually has, and the routes
@@ -18,17 +18,28 @@ import { z } from 'zod';
 import type { Bridge } from './client.js';
 import * as show from './render.js';
 import type {
+  AnointWhatIf,
   BridgeSnapshot,
   BuildsSnapshot,
   CalcBreakdown,
   CalcsSnapshot,
   CodeInspection,
   ConfigSnapshot,
+  CorruptPreview,
+  CraftAffixes,
+  CraftAnoints,
+  CraftBases,
+  CraftCatalysts,
+  CraftCorruptions,
+  CraftRunes,
+  CraftState,
   GemSearchSnapshot,
   ItemDetail,
+  ItemEdit,
   ItemSearchSnapshot,
   ItemsSnapshot,
   SkillsSnapshot,
+  StagedItem,
   StatsSnapshot,
   TreeAllocSnapshot,
   TreeWhatIf,
@@ -322,7 +333,9 @@ export function register(server: McpServer, bridge: Bridge) {
         '- "slot": turning a flask or charm on or off, by `slot`.\n' +
         '- "gem": a gem being disabled or taken to 20 quality, by `group`, ' +
         '`gem` and `subject`.\n' +
-        '- "socket_group": a whole socket group being turned off, by `group`.',
+        '- "socket_group": a whole socket group being turned off, by `group`.\n\n' +
+        'Crafting a change into an item is priced by pob_craft_price instead, ' +
+        'because that happens on the bench rather than on the build.',
       inputSchema: {
         change: z
           .enum(['passive', 'config', 'slot', 'gem', 'socket_group'])
@@ -629,6 +642,357 @@ export function register(server: McpServer, bridge: Bridge) {
 
       const state = await bridge.post<BridgeSnapshot>('/build/open', { path });
       return ok(`Opened.\n\n${show.header(state)}`);
+    },
+  );
+
+  /* -------------------------------------------------------------- the bench */
+
+  server.registerTool(
+    'pob_craft',
+    {
+      title: 'Read the crafting bench',
+      description:
+        'The crafting bench, and what could go on the item that is on it. ' +
+        'Crafting in Path of Building always happens on the bench and never ' +
+        'on an item in a slot, so put something there with pob_stage_item ' +
+        'first. `what` picks the question:\n' +
+        '- "bench": the item being crafted, its affix rows, its rune sockets, ' +
+        'its anoint lines, and whether it can be corrupted. The default.\n' +
+        '- "worth": the bench item priced against every slot it fits, in one ' +
+        'answer, so a ring does not have to be tried in each hand.\n' +
+        '- "affixes": everything one affix row could hold, by `kind` and ' +
+        '`index`. Only a magic or rare built on the bench has affix rows.\n' +
+        '- "bases": the item types, or the bases under one `type`.\n' +
+        '- "runes": the runes and soul cores its sockets would accept.\n' +
+        '- "anoints": the notables it could be anointed with, of 875, ' +
+        'searched by `query`. Their node ids are what pob_craft_price wants.\n' +
+        '- "corruptions": the implicits it could take, what it already ' +
+        'carries, and the rolls a corruption would scale. The modifier ids ' +
+        'here are what pob_craft_price wants.',
+      inputSchema: {
+        what: z
+          .enum(['bench', 'worth', 'affixes', 'bases', 'runes', 'anoints', 'corruptions'])
+          .optional()
+          .describe('Which part of the bench to read. Defaults to "bench".'),
+        kind: z
+          .enum(['prefix', 'suffix'])
+          .optional()
+          .describe('For "affixes": which half of the affix rows.'),
+        index: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('For "affixes": which row, counting from 1.'),
+        type: z
+          .string()
+          .optional()
+          .describe('For "bases": an item type, e.g. "Ring". Omit for the list of types.'),
+        query: z.string().optional().describe('For "runes", "anoints" and "corruptions".'),
+        mode: z
+          .enum(['anywhere', 'names', 'modifiers'])
+          .optional()
+          .describe('For "anoints": what `query` is matched against. Defaults to "anywhere".'),
+        source: z
+          .enum(['Corrupted', 'SpecialCorrupted'])
+          .optional()
+          .describe(
+            'For "corruptions": which table. "SpecialCorrupted" is Glimpse ' +
+              'of Chaos, offered on a helmet only.',
+          ),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(400)
+          .optional()
+          .describe('For "anoints": at most this many. Defaults to 20.'),
+      },
+      annotations: reads,
+    },
+    async ({ what = 'bench', kind, index, type, query, mode, source, limit }) => {
+      if (what === 'worth') {
+        return ok(show.staged(await bridge.get<StagedItem>('/item/staged')));
+      }
+
+      if (what === 'affixes') {
+        if (kind === undefined || index === undefined) {
+          return no('what="affixes" needs both `kind` and `index`.');
+        }
+        const answer = await bridge.get<CraftAffixes>('/craft/affixes', { kind, index, q: query });
+        return ok(show.affixOptions(answer));
+      }
+
+      if (what === 'bases') {
+        return ok(show.bases(await bridge.get<CraftBases>('/craft/bases', { type })));
+      }
+
+      if (what === 'runes') {
+        return ok(show.runes(await bridge.get<CraftRunes>('/craft/runes', { q: query })));
+      }
+
+      if (what === 'anoints') {
+        // Twenty, not the engine's own 150: a notable's answer carries
+        // every line it grants and its oil recipe, so sixty of them is
+        // ten kilobytes of context for a question that wanted a page.
+        const answer = await bridge.get<CraftAnoints>('/craft/anoints', {
+          q: query,
+          mode: mode ?? 'anywhere',
+          limit: limit ?? 20,
+        });
+        return ok(show.anoints(answer));
+      }
+
+      if (what === 'corruptions') {
+        const answer = await bridge.get<CraftCorruptions>('/craft/corruptions', {
+          source: source ?? 'Corrupted',
+          q: query,
+        });
+        return ok(show.corruptions(answer));
+      }
+
+      return ok(show.bench(await bridge.get<CraftState>('/item/craft')));
+    },
+  );
+
+  server.registerTool(
+    'pob_craft_price',
+    {
+      title: 'Price a craft',
+      description:
+        'What a craft would be worth, without doing it. Same mechanism as ' +
+        'pob_what_if, and on the bench item rather than on the build: the ' +
+        'engine applies the craft, recalculates, reports the difference, and ' +
+        'puts the item back as it was. `change` picks what to price:\n' +
+        '- "anoint": one notable, by `node` id from pob_craft what="anoints". ' +
+        'Both sides put the item in its own slot, so the answer is the ' +
+        "anoint's worth and not the whole item's.\n" +
+        '- "corruption": a whole corruption draft at once, as `implicits` ' +
+        '(modifier ids keyed by implicit slot, from pob_craft ' +
+        'what="corruptions") or as `ranges` (a roll between 0.78 and 1.22 ' +
+        "keyed by the explicit's index). Never both: PoB's own dialog writes " +
+        'one half or the other. A draft rather than a single choice because ' +
+        'two implicits chosen together have to be priced together.\n' +
+        '- "catalysts": all thirteen at once, at one `quality`, so they read ' +
+        'against each other. Most of them scale nothing on a given item, ' +
+        'which is the useful part of the answer.',
+      inputSchema: {
+        change: z.enum(['anoint', 'corruption', 'catalysts']).describe('What to price.'),
+        node: z
+          .number()
+          .int()
+          .optional()
+          .describe('For "anoint": the notable\'s node id. Omit to price taking one off.'),
+        line: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe(
+            'For "anoint": which enchant line to put it on, counting from 1. ' +
+              'Defaults to 1.',
+          ),
+        implicits: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe(
+            'For "corruption": modifier ids keyed by implicit slot, e.g. ' +
+              '{"1": "LocalIncreasedPhysicalDamagePercentImplicit3"}.',
+          ),
+        ranges: z
+          .record(z.string(), z.number())
+          .optional()
+          .describe(
+            'For "corruption": a roll between 0.78 and 1.22 keyed by the ' +
+              "explicit modifier's index, e.g. {\"2\": 1.22}. Uniques only.",
+          ),
+        source: z
+          .enum(['Corrupted', 'SpecialCorrupted'])
+          .optional()
+          .describe('For "corruption": which table the implicits come from.'),
+        quality: z
+          .number()
+          .int()
+          .min(0)
+          .max(99)
+          .optional()
+          .describe(
+            'For "catalysts": the quality to price all thirteen at. Defaults ' +
+              'to what the item carries.',
+          ),
+      },
+      annotations: reads,
+    },
+    async (args) => {
+      const { change } = args;
+
+      if (change === 'anoint') {
+        const line = args.line ?? 1;
+        const answer = await bridge.get<AnointWhatIf>('/craft/anoint/whatif', {
+          slot: line,
+          node: args.node,
+        });
+        if (!answer.ready) {
+          return no(answer.error ?? 'The engine could not price that anoint.');
+        }
+        const label =
+          args.node === undefined
+            ? `## Taking the anoint off line ${line}`
+            : `## Anointing node ${args.node} on line ${line}`;
+        // PoB's own two early answers, and both read as nothing happening
+        // unless the reason is given.
+        const why = answer.reason === undefined ? '' : `${show.strip(answer.reason)}\n\n`;
+        return ok(why + show.comparison(answer, label));
+      }
+
+      if (change === 'corruption') {
+        if (args.implicits !== undefined && args.ranges !== undefined) {
+          return no(
+            'Give `implicits` or `ranges`, not both: PoB\'s corruption dialog ' +
+              'writes whichever half is showing, so a draft is one or the other.',
+          );
+        }
+        if (args.implicits === undefined && args.ranges === undefined) {
+          return no('change="corruption" needs either `implicits` or `ranges`.');
+        }
+        // "1:ModId,2:ModId": keyed rather than positional, because a draft
+        // with only the second slot filled has to survive the trip.
+        const keyed = (table: Record<string, string | number>) =>
+          Object.entries(table)
+            .map(([slot, value]) => `${slot}:${value}`)
+            .join(',');
+        const ranges = args.ranges !== undefined;
+        const answer = await bridge.get<CorruptPreview>('/craft/corrupt/preview', {
+          mode: ranges ? 'ranges' : 'implicits',
+          source: args.source,
+          implicits: args.implicits === undefined ? undefined : keyed(args.implicits),
+          ranges: args.ranges === undefined ? undefined : keyed(args.ranges),
+        });
+        return ok(show.corruptPreview(answer));
+      }
+
+      const answer = await bridge.get<CraftCatalysts>('/craft/catalysts', {
+        quality: args.quality,
+      });
+      return ok(show.catalysts(answer));
+    },
+  );
+
+  server.registerTool(
+    'pob_stage_item',
+    {
+      title: 'Put an item on the bench',
+      description:
+        'Put an item on the crafting bench, which is where everything in ' +
+        'pob_craft and pob_craft_price reads from. The bench is separate from ' +
+        'the slots: nothing is equipped, nothing is written to disk, and the ' +
+        'build is not changed. It answers with the item priced against every ' +
+        'slot it would fit.\n\n' +
+        'Give exactly one of:\n' +
+        '- `item`: an item id from pob_items. A copy of it goes on the bench, ' +
+        'so crafting on it leaves the worn one alone.\n' +
+        '- `text`: an item as the game copies it to the clipboard.\n' +
+        '- `name`: a unique or rare from the database, named exactly as ' +
+        'pob_search what="item" prints it, base and all.\n' +
+        '- `base`, with its `type` and optionally a `rarity`: a blank item ' +
+        'made on the bench, which is the only kind that has affix rows.\n' +
+        '- `clear`: true, to take the bench item off again.\n\n' +
+        'Whatever was on the bench is replaced, so when the engine was ' +
+        'already running before this server attached to it, and somebody may ' +
+        'be part way through a craft, it asks for `confirm`.',
+      inputSchema: {
+        item: z.number().int().optional().describe('An item id from pob_items.'),
+        text: z.string().optional().describe("An item's in-game text."),
+        name: z
+          .string()
+          .optional()
+          .describe('A database item, named exactly as pob_search prints it.'),
+        base: z
+          .string()
+          .optional()
+          .describe('A base to make a blank item on, e.g. "Lazuli Ring", with `type`.'),
+        type: z
+          .string()
+          .optional()
+          .describe('The item type `base` belongs to, from pob_craft what="bases".'),
+        rarity: z
+          .enum(['NORMAL', 'MAGIC', 'RARE', 'UNIQUE'])
+          .optional()
+          .describe(
+            'For `base`: defaults to RARE. Only MAGIC and RARE get affix ' +
+              'rows; the other two carry their modifiers as text.',
+          ),
+        clear: z.boolean().optional().describe('Take the bench item off instead.'),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Required when the engine is one this server did not start.'),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ item, text, name, base, type, rarity, clear, confirm }) => {
+      const given = [item, text, name, base, clear === true ? clear : undefined].filter(
+        (value) => value !== undefined,
+      );
+      if (given.length !== 1) {
+        return no('Give exactly one of `item`, `text`, `name`, `base` or `clear`.');
+      }
+      if (base !== undefined && type === undefined) {
+        return no('`base` needs the `type` it belongs to, which pob_craft what="bases" lists.');
+      }
+
+      if (!(await bridge.ours()) && confirm !== true) {
+        return no(
+          'That engine was already running when this server attached to it, so ' +
+            'something else may have an item part way through a craft on the ' +
+            'bench. This would replace it. Call again with confirm=true if that ' +
+            'is wanted.',
+        );
+      }
+
+      if (clear === true) {
+        await bridge.post<BridgeSnapshot>('/action', { action: 'clearStagedItem' });
+        return ok('The bench is empty.');
+      }
+
+      if (item !== undefined) {
+        // An equipped item cannot be put on the bench directly: PoB has no
+        // gesture for it, and the bench is for things not yet committed to.
+        // What it does have is the item as text, which stages a copy.
+        const edit = await bridge.get<ItemEdit>('/item/edit', { id: item });
+        if (!edit.ready || edit.raw === undefined) {
+          return no(`The engine has no item with id ${item}, or no text for it.`);
+        }
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'stageItemText',
+          value: { text: edit.raw },
+        });
+      } else if (text !== undefined) {
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'stageItemText',
+          value: { text },
+        });
+      } else if (base !== undefined) {
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'craftItem',
+          value: { type, base, rarity: rarity ?? 'RARE' },
+        });
+        // A blank item has no modifiers, so pricing it against every slot
+        // would be a page of nothing. What it has is affix rows.
+        return ok(show.bench(await bridge.get<CraftState>('/item/craft')));
+      } else {
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'stageDbItem',
+          value: { name },
+        });
+      }
+
+      return ok(show.staged(await bridge.get<StagedItem>('/item/staged')));
     },
   );
 }

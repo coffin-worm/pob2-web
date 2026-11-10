@@ -66,7 +66,7 @@ can accumulate.
 
 ## The tools
 
-Eleven, over the bridge's forty-five routes. The grouping is the point: the
+Fourteen, over the bridge's forty-five routes. The grouping is the point: the
 engine exposes a route per control, and a model handed forty tools spends
 its context on the schema list and still picks the wrong one. So these are
 grouped by the question somebody actually has, and the routes that differ
@@ -86,10 +86,32 @@ discriminator.
 | `pob_search` | Passives, items or gems in PoB's own data |
 | `pob_builds` | The saved builds folder |
 | `pob_open_build` | Open a saved build, or import a share code |
+| `pob_craft` | The bench item, and what could go on it |
+| `pob_craft_price` | What an anoint, a corruption or a catalyst would be worth |
+| `pob_stage_item` | Put an item on the bench |
 
 `pob_what_if` takes a `change` of `passive`, `config`, `slot`, `gem` or
-`socket_group`, which covers five of the bridge's eight pricing routes. The
-three crafting ones are not here yet; see the gaps below.
+`socket_group`; `pob_craft_price` takes `anoint`, `corruption` or
+`catalysts`. Between them that is all eight of the bridge's pricing routes.
+They are two tools rather than one because their parameters barely overlap,
+and because they price different things: one a change to the build, the
+other a change to an item on the bench.
+
+## The bench
+
+Crafting in Path of Building happens on the bench and never on an item in a
+slot, which is the whole reason `pob_stage_item` exists. Nothing in the
+engine loads an equipped item onto the bench, so `pob_stage_item` with an
+item id reads the item back out as text and stages a copy of it. Crafting on
+that copy leaves the worn one alone, and nothing is equipped unless somebody
+does it in the app.
+
+Two things are only reachable through the bench. PoB gives affix rows to a
+magic or rare built in its own craft dialog and to nothing else, so
+`pob_stage_item` can make a blank item from a base; anything copied out of
+the game carries its modifiers as text instead. Catalysts are the same: the
+control PoB hides for a pasted item is the one the pricing reads, so the
+thirteen can only be priced on something built on the bench.
 
 ## Everything is text, and that is the work
 
@@ -113,17 +135,32 @@ practice:
   The rest are the engine's defaults and the same for every build.
 - `pob_calcs` with no filter lists sections and their headline figures,
   because the whole tab is a few hundred rows.
+- `pob_craft_price change="catalysts"` names in one line the ten or twelve
+  catalysts that scale nothing on the item, and gives a comparison only to
+  the ones that do. That is the answer, not a saving: a catalyst only
+  touches modifiers carrying its own tag, and most items carry two or three.
+- The affix list leaves out the tier ids. They are what PoB's own dropdown
+  is keyed by, and nothing here can put one in a slot, so eight of them per
+  modifier would cost context and buy nothing. The corruption list does
+  print its ids, because those are what prices a draft.
 
 Measured on a level 73 build: the whole build summary with its stat sheet is
 1.2 kB, the allocated tree 0.8 kB, the configuration 1.9 kB, and a what-if
-two to five hundred bytes.
+two to five hundred bytes. All thirteen catalysts, priced together, are
+0.4 kB; the bench item is 0.2 to 0.5 kB and the same item priced against
+every slot it fits about 0.6 kB.
 
 ## Writing
 
-One tool changes anything, `pob_open_build`, and it writes nothing to disk:
-it replaces what the engine has open. On an engine this server started that
-is harmless. On an engine it merely attached to, somebody may have a window
-on that build, so it refuses until called again with `confirm: true`.
+Two tools change anything, and neither writes to disk.
+
+`pob_open_build` replaces what the engine has open. `pob_stage_item`
+replaces what is on the bench, and the bench is not part of the build: no
+slot changes and no item is equipped.
+
+On an engine this server started, both are harmless. On an engine it merely
+attached to, somebody may have a window on that build or an item part way
+through a craft, so each refuses until called again with `confirm: true`.
 
 The bridge's roughly sixty write commands are otherwise not exposed, which
 includes everything that touches the user's files.
@@ -144,16 +181,15 @@ stray line on it corrupts the session.
 
 ## Known gaps
 
-- **No crafting.** `/craft/*` is thirteen routes and the most interesting
-  machinery in the bridge, including pricing all thirteen catalysts at once
-  and a whole corruption draft together. It needs its own tool or two, with
-  the bench item's state as part of the answer.
+- **Nothing applies a craft.** Everything about the bench can be read and
+  priced; the twelve commands that change the item on it are not exposed, so
+  an affix cannot be put in a row, a rune in a socket, or a corruption on
+  the item. That is the read-and-price posture holding, and it is also the
+  obvious next thing: pricing a craft nobody can then make is half an
+  answer.
 - **No comparison.** `/compare` holds the build against a saved comparison,
   stat by stat, which is exactly the shape a model wants and is not wired up.
 - **No notes.** `/notes` is readable and is not exposed.
-- **No item staging.** `/item/staged` prices a pasted item against every
-  slot it fits, in one answer. Exposing it would mean also exposing the
-  command that stages the item, which is a write.
 - **Windows only**, in the same way the rest of the repository is: the
   engine host is `lovec.exe` and `bridge/fs.lua` is bound to the Win32
   filesystem calls.

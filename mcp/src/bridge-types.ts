@@ -357,3 +357,275 @@ export interface CalcSection {
 export type CalcsSnapshot =
   | { ready: false; engineError?: string | null }
   | { ready: true; sections: CalcSection[]; rowCount: number };
+
+/* --------------------------------------------------------------- the bench */
+
+/**
+ * Crafting happens on PoB's bench, never on an item in a slot.
+ *
+ * `displayItem` is where the desktop Items tab keeps the item being worked
+ * on, and every route below reads it. Nothing here is a view of the
+ * equipped item: a copy goes onto the bench, is changed there, and is
+ * equipped only when somebody says so.
+ */
+
+/** One slot the bench item would fit, and what putting it there would do. */
+export interface StagedSlot {
+  name: string;
+  label: string;
+  primary?: boolean;
+  empty?: boolean;
+  similar?: boolean;
+  /** The item is already here, so the comparison is what removing it does. */
+  removing?: boolean;
+  weaponSet?: number;
+  compare?: WhatIf;
+}
+
+export type StagedItem =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      name: string;
+      base: string;
+      rarity: string;
+      /** Where AddItem would put it unaided. */
+      primarySlot?: string;
+      lines: ItemLine[];
+      slots: StagedSlot[];
+      /** How many of this unique may be worn at once. */
+      limit?: number;
+      /** That many already are, so only the slots holding one are offered. */
+      limited?: boolean;
+      fitsNothing?: boolean;
+    };
+
+/** One prefix or suffix slot on the bench item. */
+export interface CraftAffixRow {
+  index: number;
+  modId?: string;
+  affix?: string;
+  level?: number;
+  label?: string;
+  lines?: string[];
+  tier?: number;
+  tierCount?: number;
+  /** Where in this tier's range it sits: 0 the bottom, 1 the top. */
+  roll?: number;
+  unknown?: boolean;
+}
+
+export interface CraftRuneRow {
+  index: number;
+  name?: string;
+  label?: string;
+  lines?: string[];
+  type?: string;
+  unknown?: boolean;
+}
+
+export interface CraftAnointSlot {
+  /** Which enchant line this is, not which anoint. */
+  index: number;
+  node?: string;
+  /** What the line holds when it is not an anoint. */
+  other?: string;
+}
+
+export interface CraftState {
+  ready: boolean;
+  name?: string;
+  baseName?: string;
+  itemType?: string;
+  rarity?: string;
+  /**
+   * Whether the item has affix slots at all. True only for a magic or rare
+   * made in the craft dialog: a unique, or a rare copied out of the game,
+   * carries its modifiers as text instead.
+   */
+  crafted?: boolean;
+  affixLimit?: number;
+  corrupted?: boolean;
+  quality?: number;
+  prefixes?: CraftAffixRow[];
+  suffixes?: CraftAffixRow[];
+  sockets?: { rune: number; jewel: number; max: number; natural?: number };
+  runes?: CraftRuneRow[];
+  anoint?: { slots: CraftAnointSlot[] };
+  corrupt?: { corruptible: boolean; corrupted?: boolean };
+  catalyst?: { catalyst: number; quality?: number; options: { id: number; name: string }[] };
+}
+
+/** One modifier a slot could hold, with all of its tiers. */
+export interface CraftAffixOption {
+  label: string;
+  affix: string;
+  /** Lowest tier first. */
+  modIds: string[];
+  tierCount: number;
+  /** The item level each tier starts at, in the same order. */
+  levels: number[];
+  /** What the top tier reads at a middling roll. */
+  preview: string[];
+}
+
+export interface CraftAffixes {
+  ready: boolean;
+  error?: string;
+  kind?: string;
+  index?: number;
+  options?: CraftAffixOption[];
+  total?: number;
+  /** What is in the slot now, so the list can mark it. */
+  selected?: string;
+}
+
+export interface CraftBases {
+  ready: boolean;
+  types?: string[];
+  type?: string;
+  bases?: { name: string; label: string; level?: number }[];
+  rarities?: string[];
+}
+
+export interface CraftRune {
+  name: string;
+  label: string;
+  lines: string[];
+  type?: string;
+  req?: number;
+  limit?: number;
+  socketBound?: boolean;
+}
+
+export interface CraftRunes {
+  ready: boolean;
+  error?: string;
+  options?: CraftRune[];
+  total?: number;
+}
+
+/** One notable the bench item could be anointed with. */
+export interface CraftAnoint {
+  id: number;
+  name: string;
+  lines: string[];
+  /** The distilled emotions the anoint costs. Three, mostly. */
+  recipe: string[];
+  /** Already on the tree, so anointing it would change nothing. */
+  allocated?: boolean;
+}
+
+export interface CraftAnoints {
+  ready: boolean;
+  error?: string;
+  options?: CraftAnoint[];
+  /** How many matched, which can be more than were sent. */
+  total?: number;
+  truncated?: boolean;
+}
+
+export type AnointWhatIf =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      lines: ItemLine[];
+      unchanged?: boolean;
+      /** Why nothing would move: already allocated, or already anointed. */
+      reason?: string;
+    };
+
+/**
+ * A comparison nested inside a larger answer.
+ *
+ * Says the same thing as WhatIf and is spelled differently: `ready` is a
+ * plain boolean here, because it sits beside the thing it describes rather
+ * than standing in for the whole answer.
+ */
+export interface CraftCompare {
+  ready: boolean;
+  error?: string;
+  lines?: ItemLine[];
+  unchanged?: boolean;
+}
+
+/** One catalyst, priced against the item as it stands. */
+export interface CraftCatalystRow {
+  id: number;
+  name: string;
+  /** The one already on the item. */
+  current?: boolean;
+  /**
+   * The item's own modifiers this catalyst would scale, read off PoB's
+   * parse and written out at the scaled value. Empty for most of the
+   * thirteen on most items, which is the useful part.
+   */
+  scales?: string[];
+  compare?: CraftCompare;
+  error?: string;
+}
+
+export interface CraftCatalysts {
+  ready: boolean;
+  error?: string;
+  /** The slot both sides of every comparison put the item in. */
+  slot?: string;
+  /** The quality all thirteen were priced at, so they read against each other. */
+  quality?: number;
+  /** What is on the item now, 0 for none. */
+  catalyst?: number;
+  options?: CraftCatalystRow[];
+}
+
+/** One corruption implicit the bench item could take. */
+export interface CraftCorruption {
+  modId: string;
+  /** What it reads, with its range still in it. */
+  lines: string[];
+  /**
+   * An item carries one modifier per group, which is why picking the same
+   * group in a second slot is not offered.
+   */
+  group?: string;
+}
+
+/** One of the bench item's explicits that a corruption would scale. */
+export interface CraftCorruptRange {
+  /** Its place in the item's explicit lines, which is how PoB keys it. */
+  index: number;
+  /** Where the roll sits now, between 0.78 and 1.22. */
+  value: number;
+  /** The same line read out at that roll. */
+  scaled: string;
+}
+
+export interface CraftCorruptions {
+  ready: boolean;
+  error?: string;
+  /** "Corrupted", plus "Glimpse of Chaos" on a helmet. */
+  sources?: { id: string; name: string }[];
+  /** How many implicit slots the chosen source offers. */
+  slots?: number;
+  options?: CraftCorruption[];
+  total?: number;
+  /** Uniques only: the rolls a corruption would scale. */
+  ranges?: CraftCorruptRange[];
+  /** What the item already carries, so a draft can start from it. */
+  current?: { line: string; modId?: string; group?: string }[];
+  corrupted?: boolean;
+}
+
+export type CorruptPreview =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      /** The corrupted item, as PoB would draw it. */
+      item: ItemLine[];
+      slot?: string;
+      compare: CraftCompare;
+    };
+
+/** What /item/edit exposes, of which only the raw text is read here. */
+export type ItemEdit =
+  | { ready: false }
+  | { ready: true; id: number; name: string; rarity: string; raw?: string };
