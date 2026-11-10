@@ -1,7 +1,7 @@
 /**
  * What a client can ask.
  *
- * Sixteen tools over forty-odd routes, which is deliberate. The engine
+ * Nineteen tools over forty-odd routes, which is deliberate. The engine
  * answers a UI and exposes a route per control; a model handed forty tools
  * spends its context on the schema list and still picks the wrong one. So
  * these are grouped by the question somebody actually has, and the routes
@@ -24,6 +24,7 @@ import type {
   CalcBreakdown,
   CalcsSnapshot,
   CodeInspection,
+  CompareSnapshot,
   ConfigSnapshot,
   CorruptPreview,
   CraftAffixes,
@@ -38,6 +39,7 @@ import type {
   ItemEdit,
   ItemSearchSnapshot,
   ItemsSnapshot,
+  NotesSnapshot,
   SkillsSnapshot,
   StagedItem,
   StatsSnapshot,
@@ -61,6 +63,22 @@ const writes = {
   idempotentHint: false,
   openWorldHint: false,
 };
+
+/**
+ * How long a stat-sorted item search may keep asking.
+ *
+ * The engine runs the calculator against every candidate in every slot it
+ * fits and spreads that over as many requests as it takes, so one request
+ * is a slice rather than an answer. Measured against the whole database on
+ * a level 73 build: 551 candidates, eight requests, three seconds, and the
+ * same for the cheapest stat and the most expensive one alike.
+ *
+ * So this is fifteen times what a full scan needed and still a fraction of
+ * the request timeout in client.ts. It is a stop, not a plan: a database
+ * that grows or a machine that is slower should still answer something
+ * rather than hang.
+ */
+const SCAN_BUDGET_MS = 45_000;
 
 /**
  * A corruption draft, flattened for a query string.
@@ -463,8 +481,10 @@ export function register(server: McpServer, bridge: Bridge) {
         '- "passive": tree nodes by name or by the text of their stats, ' +
         'returning ids for pob_tree and pob_what_if.\n' +
         '- "item": the unique and rare databases. `sort` names a stat to rank ' +
-        'by, which runs the engine against every candidate and is slow; the ' +
-        'answer says how far it got, and asking again carries the scan on.\n' +
+        'by, which runs the engine against every candidate in every slot it ' +
+        'fits, so it takes a few seconds rather than being instant. The ' +
+        'ranking is carried to the end before answering; if it runs out of ' +
+        'budget the answer says how far it got.\n' +
         '- "gem": every skill and support gem in the game.',
       inputSchema: {
         what: z.enum(['passive', 'item', 'gem']).describe('Which database to search.'),
@@ -522,13 +542,31 @@ export function register(server: McpServer, bridge: Bridge) {
         return ok(`${total} gems match.${more}\n\n${lines.join('\n')}`);
       }
 
-      const found = await bridge.get<ItemSearchSnapshot>('/items/search', {
-        q: query,
-        slot,
-        db,
-        sort,
-        limit,
-      });
+      const ask = () =>
+        bridge.get<ItemSearchSnapshot>('/items/search', { q: query, slot, db, sort, limit });
+
+      let found = await ask();
+
+      // A stat sort comes back part way through, with the engine's own
+      // count of how far it got, and asking again with the same arguments
+      // carries it on. So it is carried on here rather than handing back a
+      // provisional ranking and a note about how to fix it: a ranking that
+      // is wrong at the top is worse than one that took three seconds.
+      const started = Date.now();
+      let passes = 1;
+      let stalled = 0;
+      while (found.scanning === true && Date.now() - started < SCAN_BUDGET_MS) {
+        const before = found.scanned ?? 0;
+        found = await ask();
+        passes += 1;
+        // The engine's own progress is the only thing that says the scan is
+        // still a scan. Two passes that move it nowhere mean it is not
+        // going to finish, and spinning until the budget runs out would
+        // turn that into a slow answer instead of a quick one.
+        stalled = (found.scanned ?? 0) > before ? 0 : stalled + 1;
+        if (stalled >= 2) break;
+      }
+
       if (found.loading) {
         return ok('The engine is still parsing the item databases. Ask again shortly.');
       }
@@ -558,11 +596,15 @@ export function register(server: McpServer, bridge: Bridge) {
             '. The bracket is the item\'s value and its change against this build.',
         );
       }
-      if (found.scanning) {
+      if (found.scanning === true) {
         notes.push(
-          `The ranking is still running: ${found.scanned ?? 0} measured so far, so ` +
-            'this order is provisional. Asking again with the same arguments carries it on.',
+          `The ranking did not finish: ${found.scanned ?? 0} of ` +
+            `${found.total ?? '?'} measured over ${passes} passes before the ` +
+            'budget ran out, so this order is provisional. Asking again with ' +
+            'the same arguments carries it on.',
         );
+      } else if (passes > 1) {
+        notes.push(`Ranked the whole set, ${found.scanned ?? 0} of them.`);
       }
       return ok(`${notes.join(' ')}\n\n${lines.join('\n')}`);
     },
@@ -1323,5 +1365,128 @@ export function register(server: McpServer, bridge: Bridge) {
           `empty again.\n\n${show.equipment(items)}`,
       );
     },
+  );
+
+  /* ---------------------------------------------------------- the comparison */
+
+  server.registerTool(
+    'pob_compare',
+    {
+      title: 'Read the comparison',
+      description:
+        'The open build against another one, stat by stat. This is PoB\'s ' +
+        'own Compare tab, and it is the direct way to answer "which of these ' +
+        'two is better", because every stat is lined up rather than read off ' +
+        'two separate sheets.\n\n' +
+        'Something has to be loaded to compare against first, which is what ' +
+        'pob_compare_load does. Stats the two builds agree on are left out ' +
+        'unless `all` is set, since on two variants of one build the handful ' +
+        'that differ are the whole answer.',
+      inputSchema: {
+        all: z
+          .boolean()
+          .optional()
+          .describe('Include the stats the two builds agree on.'),
+      },
+      annotations: reads,
+    },
+    async ({ all }) => {
+      const snapshot = await bridge.get<CompareSnapshot>('/compare');
+      return ok(show.versus(snapshot, { all }));
+    },
+  );
+
+  server.registerTool(
+    'pob_compare_load',
+    {
+      title: 'Load a build to compare against',
+      description:
+        'Put another build in the comparison list, choose which one is ' +
+        'compared against, or take one out. Nothing is written to disk and ' +
+        'the open build is not changed: a comparison is held beside it.\n\n' +
+        '`action` picks which:\n' +
+        '- "load": add a build, by `path` from pob_builds or by `code` from a ' +
+        'share link. It becomes the one compared against.\n' +
+        '- "select": compare against one already loaded, by `index` from ' +
+        'pob_compare.\n' +
+        '- "remove": take one out of the list, by `index`.',
+      inputSchema: {
+        action: z
+          .enum(['load', 'select', 'remove'])
+          .optional()
+          .describe('What to do. Defaults to "load".'),
+        path: z.string().optional().describe('For "load": a build file path from pob_builds.'),
+        code: z
+          .string()
+          .optional()
+          .describe(
+            'For "load": a share code or link. Decoded locally; nothing is fetched.',
+          ),
+        index: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('For "select" and "remove": which loaded build, from pob_compare.'),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Required when the engine is one this server did not start.'),
+      },
+      annotations: writes,
+    },
+    async ({ action = 'load', path, code, index, confirm }) => {
+      if (!(await bridge.ours()) && confirm !== true) {
+        return no(
+          'That engine was already running when this server attached to it, ' +
+            'so somebody may have the Compare tab open on it. Changing what is ' +
+            'loaded would change what they are looking at. Call again with ' +
+            'confirm=true if that is wanted.',
+        );
+      }
+
+      if (action === 'load') {
+        if ((path === undefined) === (code === undefined)) {
+          return no('Give exactly one of `path` or `code`.');
+        }
+        if (code !== undefined) {
+          // Read it first: a code that does not decode should say so rather
+          // than landing in the list as an empty build.
+          const look = await bridge.get<CodeInspection>('/code/inspect', { code });
+          if (!look.valid) return no(`That code does not decode: ${show.strip(look.error)}`);
+        }
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'addCompare',
+          value: code === undefined ? { path } : { code },
+        });
+      } else if (index === undefined) {
+        return no(`action="${action}" needs an \`index\` from pob_compare.`);
+      } else {
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: action === 'select' ? 'setCompare' : 'removeCompare',
+          value: index,
+        });
+      }
+
+      return ok(show.versus(await bridge.get<CompareSnapshot>('/compare')));
+    },
+  );
+
+  /* --------------------------------------------------------------- the notes */
+
+  server.registerTool(
+    'pob_notes',
+    {
+      title: 'Read the build notes',
+      description:
+        "The build's own notes: whatever the person who made it wrote down, " +
+        'which on a shared build is usually how it is meant to be played, ' +
+        'what to buy first, and which parts are flexible. Worth reading ' +
+        'before judging a build, because it is the only part of the file that ' +
+        'says what the author intended.',
+      inputSchema: {},
+      annotations: reads,
+    },
+    async () => ok(show.notes(await bridge.get<NotesSnapshot>('/notes'))),
   );
 }

@@ -633,3 +633,68 @@ export type CorruptPreview =
 export type ItemEdit =
   | { ready: false }
   | { ready: true; id: number; name: string; rarity: string; raw?: string };
+
+/* ---------------------------------------------------------- the comparison */
+
+export interface CompareBuild {
+  name: string;
+  class?: string;
+  ascendancy?: string;
+  level?: number;
+}
+
+export interface CompareEntry extends CompareBuild {
+  index: number;
+  label: string;
+  active?: boolean;
+}
+
+/**
+ * One stat on both builds, or a section break.
+ *
+ * `diff` is the comparison minus the open build, so it is what the other
+ * build has and not what this one would gain. `better` is the stat's own
+ * verdict on that direction: more resistance is an improvement, more mana
+ * cost is not.
+ */
+export interface CompareRow {
+  /** PoB's own section spacer, the same as in the stat sidebar. */
+  gap?: boolean;
+  label?: string;
+  /** Formatted with the stat's own fmt, so these are strings. */
+  primary?: string;
+  compare?: string;
+  /** Absent when the two agree. */
+  diff?: string;
+  percent?: number;
+  better?: boolean;
+}
+
+export type CompareSnapshot =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      entries: CompareEntry[];
+      /** 0 when nothing is loaded to compare against. */
+      active: number;
+      primary?: CompareBuild;
+      compare?: CompareBuild;
+      rows?: CompareRow[];
+    };
+
+/* --------------------------------------------------------------- the notes */
+
+/**
+ * The build's notes.
+ *
+ * The engine also sends `palette` and `digits`, which say what PoB's colour
+ * escapes resolve to. They are here for a renderer that wants to draw the
+ * notes in colour; this server strips the escapes instead, so neither is
+ * read and neither is below.
+ */
+export interface NotesSnapshot {
+  ready: boolean;
+  text?: string;
+  /** PoB's own comparison of the buffer against what the file holds. */
+  modified?: boolean;
+}

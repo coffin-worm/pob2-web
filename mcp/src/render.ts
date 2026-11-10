@@ -26,7 +26,10 @@ import type {
   CraftCorruptions,
   CraftRunes,
   CraftState,
+  CompareBuild,
+  CompareSnapshot,
   GemInstance,
+  NotesSnapshot,
   ItemLine,
   ItemSlot,
   ItemSummary,
@@ -1044,4 +1047,126 @@ export function corruptPreview(answer: CorruptPreview): string {
     `## What it would do${answer.slot === undefined ? '' : ` in ${answer.slot}`}`,
     comparison(nested(answer.compare)),
   ]);
+}
+
+/* ---------------------------------------------------------- the comparison */
+
+/** A build in the comparison list, as one line. */
+function who(build: CompareBuild | undefined, fallback: string): string {
+  if (!build) return fallback;
+  const what = [build.class, build.ascendancy !== build.class ? build.ascendancy : '']
+    .filter(Boolean)
+    .join(' / ');
+  return (
+    strip(build.name) +
+    (build.level === undefined ? '' : `, level ${build.level}`) +
+    (what ? ` ${what}` : '')
+  );
+}
+
+/**
+ * The open build against the one loaded to compare it with.
+ *
+ * The direction is the thing to get right and the thing a reader cannot
+ * check: the engine's `diff` is the comparison minus the open build, so it
+ * is what the other build has rather than what this one would gain. Saying
+ * that once at the top is cheaper than repeating it on every row, and
+ * leaving it unsaid would make the whole answer read backwards.
+ *
+ * Rows the two builds agree on are dropped. On a pair of builds that are
+ * variants of each other most rows agree, and the handful that do not are
+ * the entire reason somebody asked.
+ */
+export function versus(
+  snapshot: CompareSnapshot,
+  options: { all?: boolean | undefined } = {},
+): string {
+  if (!snapshot.ready) {
+    return `The engine has no comparison: ${strip(snapshot.error ?? 'no reason given')}`;
+  }
+
+  const listed = snapshot.entries.map(
+    (entry) =>
+      `- ${entry.index}: ${strip(entry.label)}` +
+      (entry.active ? ' (the one being compared against)' : ''),
+  );
+
+  if (snapshot.active === 0 || !snapshot.rows) {
+    const head =
+      snapshot.entries.length === 0
+        ? 'Nothing is loaded to compare against. pob_compare_load takes a saved ' +
+          'build by path, or a share code.'
+        : 'No comparison is selected, though these are loaded:';
+    return snapshot.entries.length === 0 ? head : `${head}\n\n${listed.join('\n')}`;
+  }
+
+  const out: string[] = [
+    `${who(snapshot.primary, 'the open build')}`,
+    `against ${who(snapshot.compare, 'the comparison')}.`,
+    '',
+    'Each row is the open build, then the comparison, then the difference ' +
+      'between them. The difference is what the comparison has, not what ' +
+      'this build would gain, and "better" and "worse" are about the ' +
+      'comparison too.',
+    '',
+  ];
+
+  let moved = 0;
+  for (const row of snapshot.rows) {
+    if (row.gap) {
+      out.push('');
+      continue;
+    }
+    if (row.label === undefined) continue;
+    if (row.diff === undefined && options.all !== true) continue;
+
+    const label = strip(row.label);
+    const both = `${strip(row.primary ?? '-')} -> ${strip(row.compare ?? '-')}`;
+    if (row.diff === undefined) {
+      out.push(`${label}: ${both}`);
+      continue;
+    }
+    moved += 1;
+    // The percentage is a ratio of the two values, so on a stat that is
+    // negative to begin with it comes back with the opposite sign to the
+    // change it describes: -25% resistance to -18% is +7, an improvement,
+    // and -28% as a ratio. Printed side by side those two read as a
+    // contradiction. The sign disagreeing is exactly the case where the
+    // base was negative, so that is the test, and the absolute difference
+    // beside it says the same thing without the trap.
+    const sameWay =
+      row.percent !== undefined && row.percent < 0 === strip(row.diff).startsWith('-');
+    const percent = sameWay ? `, ${row.percent?.toFixed(1)}%` : '';
+    const verdict = row.better === undefined ? '' : row.better ? ', better' : ', worse';
+    out.push(`${label}: ${both}  (${strip(row.diff)}${percent}${verdict})`);
+  }
+
+  if (moved === 0 && options.all !== true) {
+    out.push('Every stat agrees. Pass all=true to see them anyway.');
+  }
+
+  if (snapshot.entries.length > 1) {
+    out.push('', '### Loaded comparisons', ...listed);
+  }
+
+  return tidy(out);
+}
+
+/* --------------------------------------------------------------- the notes */
+
+/**
+ * The build's notes, as the author wrote them.
+ *
+ * PoB's notes carry inline colour escapes, which the author put there to
+ * make a heading stand out and which say nothing to a reader. The text is
+ * otherwise untouched: it is prose somebody wrote, and trimming prose is
+ * not this file's business.
+ */
+export function notes(snapshot: NotesSnapshot): string {
+  if (!snapshot.ready) return 'The engine has no notes for this build.';
+  const text = strip(snapshot.text ?? '').trim();
+  if (text === '') return 'This build has no notes.';
+  return (
+    text + (snapshot.modified ? '\n\n(The notes have unsaved changes.)' : '')
+  );
 }

@@ -66,7 +66,7 @@ can accumulate.
 
 ## The tools
 
-Sixteen, over the bridge's forty-five routes. The grouping is the point: the
+Nineteen, over the bridge's forty-five routes. The grouping is the point: the
 engine exposes a route per control, and a model handed forty tools spends
 its context on the schema list and still picks the wrong one. So these are
 grouped by the question somebody actually has, and the routes that differ
@@ -91,6 +91,9 @@ discriminator.
 | `pob_craft_apply` | Make that change to the bench item |
 | `pob_stage_item` | Put an item on the bench |
 | `pob_equip_staged` | Take the bench item and wear it |
+| `pob_compare` | This build against another one, stat by stat |
+| `pob_compare_load` | Load, choose or drop a build to compare against |
+| `pob_notes` | What the build's author wrote about it |
 
 `pob_what_if` takes a `change` of `passive`, `config`, `slot`, `gem` or
 `socket_group`; `pob_craft_price` takes `anoint`, `corruption` or
@@ -132,6 +135,37 @@ tier is resolved against the row being filled, so a modifier that cannot go
 in that row is refused by name. PoB excludes a series already in one row
 from the others, which is why the same one cannot be put in two.
 
+## The comparison
+
+`pob_compare` is PoB's own Compare tab: the open build and another one,
+every stat lined up. It is the direct way to answer "which of these two is
+better", which is otherwise two stat sheets and arithmetic.
+
+Something has to be loaded first, which `pob_compare_load` does from a
+saved build or a share code, and which is why there is a second tool: a
+read-only one would answer "nothing is loaded" on almost every build, the
+same trap the crafting bench had. Loading holds a build beside the open one
+and changes neither, and nothing is written to disk.
+
+One thing the answer has to say out loud, because a reader cannot check it:
+the engine's difference is the comparison minus the open build. It is what
+the other build has, not what this one would gain. Reading it the other way
+round inverts every conclusion drawn from it, so the direction is stated
+above the rows rather than left to be inferred from them.
+
+## The ranking takes a moment
+
+`pob_search what="item"` with a `sort` runs the engine against every
+candidate in every slot it fits. The engine spreads that over as many
+requests as it takes and reports how far it got, so one request is a slice
+and not an answer. The tool carries the scan to the end before replying:
+measured on the whole database, 551 candidates take eight requests and
+about three seconds, for the cheapest stat and the most expensive one
+alike. A ranking that is wrong at the top is worth more than three seconds.
+
+There is a budget, and if it runs out the answer says how far it got and
+that asking again carries it on.
+
 ## Everything is text, and that is the work
 
 The engine answers a UI. Its stat sheet carries a colour classification and
@@ -165,6 +199,15 @@ practice:
 - The thirteen catalyst numbers are printed by `pob_craft_price`, which is
   the answer a reader applies one from, and not by every read of the bench.
   They are a fixed table and it never changes.
+- `pob_compare` drops the stats the two builds agree on. Two builds worth
+  comparing are usually variants of each other, so most of the sheet is
+  identical and the handful that moved is the whole question. `all` brings
+  the rest back.
+- It also drops the engine's percentage on a stat that was negative to
+  begin with, and only there. The percentage is a ratio of the two values,
+  so going from -25% resistance to -18% is +7 and an improvement, and
+  -28% as a ratio. Side by side those read as a contradiction, and the
+  absolute difference beside it says the same thing without the trap.
 
 Measured on a level 73 build: the whole build summary with its stat sheet is
 1.2 kB, the allocated tree 0.8 kB, the configuration 1.9 kB, and a what-if
@@ -216,13 +259,11 @@ stray line on it corrupts the session.
 
 ## Known gaps
 
-- **No comparison.** `/compare` holds the build against a saved comparison,
-  stat by stat, which is exactly the shape a model wants and is not wired up.
-- **No notes.** `/notes` is readable and is not exposed.
 - **Windows only**, in the same way the rest of the repository is: the
   engine host is `lovec.exe` and `bridge/fs.lua` is bound to the Win32
   filesystem calls.
-- The stat-sort item search is resumable by design and this does not resume
-  it. Asking again with the same arguments carries the scan on, but the
-  server will not do that by itself, so a first answer is ranked among what
-  had been measured when it was asked.
+- `probe.mjs` prints a libuv assertion from `async.c` as it exits. The
+  server is not what aborts: run it on its own and close its stdin and it
+  leaves cleanly. It is the SDK transport's `client.close()` in the harness,
+  and it comes after every answer has been printed, so it costs nothing but
+  a moment's alarm.
