@@ -71,6 +71,11 @@ New-Item -ItemType Directory -Force -Path $Output | Out-Null
 Get-ChildItem $Output -File | Remove-Item -Force
 Copy-Item "$staging\*" $Output -Recurse -Force
 
+# PoB's version number, which the account transport reads to build its
+# User-Agent: GGG's API should be told which build of PoB is asking, and
+# the string the desktop app sends comes from this file.
+Copy-Item "$root\manifest.xml" $Output -Force
+
 # libcurl is PoB's network layer, and the headless engine does not have
 # one: HeadlessWrapper stubs `require("lcurl.safe")` outright, with a
 # comment saying it does not really need it. Verified by running the

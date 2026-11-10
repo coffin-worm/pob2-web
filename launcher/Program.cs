@@ -57,7 +57,7 @@ static class Program
         }
 
         using var engine = new Engine(root);
-        Application.Run(new MainForm(engine, dist));
+        Application.Run(new MainForm(engine, root, dist));
     }
 
     /// <summary>

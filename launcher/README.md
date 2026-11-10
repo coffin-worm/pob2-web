@@ -52,6 +52,45 @@ resolved and never reaches DNS. Fixed matters: whatever the page keeps in
 local storage is still there next time, rather than being scoped to
 whichever port it happened to get.
 
+## Two mounts, not one
+
+`/bridge` goes to the engine. `/poe` is signing in to pathofexile.com and
+listing characters, and it is answered by `PoeAccount.cs` in this process.
+
+That second one was missing for a while, and account import was broken in
+the window the whole time without being broken anywhere else. The UI is the
+same build in the browser and here, and in the browser those routes are a
+Vite plugin, `web/plugins/poe-account.ts`. Here there was nothing, so
+`/poe/status` fell through to the static files and came back as
+`404 Not found` in `text/plain`, and the import panel reported that the
+route did not return JSON. A missing mount reads as a broken feature.
+
+So `PoeAccount.cs` is a second implementation of that plugin's six
+endpoints, under the same mount, answering the same bodies. Two
+implementations of one contract is a real cost and it is the lesser one:
+PoB's own OAuth lives in `PoEAPI.lua` and runs on `LaunchSubScript` and
+`launch:DownloadPage`, both empty stubs in the headless host, so the
+transport has to live wherever there is TLS and a socket library. In the
+browser build that is node. In the window it is this process.
+
+What does not move is the import itself. The character JSON goes to the
+bridge's `POST /code/character` untouched, which hands it to PoB's own
+`ImportItemsAndSkills` and `ImportPassiveTreeAndJewels`.
+
+Two details are worth knowing. The sign-in **is** a link, an ordinary
+anchor on `/poe/signin`, and this origin exists only inside this window, so
+handing that URL to the system browser resolves to nothing. The sign-in is
+therefore started in process when the link is clicked and the browser is
+given GGG's own URL instead. And the redirect GGG comes back to is caught
+on a raw socket rather than an `HttpListener`, for the same reason this
+file has no web server: the exchange is one GET and one page, which is less
+HTTP than negotiating with `http.sys` for the right to listen. The ports
+are 49082, 49083 and 49084 with no path, because those are the origins
+registered with the OAuth client.
+
+Tokens are held in memory and nowhere else: not on disk, not in the page,
+not in the trace. Closing the window signs you out.
+
 ## The engine cannot outlive the window
 
 The engine is started exactly as the dev server's plugin starts it: LOVE,

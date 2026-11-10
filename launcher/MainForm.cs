@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -33,8 +34,15 @@ sealed class MainForm : Form
     /// </summary>
     const string Origin = "https://pob.local";
     const string Mount = "/bridge";
+    /// <summary>
+    /// The other mount: signing in to pathofexile.com and listing
+    /// characters, which the dev server serves from a Vite plugin and this
+    /// window serves from <see cref="PoeAccount"/>.
+    /// </summary>
+    const string Account = "/poe";
 
     readonly Engine _engine;
+    readonly PoeAccount _poe;
     readonly string _dist;
     readonly WebView2 _view = new() { Dock = DockStyle.Fill, Visible = false };
     readonly Splash _splash = new() { Dock = DockStyle.Fill };
@@ -45,9 +53,10 @@ sealed class MainForm : Form
         Timeout = TimeSpan.FromMinutes(5),
     };
 
-    public MainForm(Engine engine, string dist)
+    public MainForm(Engine engine, string root, string dist)
     {
         _engine = engine;
+        _poe = new PoeAccount(root, Trace);
         _dist = dist;
 
         Text = "Path of Building 2";
@@ -121,7 +130,13 @@ sealed class MainForm : Form
         core.NewWindowRequested += (_, args) =>
         {
             args.Handled = true;
-            OpenExternally(args.Uri);
+            // The sign-in is an ordinary link on this origin, and this
+            // origin exists only inside this window: handed to the system
+            // browser it resolves to nothing, which is exactly what the
+            // import panel's sign-in button used to do. So the sign-in
+            // starts here and what the browser is given is GGG's own URL.
+            if (IsSignIn(args.Uri)) StartSignIn();
+            else OpenExternally(args.Uri);
         };
 
         core.DocumentTitleChanged += (_, _) =>
@@ -164,9 +179,20 @@ sealed class MainForm : Form
                 Trace($"{args.Request.Method} {uri.PathAndQuery}");
             }
 
-            args.Response = uri.AbsolutePath.StartsWith(Mount + "/", StringComparison.Ordinal)
-                ? await FromEngine(core, args.Request, uri.PathAndQuery[Mount.Length..])
-                : FromDisk(core, uri.AbsolutePath);
+            if (uri.AbsolutePath.StartsWith(Mount + "/", StringComparison.Ordinal))
+            {
+                args.Response = await FromEngine(
+                    core, args.Request, uri.PathAndQuery[Mount.Length..]);
+            }
+            else if (uri.AbsolutePath.StartsWith(Account + "/", StringComparison.Ordinal))
+            {
+                args.Response = await FromAccount(
+                    core, args.Request.Method, uri.PathAndQuery[Account.Length..]);
+            }
+            else
+            {
+                args.Response = FromDisk(core, uri.AbsolutePath);
+            }
         }
         catch (Exception failure)
         {
@@ -210,6 +236,68 @@ sealed class MainForm : Form
                 new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(
                     new { error = $"the engine stopped answering: {failure.Message}" })),
                 502, "Bad Gateway", Json);
+        }
+    }
+
+    /// <summary>
+    /// Answered by the account transport, which never touches the engine.
+    /// </summary>
+    /// <remarks>
+    /// Shaped like the engine mount above and for the same reason: the UI's
+    /// own reader pulls <c>{ error }</c> out of the body, so a failure that
+    /// arrives as anything but JSON surfaces as a parse error rather than
+    /// as the thing that went wrong. That is not hypothetical. Before this
+    /// mount existed these requests fell through to the static files and
+    /// came back as <c>404 Not found</c> in plain text, and the panel said
+    /// the route did not return JSON.
+    /// </remarks>
+    async Task<CoreWebView2WebResourceResponse> FromAccount(
+        CoreWebView2 core, string method, string pathAndQuery)
+    {
+        var reply = await _poe.HandleAsync(method, pathAndQuery);
+        return core.Environment.CreateWebResourceResponse(
+            new MemoryStream(Encoding.UTF8.GetBytes(reply.Body)),
+            reply.Status, Reason(reply.Status),
+            $"Content-Type: {reply.ContentType}\r\nCache-Control: no-store");
+    }
+
+    /// <summary>
+    /// The reason phrase, for the statuses the transport answers with.
+    /// </summary>
+    static string Reason(int status) => status switch
+    {
+        200 => "OK",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        404 => "Not Found",
+        429 => "Too Many Requests",
+        500 => "Internal Server Error",
+        _ => "Error",
+    };
+
+    /// <summary>Whether a link is the import panel's sign-in.</summary>
+    static bool IsSignIn(string uri) =>
+        Uri.TryCreate(uri, UriKind.Absolute, out var parsed)
+        && parsed.GetLeftPart(UriPartial.Authority) == Origin
+        && parsed.AbsolutePath.TrimEnd('/') == Account + "/signin";
+
+    /// <summary>
+    /// Start a sign-in and send the browser to GGG.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is awaited by the caller: a link click has nobody to hand an
+    /// exception to. <see cref="PoeAccount.BeginSignInAsync"/> records what
+    /// went wrong, and the panel's status poll is where it shows up.
+    /// </remarks>
+    async void StartSignIn()
+    {
+        try
+        {
+            OpenExternally(await _poe.BeginSignInAsync());
+        }
+        catch (Exception failure)
+        {
+            Trace($"sign-in: {failure}");
         }
     }
 
@@ -317,6 +405,9 @@ sealed class MainForm : Form
     {
         if (disposing)
         {
+            // The account token is held in memory and nowhere else, so
+            // closing the window is what signs you out.
+            _poe.Dispose();
             _client.Dispose();
             _view.Dispose();
         }
