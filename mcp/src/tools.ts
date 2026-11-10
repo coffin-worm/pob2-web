@@ -1,7 +1,7 @@
 /**
  * What a client can ask.
  *
- * Fourteen tools over forty-odd routes, which is deliberate. The engine
+ * Fifteen tools over forty-odd routes, which is deliberate. The engine
  * answers a UI and exposes a route per control; a model handed forty tools
  * spends its context on the schema list and still picks the wrong one. So
  * these are grouped by the question somebody actually has, and the routes
@@ -53,6 +53,25 @@ const no = (text: string): Result => ({ content: [{ type: 'text', text }], isErr
 
 /** Read-only, and safe to call again with the same arguments. */
 const reads = { readOnlyHint: true, idempotentHint: true, openWorldHint: false };
+
+/** Changes something, though never anything on disk. */
+const writes = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: false,
+  openWorldHint: false,
+};
+
+/**
+ * A corruption draft, flattened for a query string.
+ *
+ * "1:ModId,2:ModId": keyed rather than positional, because a draft with
+ * only the second slot filled has to survive the trip.
+ */
+const keyed = (table: Record<string, string | number>) =>
+  Object.entries(table)
+    .map(([slot, value]) => `${slot}:${value}`)
+    .join(',');
 
 export function register(server: McpServer, bridge: Bridge) {
   /* ------------------------------------------------------------- the build */
@@ -610,12 +629,7 @@ export function register(server: McpServer, bridge: Bridge) {
           .optional()
           .describe('Required when the engine is one this server did not start.'),
       },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: false,
-        openWorldHint: false,
-      },
+      annotations: writes,
     },
     async ({ path, code, confirm }) => {
       if ((path === undefined) === (code === undefined)) {
@@ -855,12 +869,6 @@ export function register(server: McpServer, bridge: Bridge) {
         if (args.implicits === undefined && args.ranges === undefined) {
           return no('change="corruption" needs either `implicits` or `ranges`.');
         }
-        // "1:ModId,2:ModId": keyed rather than positional, because a draft
-        // with only the second slot filled has to survive the trip.
-        const keyed = (table: Record<string, string | number>) =>
-          Object.entries(table)
-            .map(([slot, value]) => `${slot}:${value}`)
-            .join(',');
         const ranges = args.ranges !== undefined;
         const answer = await bridge.get<CorruptPreview>('/craft/corrupt/preview', {
           mode: ranges ? 'ranges' : 'implicits',
@@ -928,12 +936,7 @@ export function register(server: McpServer, bridge: Bridge) {
           .optional()
           .describe('Required when the engine is one this server did not start.'),
       },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: false,
-        openWorldHint: false,
-      },
+      annotations: writes,
     },
     async ({ item, text, name, base, type, rarity, clear, confirm }) => {
       const given = [item, text, name, base, clear === true ? clear : undefined].filter(
@@ -957,6 +960,7 @@ export function register(server: McpServer, bridge: Bridge) {
 
       if (clear === true) {
         await bridge.post<BridgeSnapshot>('/action', { action: 'clearStagedItem' });
+        bridge.releaseBench();
         return ok('The bench is empty.');
       }
 
@@ -982,6 +986,7 @@ export function register(server: McpServer, bridge: Bridge) {
           action: 'craftItem',
           value: { type, base, rarity: rarity ?? 'RARE' },
         });
+        bridge.claimBench();
         // A blank item has no modifiers, so pricing it against every slot
         // would be a page of nothing. What it has is affix rows.
         return ok(show.bench(await bridge.get<CraftState>('/item/craft')));
@@ -992,7 +997,270 @@ export function register(server: McpServer, bridge: Bridge) {
         });
       }
 
+      bridge.claimBench();
       return ok(show.staged(await bridge.get<StagedItem>('/item/staged')));
+    },
+  );
+
+  server.registerTool(
+    'pob_craft_apply',
+    {
+      title: 'Apply a craft',
+      description:
+        'Make the change to the item on the bench, rather than only pricing ' +
+        'it. Nothing is written to disk and nothing is equipped: the bench is ' +
+        'not part of the build, so the character is unchanged until the item ' +
+        'goes into a slot. Answers with the bench item as it now stands.\n\n' +
+        'Price it first with pob_craft_price where there is a route for it. ' +
+        '`change` picks what to do:\n' +
+        '- "affix": put a modifier in a prefix or suffix row, by `kind`, ' +
+        '`index`, the `affix` series from pob_craft what="affixes", and a ' +
+        '`tier`. `roll` says where in that tier\'s range it lands.\n' +
+        '- "rune": socket a rune or soul core, by `index` and `rune` name ' +
+        'from pob_craft what="runes".\n' +
+        '- "sockets": change how many sockets the item has, by `socket` and ' +
+        '`count`. PoB lets an item exceed what its base comes with.\n' +
+        '- "anoint": anoint a notable, by `node` id and `line`.\n' +
+        '- "corrupt": corrupt it, with the same `implicits` or `ranges` ' +
+        'draft pob_craft_price takes. This cannot be undone to the item: a ' +
+        'corrupted item can only be replaced by staging another.\n' +
+        '- "quality": set the item\'s quality.\n' +
+        '- "catalyst": apply one of the thirteen by number, with its own ' +
+        '`quality`.\n\n' +
+        '`clear` empties an affix row, a socket or an anoint line instead.',
+      inputSchema: {
+        change: z
+          .enum(['affix', 'rune', 'sockets', 'anoint', 'corrupt', 'quality', 'catalyst'])
+          .describe('What to change.'),
+        kind: z
+          .enum(['prefix', 'suffix'])
+          .optional()
+          .describe('For "affix": which half of the affix rows.'),
+        index: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('For "affix" and "rune": which row or socket, counting from 1.'),
+        affix: z
+          .string()
+          .optional()
+          .describe(
+            'For "affix": the series, which pob_craft what="affixes" prints ' +
+              'in front of each one, e.g. "IncreasedLife1".',
+          ),
+        tier: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('For "affix": which tier, 1 being the lowest. Defaults to the top one.'),
+        roll: z
+          .number()
+          .min(0)
+          .max(1)
+          .optional()
+          .describe(
+            'For "affix": where in the tier\'s range it rolls, 0 the bottom ' +
+              'and 1 the top. Defaults to what the row already had, else the middle.',
+          ),
+        rune: z
+          .string()
+          .optional()
+          .describe('For "rune": the rune or soul core, named as pob_craft prints it.'),
+        socket: z
+          .enum(['rune', 'jewel'])
+          .optional()
+          .describe('For "sockets": which kind to change the count of.'),
+        count: z
+          .number()
+          .int()
+          .min(0)
+          .max(6)
+          .optional()
+          .describe('For "sockets": how many.'),
+        node: z.number().int().optional().describe('For "anoint": the notable\'s node id.'),
+        line: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('For "anoint": which enchant line. Defaults to 1.'),
+        implicits: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe('For "corrupt": modifier ids keyed by implicit slot.'),
+        ranges: z
+          .record(z.string(), z.number())
+          .optional()
+          .describe('For "corrupt": a roll between 0.78 and 1.22 keyed by explicit index.'),
+        source: z
+          .enum(['Corrupted', 'SpecialCorrupted'])
+          .optional()
+          .describe('For "corrupt": which table the implicits come from.'),
+        quality: z
+          .number()
+          .int()
+          .min(0)
+          .max(99)
+          .optional()
+          .describe('For "quality" and "catalyst".'),
+        catalyst: z
+          .number()
+          .int()
+          .min(0)
+          .max(13)
+          .optional()
+          .describe('For "catalyst": which one, by the number pob_craft prints. 0 takes it off.'),
+        clear: z
+          .boolean()
+          .optional()
+          .describe('Empty the affix row, socket or anoint line named instead.'),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Required when the bench item is not one this server staged.'),
+      },
+      annotations: writes,
+    },
+    async (args) => {
+      const { change, clear } = args;
+
+      // Only when there is work to lose. An engine this server started has
+      // nobody looking at it, an item we staged ourselves is ours to
+      // change, and an empty bench holds nobody's craft.
+      if (!(await bridge.benchIsOurs())) {
+        const bench = await bridge.get<CraftState>('/item/craft');
+        if (bench.ready && args.confirm !== true) {
+          return no(
+            'The item on the bench is not one this server put there, and that ' +
+              'engine was already running when the server attached to it, so ' +
+              'somebody may be part way through this craft. Call again with ' +
+              'confirm=true, or stage your own item with pob_stage_item first.',
+          );
+        }
+      }
+
+      const after = async (): Promise<Result> =>
+        ok(show.bench(await bridge.get<CraftState>('/item/craft')));
+
+      if (change === 'affix') {
+        const { kind, index } = args;
+        if (kind === undefined || index === undefined) {
+          return no('change="affix" needs `kind` and `index`.');
+        }
+        if (clear === true) {
+          await bridge.post<BridgeSnapshot>('/action', {
+            action: 'setCraftAffix',
+            value: { kind, index, modId: 'None' },
+          });
+          return after();
+        }
+        if (args.affix === undefined) {
+          return no('change="affix" needs an `affix` series, or clear=true to empty the row.');
+        }
+        // The tiers are looked up rather than taken as an id, so that the
+        // list a reader saw does not have to carry nine ids per modifier.
+        // Asking the row itself also checks that the modifier can go in it.
+        const list = await bridge.get<CraftAffixes>('/craft/affixes', { kind, index });
+        if (!list.ready) {
+          return no(list.error ?? `The engine would not open ${kind} slot ${index}.`);
+        }
+        const option = (list.options ?? []).find((entry) => entry.key === args.affix);
+        if (!option) {
+          return no(
+            `Nothing called ${args.affix} can go in ${kind} slot ${index}. ` +
+              'pob_craft what="affixes" lists what can, for that row: a ' +
+              'modifier already in another row is excluded from the rest, so ' +
+              'the same series cannot be put in two of them.',
+          );
+        }
+        const tier = args.tier ?? option.tierCount;
+        const modId = option.modIds[tier - 1];
+        if (modId === undefined) {
+          return no(
+            `${show.strip(option.label)} has ${option.tierCount} tiers, so there is no tier ${tier}.`,
+          );
+        }
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'setCraftAffix',
+          value: { kind, index, modId, roll: args.roll },
+        });
+        return after();
+      }
+
+      if (change === 'rune') {
+        if (args.index === undefined) return no('change="rune" needs an `index`.');
+        if (clear !== true && args.rune === undefined) {
+          return no('change="rune" needs a `rune` name, or clear=true to empty the socket.');
+        }
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'setRune',
+          value: { index: args.index, name: clear === true ? 'None' : args.rune },
+        });
+        return after();
+      }
+
+      if (change === 'sockets') {
+        if (args.count === undefined) return no('change="sockets" needs a `count`.');
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'setSocketCount',
+          value: { kind: args.socket ?? 'rune', count: args.count },
+        });
+        return after();
+      }
+
+      if (change === 'anoint') {
+        const line = args.line ?? 1;
+        if (clear !== true && args.node === undefined) {
+          return no('change="anoint" needs a `node` id, or clear=true to take the anoint off.');
+        }
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'setAnoint',
+          value: { slot: line, node: clear === true ? null : args.node },
+        });
+        return after();
+      }
+
+      if (change === 'corrupt') {
+        if (args.implicits !== undefined && args.ranges !== undefined) {
+          return no(
+            'Give `implicits` or `ranges`, not both: PoB\'s corruption dialog ' +
+              'writes whichever half is showing, so a draft is one or the other.',
+          );
+        }
+        if (args.implicits === undefined && args.ranges === undefined) {
+          return no('change="corrupt" needs either `implicits` or `ranges`.');
+        }
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'corruptItem',
+          value: {
+            mode: args.ranges !== undefined ? 'ranges' : 'implicits',
+            source: args.source,
+            implicits: args.implicits === undefined ? undefined : keyed(args.implicits),
+            ranges: args.ranges === undefined ? undefined : keyed(args.ranges),
+          },
+        });
+        return after();
+      }
+
+      if (change === 'quality') {
+        if (args.quality === undefined) return no('change="quality" needs a `quality`.');
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'setCraftQuality',
+          value: { quality: args.quality },
+        });
+        return after();
+      }
+
+      if (args.catalyst === undefined) {
+        return no('change="catalyst" needs a `catalyst` number, 0 to take it off.');
+      }
+      await bridge.post<BridgeSnapshot>('/action', {
+        action: 'setCatalyst',
+        value: { catalyst: args.catalyst, quality: args.quality },
+      });
+      return after();
     },
   );
 }

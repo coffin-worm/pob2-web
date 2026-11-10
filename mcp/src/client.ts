@@ -19,6 +19,7 @@ export class Bridge {
   private engine: Engine | null = null;
   private connecting: Promise<Engine> | null = null;
   private nodes: Map<number, TreeNode> | null = null;
+  private claimed = false;
   private readonly own: boolean;
 
   constructor(options: { own?: boolean } = {}) {
@@ -45,6 +46,30 @@ export class Bridge {
   /** Whether this process started the engine, so nothing else is watching it. */
   async ours(): Promise<boolean> {
     return (await this.ready()).ours;
+  }
+
+  /**
+   * Whether the item on the crafting bench is one we put there.
+   *
+   * The guard on changing it exists to protect somebody else's work, so it
+   * should fire when there is work to lose and not otherwise. An engine
+   * this server started has nobody looking at it. An engine it attached to
+   * might, unless what is on the bench is what we staged.
+   *
+   * A heuristic, and it says so in the tool that asks: the app could have
+   * put something else on the bench between two of our calls and nothing
+   * here would know.
+   */
+  async benchIsOurs(): Promise<boolean> {
+    return this.claimed || (await this.ready()).ours;
+  }
+
+  claimBench() {
+    this.claimed = true;
+  }
+
+  releaseBench() {
+    this.claimed = false;
   }
 
   async get<T>(route: string, params: Record<string, string | number | undefined> = {}) {

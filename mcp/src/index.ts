@@ -49,8 +49,11 @@ async function main() {
         'improvement, use pob_what_if rather than reasoning about the ' +
         "modifiers: it runs the engine's own recalculation and reports the " +
         'difference, which is the same mechanism the app uses when you hover ' +
-        'something. Every number comes from the engine; none of it is ' +
-        'estimated here.',
+        'something. Crafting works the same way and happens on a bench that ' +
+        'is not part of the build: pob_stage_item puts an item there, ' +
+        'pob_craft_price says what a craft would be worth, and ' +
+        'pob_craft_apply makes it. Every number comes from the engine; none ' +
+        'of it is estimated here.',
     },
   );
 

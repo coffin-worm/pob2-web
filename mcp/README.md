@@ -66,7 +66,7 @@ can accumulate.
 
 ## The tools
 
-Fourteen, over the bridge's forty-five routes. The grouping is the point: the
+Fifteen, over the bridge's forty-five routes. The grouping is the point: the
 engine exposes a route per control, and a model handed forty tools spends
 its context on the schema list and still picks the wrong one. So these are
 grouped by the question somebody actually has, and the routes that differ
@@ -88,6 +88,7 @@ discriminator.
 | `pob_open_build` | Open a saved build, or import a share code |
 | `pob_craft` | The bench item, and what could go on it |
 | `pob_craft_price` | What an anoint, a corruption or a catalyst would be worth |
+| `pob_craft_apply` | Make that change to the bench item |
 | `pob_stage_item` | Put an item on the bench |
 
 `pob_what_if` takes a `change` of `passive`, `config`, `slot`, `gem` or
@@ -106,12 +107,29 @@ item id reads the item back out as text and stages a copy of it. Crafting on
 that copy leaves the worn one alone, and nothing is equipped unless somebody
 does it in the app.
 
-Two things are only reachable through the bench. PoB gives affix rows to a
-magic or rare built in its own craft dialog and to nothing else, so
-`pob_stage_item` can make a blank item from a base; anything copied out of
-the game carries its modifiers as text instead. Catalysts are the same: the
-control PoB hides for a pasted item is the one the pricing reads, so the
-thirteen can only be priced on something built on the bench.
+Affix rows are only reachable that way. PoB gives them to a magic or rare
+built in its own craft dialog and to nothing else, so `pob_stage_item` can
+make a blank item from a base; anything copied out of the game carries its
+modifiers as text instead.
+
+Catalysts are narrower for a different reason. PoB offers them for a ring,
+an amulet or a jewel, and only when the item's modifiers carry catalyst tags
+or the item was built on the bench. So a pasted rare whose modifiers happen
+to carry none is refused, and the engine says why.
+
+`pob_craft_apply` makes the change rather than pricing it, and it is the
+other half of the loop: read what a row could hold, price it, apply it, read
+what the item is now worth. It covers the seven things PoB can change about
+a bench item: an affix row, a rune socket, the socket count, an anoint, a
+corruption, the quality, and a catalyst.
+
+An affix row is addressed by series and tier rather than by the id of each
+tier, so `affix: "IncreasedLife1", tier: 8, roll: 1` is the top tier of that
+series rolled at the top of its range. The series handle is the lowest
+tier's id, which is what the list prints in front of each modifier, and the
+tier is resolved against the row being filled, so a modifier that cannot go
+in that row is refused by name. PoB excludes a series already in one row
+from the others, which is why the same one cannot be put in two.
 
 ## Everything is text, and that is the work
 
@@ -139,10 +157,13 @@ practice:
   catalysts that scale nothing on the item, and gives a comparison only to
   the ones that do. That is the answer, not a saving: a catalyst only
   touches modifiers carrying its own tag, and most items carry two or three.
-- The affix list leaves out the tier ids. They are what PoB's own dropdown
-  is keyed by, and nothing here can put one in a slot, so eight of them per
-  modifier would cost context and buy nothing. The corruption list does
-  print its ids, because those are what prices a draft.
+- The affix list prints one handle per series rather than one id per tier.
+  PoB keys its own dropdown by the id of each tier, and nine ids for each of
+  twenty modifiers would be most of the answer by weight, so a craft is
+  applied by the series plus a tier number and the server resolves it.
+- The thirteen catalyst numbers are printed by `pob_craft_price`, which is
+  the answer a reader applies one from, and not by every read of the bench.
+  They are a fixed table and it never changes.
 
 Measured on a level 73 build: the whole build summary with its stat sheet is
 1.2 kB, the allocated tree 0.8 kB, the configuration 1.9 kB, and a what-if
@@ -152,18 +173,29 @@ every slot it fits about 0.6 kB.
 
 ## Writing
 
-Two tools change anything, and neither writes to disk.
+Three tools change anything, and none of them writes to disk.
 
 `pob_open_build` replaces what the engine has open. `pob_stage_item`
-replaces what is on the bench, and the bench is not part of the build: no
-slot changes and no item is equipped.
+replaces what is on the bench and `pob_craft_apply` changes it, and the
+bench is not part of the build: no slot changes, no item is equipped, and
+the character's numbers do not move until one is.
 
-On an engine this server started, both are harmless. On an engine it merely
-attached to, somebody may have a window on that build or an item part way
-through a craft, so each refuses until called again with `confirm: true`.
+On an engine this server started, all three are harmless. On an engine it
+merely attached to, somebody may have a window on that build, so
+`pob_open_build` and `pob_stage_item` refuse until called again with
+`confirm: true`.
 
-The bridge's roughly sixty write commands are otherwise not exposed, which
-includes everything that touches the user's files.
+`pob_craft_apply` asks only when there is work to lose: an item this server
+staged is its own to change, and an empty bench holds nobody's craft, so the
+guard fires for an item that was already on the bench of an engine the
+server attached to. That is a heuristic rather than a fact, and it says so:
+the app could have put something else on the bench between two calls and
+nothing here would know.
+
+The bridge's remaining write commands are not exposed, which includes
+everything that touches the user's files, and everything that would change
+the build itself. So a crafted item stays on the bench: nothing here equips
+it.
 
 ## Checking it
 
@@ -181,12 +213,11 @@ stray line on it corrupts the session.
 
 ## Known gaps
 
-- **Nothing applies a craft.** Everything about the bench can be read and
-  priced; the twelve commands that change the item on it are not exposed, so
-  an affix cannot be put in a row, a rune in a socket, or a corruption on
-  the item. That is the read-and-price posture holding, and it is also the
-  obvious next thing: pricing a craft nobody can then make is half an
-  answer.
+- **A crafted item cannot be worn.** `equipStagedItem` is the one command
+  that would take an item off the bench and into a slot, and it is not
+  exposed, because that changes the build rather than the bench. So a craft
+  can be read, priced and made, and then has to be rebuilt by hand in the
+  app to keep.
 - **No comparison.** `/compare` holds the build against a saved comparison,
   stat by stat, which is exactly the shape a model wants and is not wired up.
 - **No notes.** `/notes` is readable and is not exposed.

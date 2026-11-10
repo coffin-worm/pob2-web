@@ -410,6 +410,8 @@ export interface CraftAffixRow {
   lines?: string[];
   tier?: number;
   tierCount?: number;
+  /** Every tier of this modifier, lowest first, so [0] is the series. */
+  modIds?: string[];
   /** Where in this tier's range it sits: 0 the bottom, 1 the top. */
   roll?: number;
   unknown?: boolean;
@@ -458,6 +460,8 @@ export interface CraftState {
 
 /** One modifier a slot could hold, with all of its tiers. */
 export interface CraftAffixOption {
+  /** The lowest tier's id, which is how the series is addressed. */
+  key: string;
   label: string;
   affix: string;
   /** Lowest tier first. */

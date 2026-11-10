@@ -571,10 +571,12 @@ function rest(lines: string[] | undefined, label: string): string {
 /** One prefix or suffix slot, as what is in it. */
 function affixRow(row: CraftAffixRow): string {
   if (row.modId === undefined) return `${row.index}. empty`;
+  // The lowest tier's id names the series, which is how a row is changed.
+  const series = row.modIds?.[0];
   const marks = [
     row.affix ? `"${strip(row.affix)}"` : '',
     row.tier !== undefined && row.tierCount !== undefined
-      ? `tier ${row.tier} of ${row.tierCount}`
+      ? `${series === undefined ? '' : `${series} `}tier ${row.tier} of ${row.tierCount}`
       : '',
     row.level === undefined ? '' : `item level ${row.level}`,
     // Where in the tier's own range it landed, which is the difference
@@ -650,11 +652,17 @@ export function bench(state: CraftState): string {
       '### Rune sockets',
       `${rune} rune and ${jewel} jewel, of at most ${max}` +
         (natural === undefined ? '' : `, ${natural} of them on the base itself`),
+      // Named, because a rune is socketed by name and a rune without a
+      // label of its own is labelled with its own first line.
       ...(state.runes ?? []).map((row) => {
         if (row.name === undefined) return `${row.index}. empty`;
         const label = strip(row.label ?? row.name);
         const lines = rest(row.lines, label);
-        return `${row.index}. ${label}${lines ? `: ${lines}` : ''}`;
+        return (
+          `${row.index}. ${row.name}` +
+          (label === row.name ? '' : `: ${label}`) +
+          (lines ? `. ${lines}` : '')
+        );
       }),
     );
   }
@@ -680,11 +688,15 @@ export function bench(state: CraftState): string {
     out.push(
       '',
       '### Corruption',
-      state.corrupt.corrupted
-        ? 'Already corrupted, so nothing more can be.'
-        : state.corrupt.corruptible
-          ? 'Can be corrupted.'
-          : 'This base cannot be corrupted.',
+      // Both flags, because they are not exclusive: PoB's own dialog opens
+      // on an item that is already corrupted and writes over what it
+      // carries. Saying "already corrupted, so nothing more can be" was
+      // my own inference and it was wrong.
+      state.corrupt.corruptible
+        ? state.corrupt.corrupted
+          ? 'Already corrupted, and the bench offers to corrupt it again.'
+          : 'Can be corrupted.'
+        : 'This base cannot be corrupted.',
     );
   }
 
@@ -761,11 +773,11 @@ export function staged(answer: StagedItem): string {
 /**
  * What one affix row could hold.
  *
- * The tier ids are deliberately not printed. They are what PoB's own
- * dropdown is keyed by, and nothing this server exposes can put one in a
- * slot, so eight of them per modifier would cost a reader context and buy
- * nothing. What is worth reading is the series, how many tiers it has, the
- * levels they start at, and what the top one rolls.
+ * One handle per series, not one id per tier. PoB keys its own dropdown by
+ * the id of each tier, and nine ids for each of twenty modifiers would be
+ * most of the answer by weight. The lowest tier's id names the whole
+ * series, and a craft is applied by that plus a tier number, so nothing a
+ * reader can use is left out.
  */
 export function affixOptions(answer: CraftAffixes): string {
   if (!answer.ready) {
@@ -795,9 +807,9 @@ export function affixOptions(answer: CraftAffixes): string {
         : `, item level ${Math.min(...levels)} to ${Math.max(...levels)}`;
     const top = option.preview.map((line) => strip(line)).join('; ');
     return (
-      `- ${strip(option.label)}` +
+      `- ${option.key}: ${strip(option.label)}` +
       (option.affix ? ` (${strip(option.affix)})` : '') +
-      `: ${option.tierCount} tier${option.tierCount === 1 ? '' : 's'}${span}` +
+      `, ${option.tierCount} tier${option.tierCount === 1 ? '' : 's'}${span}` +
       (top ? `\n    top tier: ${top}` : '')
     );
   });
@@ -851,10 +863,14 @@ export function runes(answer: CraftRunes): string {
     ].filter(Boolean);
     const label = strip(rune.label || rune.name);
     const lines = rest(rune.lines, label);
+    // The name first, because that is what sockets it. A rune with no
+    // label of its own is labelled with its first line, so the two are
+    // different strings and only one of them is an answer.
     return (
-      `- ${label}` +
+      `- ${rune.name}` +
+      (label === rune.name ? '' : `: ${label}`) +
       (marks.length > 0 ? ` (${marks.join(', ')})` : '') +
-      (lines ? `: ${lines}` : '')
+      (lines ? `. ${lines}` : '')
     );
   });
   return `${answer.total ?? options.length} fit these sockets.\n\n${lines.join('\n')}`;
@@ -990,11 +1006,13 @@ export function catalysts(answer: CraftCatalysts): string {
     const compare = nested(row.compare);
     const scales = (row.scales ?? []).map((line) => strip(line));
     if (row.error === undefined && scales.length === 0 && compare.ready && compare.unchanged) {
-      idle.push(strip(row.name));
+      // With its number, like the ones above: this is the only answer that
+      // names all thirteen, so it is the one a reader applies one from.
+      idle.push(`${row.id} ${strip(row.name)}`);
       continue;
     }
 
-    out.push('', `### ${strip(row.name)}${row.current ? ' (on it now)' : ''}`);
+    out.push('', `### ${strip(row.name)}, catalyst ${row.id}${row.current ? ', on it now' : ''}`);
     if (row.error !== undefined) {
       out.push(`The engine could not price it: ${strip(row.error)}`);
       continue;

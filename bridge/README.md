@@ -148,8 +148,16 @@ the commands that fill it are `stageItemText`, `stageDbItem` and
 Two of these routes answer about a narrower item than the name suggests.
 `/craft/affixes` needs an item PoB itself built, because only a magic or
 rare made in the craft dialog has affix rows; anything copied out of the
-game carries its modifiers as text. `/craft/catalysts` is the same, since
-the control it reads is one PoB hides for a pasted item.
+game carries its modifiers as text. `/craft/catalysts` reads the control
+PoB shows for a ring, an amulet or a jewel whose modifiers carry catalyst
+tags, or one built on the bench, and answers that a catalyst does not apply
+otherwise.
+
+Seven commands change the item on the bench, through `POST /action` like
+any other: `setCraftAffix`, `setRune`, `setSocketCount`, `setAnoint`,
+`corruptItem`, `setCraftQuality` and `setCatalyst`. None of them touches
+the build, because the bench is not part of it. `equipStagedItem` is the
+one that does.
 
 ## Writing
 
