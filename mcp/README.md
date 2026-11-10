@@ -114,8 +114,9 @@ practice:
 - `pob_calcs` with no filter lists sections and their headline figures,
   because the whole tab is a few hundred rows.
 
-A build summary comes out around 1.5 kB, the allocated tree under 1 kB, and
-a what-if a few hundred bytes.
+Measured on a level 73 build: the whole build summary with its stat sheet is
+1.2 kB, the allocated tree 0.8 kB, the configuration 1.9 kB, and a what-if
+two to five hundred bytes.
 
 ## Writing
 
