@@ -113,6 +113,38 @@ describe('saveBuildAs', () => {
   })
 })
 
+describe('the revision clients refetch on', () => {
+  it('moves when a build is opened, though PoB sets its own counter back to 1', async () => {
+    // A build on disk with something in it, so opening it is a real change.
+    const name = `zz-revision-${Date.now()}`
+    expect((await engine.action('setCharacterLevel', 55)).status).toBe(200)
+    expect((await engine.action('saveBuildAs', { name })).status).toBe(200)
+    const listed = (await engine.get('/builds')).body.entries
+      .find((e: any) => e.kind === 'build' && e.name === name)
+    expect(listed, 'the build was written').toBeTruthy()
+
+    expect((await engine.post('/build/new')).status).toBe(200)
+    const before = (await engine.get('/state')).body.outputRevision
+
+    expect((await engine.post('/build/open', { path: listed.path })).status).toBe(200)
+    const after = (await engine.get('/state')).body
+    expect(after.buildName).toBe(name)
+    expect(after.characterLevel).toBe(55)
+
+    // The trap this guards: buildMode:Init sets PoB's outputRevision back
+    // to 1, so on an engine that has not recalculated since it booted,
+    // opening a build left the number exactly where it was and every view
+    // that refetches when it moves went on showing the build before it.
+    expect(after.outputRevision).not.toBe(before)
+  })
+
+  it('does not move when nothing has changed', async () => {
+    const first = (await engine.get('/state')).body.outputRevision
+    const second = (await engine.get('/state')).body.outputRevision
+    expect(second).toBe(first)
+  })
+})
+
 describe('estimateResistancePenalty', () => {
   it('sets the penalty from the act on a fresh empty build', async () => {
     expect((await engine.post('/build/new')).status).toBe(200)

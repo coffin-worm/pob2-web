@@ -156,6 +156,7 @@ export function TreeView() {
   const showDeltas = useTreeStore((s) => s.showDeltas);
   const setShowDeltas = useTreeStore((s) => s.setShowDeltas);
   const load = useTreeStore((s) => s.load);
+  const refreshAlloc = useTreeStore((s) => s.refreshAlloc);
   const toggle = useTreeStore((s) => s.toggle);
 
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -260,7 +261,12 @@ export function TreeView() {
 
   useEffect(() => {
     void load();
-  }, [load]);
+    // And ask what is allocated, rather than trusting what the store was
+    // last told. App.tsx refetches this when the engine's revision moves,
+    // which covers editing; opening a build is the case it does not, and a
+    // view that asks on sight cannot show the build before it.
+    void refreshAlloc();
+  }, [load, refreshAlloc]);
 
   // Fit the whole tree on first sight, once there is something to fit.
   useEffect(() => {

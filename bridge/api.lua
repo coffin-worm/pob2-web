@@ -109,6 +109,34 @@ local SEG_KEY = {
 
 local EMPTY_BUDGET = { used = 0, max = 0, over = false }
 
+--- A revision that only ever goes up, for clients that refetch when it moves.
+---
+--- PoB's own `outputRevision` counts recalculations within one build and is
+--- set back to 1 by `buildMode:Init` (`Build.lua:641`), so opening a build
+--- *lowers* it, and opening one in an engine that has not recalculated since
+--- it booted sets 1 to 1. A client watching for a change sees nothing and
+--- goes on showing the build before it: that is an empty tree where a
+--- hundred allocated nodes should be.
+---
+--- So the count that leaves here is of changes rather than of
+--- recalculations. The build's identity is part of it because a different
+--- build is different output even when both have recalculated the same
+--- number of times.
+local revisionSeen = { output = nil, name = nil, file = nil, count = 0 }
+
+function api.revision(build)
+	local output = build and build.outputRevision or 0
+	local name = build and build.buildName or ""
+	local file = build and build.dbFileName or ""
+	if revisionSeen.output ~= output
+		or revisionSeen.name ~= name
+		or revisionSeen.file ~= file then
+		revisionSeen.output, revisionSeen.name, revisionSeen.file = output, name, file
+		revisionSeen.count = revisionSeen.count + 1
+	end
+	return revisionSeen.count
+end
+
 --- The whole of what the header renders, as plain serialisable values.
 function api.snapshot(build)
 	if not build or not build.controls then
@@ -163,10 +191,10 @@ function api.snapshot(build)
 		ready = true,
 		buildName = build.buildName or "",
 		unsaved = build.unsaved and true or false,
-		-- Incremented by buildMode:OnFrame on every recalculation. The Calcs
-		-- tab is expensive enough that it is fetched when this moves rather
-		-- than on a timer.
-		outputRevision = build.outputRevision or 0,
+		-- A number that changes whenever what the engine would answer has
+		-- changed. The Calcs tab and the tree's allocation are expensive
+		-- enough to be fetched when this moves rather than on a timer.
+		outputRevision = api.revision(build),
 		dbFileName = build.dbFileName or nil,
 		-- PoB's "Export Support", which lives on the Import tab and writes
 		-- the party tab. Here because a checkbox needs to know its own

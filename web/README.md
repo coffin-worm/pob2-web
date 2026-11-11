@@ -1141,8 +1141,19 @@ DPS for the main skill, while this tab details whichever skill you point it
 at. With Entangle as the main skill and Bonestorm selected here, the
 sidebar reads 189.5 DPS and the Calcs tab reads 241.4, and both are right.
 
-Because it is the expensive route, it is not polled. `buildMode.outputRevision`
-moves on every recalculation, and the app refetches on that.
+Because it is the expensive route, it is not polled. `outputRevision` moves
+when the engine's answer would be different, and the app refetches on that.
+
+That number is the bridge's own count rather than PoB's, and it has to be.
+PoB's `outputRevision` counts recalculations inside one build and
+`buildMode:Init` sets it back to 1, so opening a build lowers it, and
+opening one in an engine that has not recalculated since it booted leaves 1
+at 1. Nothing moved, so nothing refetched: the Calcs tab and the passive
+tree went on showing the build you had before. Open the app, pick a saved
+build, and the tree was empty, which is exactly how it looked. Counting the
+build's name and file alongside the recalculations fixes every view that
+refetches this way at once. The tree also asks for the allocation when it
+is opened, rather than trusting what it was last told.
 
 ### Where a number came from
 
@@ -1756,7 +1767,7 @@ idea of what PoB does would have agreed with me about the resistance
 penalty too.
 
 `npm run test:engine` boots a real engine and drives the bridge over HTTP:
-seventeen tests, about eight seconds. The ones worth having are the refusals.
+nineteen tests, about nine seconds. The ones worth having are the refusals.
 Every way an import can be malformed is asserted to leave the build name,
 level and class exactly as they were, because PoB deletes the equipment and
 the skill groups *before* it reads the payload, and a regression there
@@ -1774,13 +1785,16 @@ and the rings carry 25% of each resistance, so the penalty bug reads as
 and the test says `expected -60 to be -20`.
 
 `npm run test:e2e` runs Playwright against the real UI and a real engine:
-eighteen tests, about forty seconds. Nine views open with no console
+nineteen tests, about forty seconds. Nine views open with no console
 error, a pasted code is read, rubbish and an unknown host are refused,
 Ctrl+V stages an item, and saving writes a file the engine then lists. The
 same fixture is imported once more through the two buttons, with only
 pathofexile.com stood in for, and the sidebar is read the way you would read
 it: all three elemental resistances positive. One more imports a character
-with weapon set passives and reads the tree's own count of them.
+with weapon set passives and reads the tree's own count of them, and one
+opens a saved build from the Builds view and checks the tree filled in,
+which is the regression that wrote the paragraph about `outputRevision`
+above.
 
 Two things keep a test run from touching anything of yours. Both layers
 point `POB_USER_PATH` at a temporary directory, so no test writes to the

@@ -73,6 +73,15 @@ subject to describe, only a difference. `unchanged: true` is the engine's own
 verdict that the change moves nothing, which is worth saying out loud since
 it is otherwise indistinguishable from an empty answer.
 
+**`outputRevision` only ever goes up, and it is this bridge's count, not
+PoB's.** It is the number a client refetches on: when it moves, what the
+engine would answer has changed. PoB's own `outputRevision` counts
+recalculations within one build and `buildMode:Init` sets it back to 1
+(`Build.lua:641`), so opening a build lowers it, and opening one in an
+engine that has not recalculated since it booted leaves 1 at 1. A client
+watching for a change would see none and go on showing the build before it.
+So the build's name and file are part of what is counted here.
+
 **`buildMs` is the engine's own cost** for the routes that recalculate, so a
 client can tell an expensive question from a slow one.
 
