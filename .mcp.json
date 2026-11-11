@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pob2": {
+      "command": "node",
+      "args": ["C:/personal/pob2-web/mcp/dist/index.js"]
+    }
+  }
+}

@@ -34,6 +34,13 @@ server's own directory, and the engine is started on the first question
 rather than at startup, so the client's `initialize` comes back promptly
 instead of waiting several seconds for PoB to read the game data.
 
+`.mcp.json` at the root of the checkout says the same thing for Claude
+Code, which reads it when a session starts in this folder and asks before
+running a server it has not seen. The path in it is absolute, because a
+relative one would depend on the directory the client launches from. Note
+that `mcp/dist/` is not in the repository, so on a fresh checkout that file
+points at a build that has not happened yet.
+
 ## Which engine it talks to
 
 By default it attaches to an engine that is already running, and starts one
