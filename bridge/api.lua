@@ -1714,8 +1714,22 @@ local function groupSummary(tab, index, group)
 	local skills = asArray({})
 	for _, skill in ipairs(group.displaySkillList or {}) do
 		local effect = skill.activeEffect and skill.activeEffect.grantedEffect
-		skills[#skills + 1] = strip((effect and effect.name) or "?")
+		local name = effect and effect.name
+		-- A meta gem's granted effect carries an empty name rather than no
+		-- name, and "" is truthy in Lua, so the fallback below never fired
+		-- and the list read "grants , Mirage Archer, Ice Shot". The gem's
+		-- own name is what that skill is called anywhere a person looks.
+		if type(name) ~= "string" or name:match("^%s*$") then
+			local gemData = skill.activeEffect and skill.activeEffect.gemData
+			name = (gemData and gemData.name) or (effect and effect.id) or "?"
+		end
+		skills[#skills + 1] = strip(name)
 	end
+
+	-- PoB's own label: "Set 1", "Set 2" or "Both". Its own method, because
+	-- "both" is the absence of either flag rather than the presence of
+	-- two, which is not a rule worth restating here and getting wrong.
+	local okSet, weaponSet = pcall(tab.GetSocketGroupWeaponSetLabel, tab, group)
 
 	local source = nil
 	local single = group.sourceItem or group.sourceNode
@@ -1740,6 +1754,7 @@ local function groupSummary(tab, index, group)
 		source = source,
 		gemCount = #(group.gemList or {}),
 		skills = skills,
+		weaponSet = okSet and weaponSet or nil,
 	}
 end
 
@@ -3518,6 +3533,127 @@ function api.compare(build)
 	}
 end
 
+--- One skill's stats, without making it the main one.
+---
+--- The stat sidebar is always about the main skill, so asking what a
+--- second skill costs meant switching to it, reading, and switching back,
+--- with the build sitting on the wrong skill in between and an
+--- interruption leaving it there. `mainSocketGroup` is an argument to the
+--- misc calculator, the same way `repSlotName`/`repItem` are for the item
+--- bench, so this is the engine answering a hypothetical rather than the
+--- build being moved and moved back.
+---
+--- The index within the group has no such argument: CalcSetup reads
+--- `group.mainActiveSkill` straight off the group, so that one field is
+--- set and put back around the call. It is the same mutate-and-restore
+--- every what-if here does, and it is one field on one group rather than
+--- the build's own main skill.
+---
+--- One honest difference from the sidebar. `calcFunc` hands back an output
+--- table and no env, and the sidebar hides stats that the active skill's
+--- own flags say do not apply to it. Without the env those flags cannot
+--- be read, so a row is kept here when it has a value and dropped when it
+--- does not. Every number is still the engine's; what is approximated is
+--- which rows are worth printing.
+function api.skillStats(build, groupIndex, skillIndex)
+	local tab = build and build.skillsTab
+	local index = tonumber(groupIndex) or 0
+	local group = tab and tab.socketGroupList and tab.socketGroupList[index]
+	if not group then
+		return { ready = false, error = "no socket group " .. tostring(groupIndex) }
+	end
+
+	local calcsTab = build.calcsTab
+	if not calcsTab or not calcsTab.GetMiscCalculator then
+		return { ready = false, error = "the engine has no calculator yet" }
+	end
+	local calcFunc = calcsTab:GetMiscCalculator()
+	if not calcFunc then
+		return { ready = false, error = "the engine has not finished its first calculation" }
+	end
+
+	-- What this group grants, so a caller can say which of them it means.
+	local skills = asArray({})
+	for _, skill in ipairs(group.displaySkillList or {}) do
+		local effect = skill.activeEffect and skill.activeEffect.grantedEffect
+		local name = effect and effect.name
+		if type(name) ~= "string" or name:match("^%s*$") then
+			local gemData = skill.activeEffect and skill.activeEffect.gemData
+			name = (gemData and gemData.name) or (effect and effect.id) or "?"
+		end
+		skills[#skills + 1] = strip(name)
+	end
+
+	local wanted = tonumber(skillIndex)
+	if wanted and (wanted < 1 or wanted > #skills) then
+		return {
+			ready = false,
+			error = "no skill " .. tostring(skillIndex) .. " in that group; it grants " .. #skills,
+		}
+	end
+
+	local okSet, weaponSet = pcall(tab.GetSocketGroupWeaponSet, tab, group)
+	local buildFlag = build.buildFlag
+	local stored = group.mainActiveSkill
+	if wanted then
+		group.mainActiveSkill = wanted
+	end
+	local ok, output = pcall(calcFunc, {
+		mainSocketGroup = index,
+		weaponSet = okSet and weaponSet or nil,
+	})
+	group.mainActiveSkill = stored
+	build.buildFlag = buildFlag
+
+	if not ok then
+		return { ready = false, error = tostring(output) }
+	end
+
+	-- The same walk api.compare does, against one output instead of two.
+	local lines = asArray({})
+	for _, statData in ipairs(build.displayStats or {}) do
+		if not statData.stat and not statData.label then
+			lines[#lines + 1] = { gap = true }
+		elseif statData.stat == "SkillDPS" or statData.hideStat then
+			-- SkillDPS is several rows per skill, and PoB leaves it out of
+			-- a list like this one for the same reason.
+		elseif statData.stat then
+			local value = output[statData.stat] or 0
+			if statData.childStat then
+				value = type(value) == "table" and value[statData.childStat] or 0
+			end
+			if type(value) ~= "table" and value ~= 0
+				and (not statData.condFunc or statData.condFunc(value, output))
+			then
+				lines[#lines + 1] = {
+					label = strip(statData.label or statData.stat),
+					tone = toneOf(statData.color or ""),
+					value = formatStat(statData, value),
+				}
+			end
+		elseif statData.label and statData.condFunc and statData.condFunc(output) then
+			lines[#lines + 1] = {
+				label = strip(statData.label),
+				tone = toneOf(statData.color or ""),
+				value = strip(statData.val or ""),
+			}
+		end
+	end
+
+	return {
+		ready = true,
+		group = index,
+		groupLabel = strip(group.displayLabel or group.label or "?"),
+		skills = skills,
+		-- Which of them these numbers are about: what was asked for, else
+		-- the one the group is already pointed at.
+		skill = wanted or stored or 1,
+		weaponSet = okSet and weaponSet or nil,
+		main = build.mainSocketGroup == index or nil,
+		lines = lines,
+	}
+end
+
 --------------------------------------------------------- editing an item
 
 --- What is editable about one item.
@@ -4289,7 +4425,7 @@ end
 --- Unlike the tree and the item bench, the calculator has no argument for
 --- a gem, so these are the apply-and-revert shape: PoB's own tooltips
 --- write the field, recalculate and write it back, and so does this.
-function api.gemWhatIf(build, groupIndex, gemIndex, subject)
+function api.gemWhatIf(build, groupIndex, gemIndex, subject, level)
 	local tab = build and build.skillsTab
 	local group = tab and tab.socketGroupList and tab.socketGroupList[tonumber(groupIndex) or 0]
 	local gem = group and group.gemList and group.gemList[tonumber(gemIndex) or 0]
@@ -4298,6 +4434,29 @@ function api.gemWhatIf(build, groupIndex, gemIndex, subject)
 			ready = false,
 			error = "no gem " .. tostring(gemIndex) .. " in group " .. tostring(groupIndex),
 		}
+	end
+
+	-- A level is the one gem change with a number in it, and the one PoB
+	-- has no tooltip for: its own panel asks about enabling and about
+	-- quality, and a level is something you type and then read the sheet.
+	if subject == "level" then
+		local wanted = math_floor(tonumber(level) or 0)
+		if wanted < 1 then
+			return { ready = false, error = "expected a level of 1 or more" }
+		end
+		if wanted == (gem.level or 1) then
+			return {
+				ready = false,
+				error = "this gem is already at level " .. tostring(wanted),
+			}
+		end
+		local stored = gem.level
+		return whatIf(build, function()
+			gem.level = wanted
+			return function()
+				gem.level = stored
+			end
+		end, string.format("^7Taking this gem to level %d will give you:", wanted))
 	end
 
 	if subject == "quality" then

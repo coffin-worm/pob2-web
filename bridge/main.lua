@@ -319,9 +319,21 @@ end
 --- "enabled" (the default) or "quality".
 routes["GET /gem/whatif"] = function(_, query)
 	local started = os.clock()
-	local whatIf = api.gemWhatIf(currentBuild(), query.group, query.gem, query.subject)
+	local whatIf = api.gemWhatIf(
+		currentBuild(), query.group, query.gem, query.subject, query.level)
 	whatIf.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
 	return 200, whatIf
+end
+
+--- One skill's stats, without making it the main one.
+---
+--- `group` is a socket group; `skill` is which of the skills that group
+--- grants, counting from 1, for the groups that grant more than one.
+routes["GET /skills/stats"] = function(_, query)
+	local started = os.clock()
+	local stats = api.skillStats(currentBuild(), query.group, query.skill)
+	stats.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, stats
 end
 
 --- The item on the bench, against every slot it fits.
@@ -562,6 +574,20 @@ routes["POST /build/open"] = function(payload)
 	__mainObject__.main:SetMode("BUILD", path, name, xml)
 	runCallback("OnFrame")
 	settle(3)
+
+	-- Opening a file is not a change to it. PoB recomputes `unsaved` every
+	-- frame from a modFlag per tab, and calls ResetModFlags only on save,
+	-- so whatever loading itself sets stays set and the build claims
+	-- unsaved work the moment it is opened. Its own method, and one more
+	-- frame so OnFrame recomputes `unsaved` from the flags just cleared.
+	--
+	-- Only here, and deliberately not on the import routes: a build that
+	-- came from a code really does have changes no file holds.
+	local opened = currentBuild()
+	if opened and opened.ResetModFlags then
+		pcall(opened.ResetModFlags, opened)
+		settle(1)
+	end
 	return 200, api.snapshot(currentBuild())
 end
 
@@ -752,7 +778,8 @@ function love.load()
 	log("  GET /tree /tree/alloc   GET /items /item")
 	log("  GET /items/search /items/filters")
 	log("  GET /item/edit /item/staged")
-	log("  GET /skills /skills/group /gem /gems/search   GET /config /notes")
+	log("  GET /skills /skills/group /skills/stats /gem /gems/search")
+	log("  GET /config /notes")
 	log("  GET /item/craft /craft/affixes /craft/bases /craft/runes")
 	log("  GET /craft/anoints /craft/anoint/whatif")
 	log("  GET /craft/corruptions /craft/corrupt/preview")

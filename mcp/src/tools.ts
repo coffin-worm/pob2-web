@@ -1,7 +1,7 @@
 /**
  * What a client can ask.
  *
- * Nineteen tools over forty-odd routes, which is deliberate. The engine
+ * Twenty tools over forty-odd routes, which is deliberate. The engine
  * answers a UI and exposes a route per control; a model handed forty tools
  * spends its context on the schema list and still picks the wrong one. So
  * these are grouped by the question somebody actually has, and the routes
@@ -40,6 +40,7 @@ import type {
   ItemSearchSnapshot,
   ItemsSnapshot,
   NotesSnapshot,
+  SkillStats,
   SkillsSnapshot,
   StagedItem,
   StatsSnapshot,
@@ -92,6 +93,45 @@ const keyed = (table: Record<string, string | number>) =>
     .join(',');
 
 export function register(server: McpServer, bridge: Bridge) {
+  /**
+   * Why a change can be worth nothing.
+   *
+   * Every number in a comparison is about the main skill, and "nothing
+   * changes" on its own gives a reader no way to know that. A passive that
+   * only helps a skill the build is not pointed at, or only a cost this
+   * skill does not pay, is a true answer of nothing for a reason that is
+   * not about the passive. So when the engine says a change moves nothing,
+   * the answer says what the numbers were about.
+   *
+   * Only on that path, because it costs a request and says nothing a
+   * non-zero comparison does not already show.
+   */
+  const scope = async (): Promise<string> => {
+    try {
+      const skills = await bridge.get<SkillsSnapshot>('/skills');
+      if (!skills.ready) return '';
+      const main = skills.groups.find((group) => group.index === skills.mainGroup);
+      if (!main) return '';
+      const named = main.skills.length > 0 ? main.skills.join(', ') : show.strip(main.label);
+      return (
+        `\n\nThese numbers are about the main skill, ${named} in group ${main.index}. ` +
+        'A change that only helps a different skill, or only a cost this one ' +
+        'does not pay, moves nothing here even when it is worth something. ' +
+        'pob_skills with stats=true prices another skill without changing the build.'
+      );
+    } catch {
+      // The note is a courtesy. Failing to fetch it is not worth losing
+      // the comparison that was actually asked for.
+      return '';
+    }
+  };
+
+  /** A comparison, with that note when it moved nothing. */
+  const priced = async (answer: WhatIf, label: string): Promise<Result> => {
+    const text = show.comparison(answer, label);
+    return ok(answer.ready && answer.unchanged === true ? text + (await scope()) : text);
+  };
+
   /* ------------------------------------------------------------- the build */
 
   server.registerTool(
@@ -228,15 +268,38 @@ export function register(server: McpServer, bridge: Bridge) {
       title: 'Read the skills',
       description:
         'The socket groups: which skills the build uses, where they are ' +
-        'socketed, which one is the main one, and which are disabled. Pass ' +
-        '`group` with a group number for the gems in it at their levels and ' +
-        'qualities.',
+        'socketed, which one is the main one, which weapon set each is on, ' +
+        'and which are disabled. Pass `group` with a group number for the ' +
+        'gems in it at their levels and qualities.\n\n' +
+        'Pass `stats` with a `group` for that skill\'s own numbers: its ' +
+        'damage, its rates and what it costs. That is the way to ask what a ' +
+        'skill other than the main one does, because the build\'s stat sheet ' +
+        'is always about the main skill. The build is not changed. Some ' +
+        'groups grant more than one skill, so `skill` picks which, counting ' +
+        'from 1 in the order the group lists them.',
       inputSchema: {
         group: z.number().int().optional().describe('A socket group number, for its gems.'),
+        stats: z
+          .boolean()
+          .optional()
+          .describe("One skill's own stat sheet, rather than the gems. Needs `group`."),
+        skill: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('For `stats`: which skill in the group, when it grants more than one.'),
       },
       annotations: reads,
     },
-    async ({ group }) => {
+    async ({ group, stats, skill }) => {
+      if (stats === true) {
+        if (group === undefined) return no('`stats` needs a `group`.');
+        return ok(
+          show.skillStats(await bridge.get<SkillStats>('/skills/stats', { group, skill })),
+        );
+      }
+
       const skills = await bridge.get<SkillsSnapshot>('/skills', { group });
       if (!skills.ready) return no('The engine has no skills for this build.');
 
@@ -368,8 +431,10 @@ export function register(server: McpServer, bridge: Bridge) {
         '- "config": a Configuration option, by `option` (its variable name ' +
         'from pob_config) and `value`.\n' +
         '- "slot": turning a flask or charm on or off, by `slot`.\n' +
-        '- "gem": a gem being disabled or taken to 20 quality, by `group`, ' +
-        '`gem` and `subject`.\n' +
+        '- "gem": a gem being disabled, taken to 20 quality, or taken to a ' +
+        'different `level`, by `group`, `gem` and `subject`. A level is the ' +
+        'one that prices a requirement: a gem two levels down may cost much ' +
+        'less attribute and very little damage.\n' +
         '- "socket_group": a whole socket group being turned off, by `group`.\n\n' +
         'Crafting a change into an item is priced by pob_craft_price instead, ' +
         'because that happens on the bench rather than on the build.',
@@ -394,9 +459,18 @@ export function register(server: McpServer, bridge: Bridge) {
           .describe('For "gem" and "socket_group": the socket group number.'),
         gem: z.number().int().optional().describe('For "gem": the gem number in the group.'),
         subject: z
-          .enum(['enabled', 'quality'])
+          .enum(['enabled', 'quality', 'level'])
           .optional()
-          .describe('For "gem": whether to price turning it off, or taking it to 20 quality.'),
+          .describe(
+            'For "gem": turning it off, taking it to 20 quality, or to a ' +
+              'different level. "level" needs `level`.',
+          ),
+        level: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('For "gem" with subject "level": the level to price it at.'),
       },
       annotations: reads,
     },
@@ -424,7 +498,14 @@ export function register(server: McpServer, bridge: Bridge) {
             ),
           );
         }
-        return ok(parts.join('\n'));
+        // The node and the route are two answers, and a node that moves
+        // nothing by itself can still be worth taking as part of one, so
+        // the note goes on only when neither of them moved anything.
+        const movedNothing =
+          answer.node.ready &&
+          answer.node.unchanged === true &&
+          (!answer.path || (answer.path.ready && answer.path.unchanged === true));
+        return ok(parts.join('\n') + (movedNothing ? await scope() : ''));
       }
 
       if (change === 'config') {
@@ -437,13 +518,13 @@ export function register(server: McpServer, bridge: Bridge) {
           args.value === undefined
             ? `## Flipping ${args.option}`
             : `## Setting ${args.option} to ${String(args.value)}`;
-        return ok(show.comparison(answer, label));
+        return priced(answer, label);
       }
 
       if (change === 'slot') {
         if (args.slot === undefined) return no('change="slot" needs a `slot` name.');
         const answer = await bridge.get<WhatIf>('/items/whatif', { slot: args.slot });
-        return ok(show.comparison(answer, `## Switching ${args.slot}`));
+        return priced(answer, `## Switching ${args.slot}`);
       }
 
       if (change === 'gem') {
@@ -451,21 +532,28 @@ export function register(server: McpServer, bridge: Bridge) {
           return no('change="gem" needs both `group` and `gem`.');
         }
         const subject = args.subject ?? 'enabled';
+        if (subject === 'level' && args.level === undefined) {
+          return no('subject="level" needs the `level` to price it at.');
+        }
         const answer = await bridge.get<WhatIf>('/gem/whatif', {
           group: args.group,
           gem: args.gem,
           subject,
+          level: args.level,
         });
+        const where = `Gem ${args.gem} in group ${args.group}`;
         const label =
           subject === 'quality'
-            ? `## Gem ${args.gem} in group ${args.group} at 20 quality`
-            : `## Gem ${args.gem} in group ${args.group} turned off`;
-        return ok(show.comparison(answer, label));
+            ? `## ${where} at 20 quality`
+            : subject === 'level'
+              ? `## ${where} at level ${args.level}`
+              : `## ${where} turned off`;
+        return priced(answer, label);
       }
 
       if (args.group === undefined) return no('change="socket_group" needs a `group`.');
       const answer = await bridge.get<WhatIf>('/skills/whatif', { group: args.group });
-      return ok(show.comparison(answer, `## Socket group ${args.group} switched`));
+      return priced(answer, `## Socket group ${args.group} switched`);
     },
   );
 
@@ -1488,5 +1576,67 @@ export function register(server: McpServer, bridge: Bridge) {
       annotations: reads,
     },
     async () => ok(show.notes(await bridge.get<NotesSnapshot>('/notes'))),
+  );
+
+  server.registerTool(
+    'pob_set_main_skill',
+    {
+      title: 'Choose the main skill',
+      description:
+        'Point the build at a different skill. Everything the build reports ' +
+        'is about its main skill, so this changes every number on the sheet ' +
+        'and is the only way to make another skill the one the build is ' +
+        'judged by.\n\n' +
+        'To read a skill without making it the main one, use pob_skills with ' +
+        'stats=true instead, which leaves the build alone. Reach for this ' +
+        'when the main skill really is wrong, not to look something up.\n\n' +
+        'Nothing is written to disk. `group` is a socket group number from ' +
+        'pob_skills; `skill` picks which skill within it, for the groups ' +
+        'that grant more than one.',
+      inputSchema: {
+        group: z.number().int().min(1).describe('The socket group to make main.'),
+        skill: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('Which skill in that group, when it grants more than one.'),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Required when the engine is one this server did not start.'),
+      },
+      annotations: writes,
+    },
+    async ({ group, skill, confirm }) => {
+      if (!(await bridge.ours()) && confirm !== true) {
+        return no(
+          'That engine was already running when this server attached to it, ' +
+            'so somebody may have a window open on the build. Changing the ' +
+            'main skill changes every number they are looking at. Call again ' +
+            'with confirm=true if that is wanted.',
+        );
+      }
+
+      await bridge.post<BridgeSnapshot>('/action', {
+        action: 'setSocketGroup',
+        value: group,
+      });
+      if (skill !== undefined) {
+        // Second, and only after the group: the skill list belongs to the
+        // group, so setting it first indexes the old group's skills.
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'setMainSkill',
+          value: skill,
+        });
+      }
+
+      const skills = await bridge.get<SkillsSnapshot>('/skills');
+      if (!skills.ready) return ok('Done. The engine has no skill list to show.');
+      return ok(
+        `The main skill is now in group ${skills.mainGroup}.\n\n` +
+          show.groups(skills.groups, skills.mainGroup),
+      );
+    },
   );
 }

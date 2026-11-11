@@ -1017,6 +1017,12 @@ export interface SocketGroup {
   gemCount: number;
   /** The active skills the group currently grants. */
   skills: string[];
+  /**
+   * PoB's own label for which weapon set the group is on: "Set 1",
+   * "Set 2", or "Both" when it is tied to neither and so follows whichever
+   * set the Items tab has active.
+   */
+  weaponSet?: string;
 }
 
 export interface GemInstance {

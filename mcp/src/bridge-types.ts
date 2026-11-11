@@ -140,6 +140,29 @@ export type ItemDetail =
       lines: ItemLine[];
     };
 
+/** One line of a skill's own stat sheet, or a section break. */
+export interface SkillStatLine {
+  gap?: boolean;
+  label?: string;
+  value?: string;
+}
+
+export type SkillStats =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      group: number;
+      groupLabel: string;
+      /** Every active skill the group grants, in order. */
+      skills: string[];
+      /** Which of them these numbers are about, counting from 1. */
+      skill: number;
+      weaponSet?: number;
+      /** Set when this is already the build's main skill. */
+      main?: boolean;
+      lines: SkillStatLine[];
+    };
+
 export interface SocketGroup {
   index: number;
   label: string;
@@ -151,6 +174,11 @@ export interface SocketGroup {
   source?: string;
   gemCount: number;
   skills: string[];
+  /**
+   * PoB's own label for the weapon set: "Set 1", "Set 2", or "Both" when
+   * the group is tied to neither and so follows whichever set is active.
+   */
+  weaponSet?: string;
 }
 
 export interface GemInstance {

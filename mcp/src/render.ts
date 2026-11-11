@@ -33,6 +33,7 @@ import type {
   ItemLine,
   ItemSlot,
   ItemSummary,
+  SkillStats,
   SocketGroup,
   StagedItem,
   StatLine,
@@ -339,26 +340,99 @@ export function equipment(
 
 /* --------------------------------------------------------------- the skills */
 
+/**
+ * A mark is meant to be on both weapon sets, and almost nothing else is.
+ *
+ * PoB ties a socket group to set 1, to set 2, or to neither, and neither
+ * means it follows whichever set the Items tab has active. That last one is
+ * usually an oversight: a skill meant for the bow keeps working when the
+ * character swaps to the mace, and nothing on the sheet says so. Marks are
+ * the exception people actually want, so they are not worth warning about.
+ */
+const BOTH_SETS_IS_FINE = /\bmark\b/i;
+
 export function groups(list: SocketGroup[], mainGroup: number): string {
   if (list.length === 0) return 'This build has no socket groups.';
-  return tidy(
-    list.map((group) => {
-      const marks = [
-        group.index === mainGroup ? 'main' : '',
-        group.enabled ? '' : 'disabled',
-        group.fullDPS ? 'in full DPS' : '',
-        group.source ? `granted by ${strip(group.source)}` : '',
-      ].filter(Boolean);
-      const where = group.slot ? ` in ${group.slot}` : '';
-      const skills = group.skills.length > 0 ? ` grants ${group.skills.join(', ')}` : '';
-      const count = `${group.gemCount} gem${group.gemCount === 1 ? '' : 's'}`;
-      return (
-        `${group.index}. ${strip(group.label)}${where}` +
-        ` (${count}${marks.length > 0 ? `, ${marks.join(', ')}` : ''})` +
-        skills
-      );
-    }),
+
+  const suspect = list.filter(
+    (group) =>
+      group.weaponSet === 'Both' &&
+      group.enabled &&
+      group.skills.length > 0 &&
+      !group.skills.every((skill) => BOTH_SETS_IS_FINE.test(skill)),
   );
+
+  const lines = list.map((group) => {
+    const marks = [
+      group.index === mainGroup ? 'main' : '',
+      group.enabled ? '' : 'disabled',
+      // Said on every group, because which set a skill is on is invisible
+      // everywhere else in this answer and wrong often enough to matter.
+      group.weaponSet ? `weapon ${group.weaponSet.toLowerCase()}` : '',
+      group.fullDPS ? 'in full DPS' : '',
+      group.source ? `granted by ${strip(group.source)}` : '',
+    ].filter(Boolean);
+    const where = group.slot ? ` in ${group.slot}` : '';
+    const skills = group.skills.length > 0 ? ` grants ${group.skills.join(', ')}` : '';
+    const count = `${group.gemCount} gem${group.gemCount === 1 ? '' : 's'}`;
+    return (
+      `${group.index}. ${strip(group.label)}${where}` +
+      ` (${count}${marks.length > 0 ? `, ${marks.join(', ')}` : ''})` +
+      skills
+    );
+  });
+
+  if (suspect.length > 0) {
+    lines.push(
+      '',
+      `### On both weapon sets (${suspect.length})`,
+      suspect.map((group) => `${group.index}. ${strip(group.label)}`).join(', ') +
+        ': tied to neither set, so they follow whichever one the Items tab has ' +
+        'active. That is what a mark wants and rarely what anything else does.',
+    );
+  }
+
+  return tidy(lines);
+}
+
+/**
+ * One skill's own numbers, with the build left alone.
+ *
+ * The stat sheet is always about the main skill, so this is the answer to
+ * "what does the other one cost" that does not involve switching to it.
+ */
+export function skillStats(answer: SkillStats): string {
+  if (!answer.ready) {
+    return `The engine could not price that skill: ${strip(answer.error ?? 'no reason given')}`;
+  }
+
+  const which =
+    answer.skills.length > 1
+      ? `${strip(answer.skills[answer.skill - 1] ?? `skill ${answer.skill}`)}` +
+        ` (${answer.skill} of ${answer.skills.length} in the group)`
+      : strip(answer.skills[0] ?? answer.groupLabel);
+
+  const out: string[] = [
+    `${which}, from group ${answer.group}, ${strip(answer.groupLabel)}` +
+      (answer.weaponSet === undefined ? '' : ` on weapon set ${answer.weaponSet}`) +
+      '.',
+    answer.main
+      ? 'This is the main skill, so these are the build\'s own numbers.'
+      : 'Not the main skill. The build is unchanged: these are what it would ' +
+        'report if this skill were the main one.',
+    '',
+  ];
+
+  for (const line of answer.lines) {
+    if (line.gap) {
+      out.push('');
+      continue;
+    }
+    if (line.label === undefined) continue;
+    out.push(`${strip(line.label)}${line.value === undefined ? '' : `: ${strip(line.value)}`}`);
+  }
+
+  return tidy(out);
 }
 
 export function gems(list: GemInstance[]): string {

@@ -85,6 +85,15 @@ So the build's name and file are part of what is counted here.
 **`buildMs` is the engine's own cost** for the routes that recalculate, so a
 client can tell an expensive question from a slow one.
 
+**Everything the build reports is about its main skill.** The stat sheet,
+every what-if, and the Calcs tab all answer for one skill, so a passive that
+helps a different one moves nothing and says nothing about why.
+`/skills/stats` is the way round that: `mainSocketGroup` is an argument to
+the misc calculator, the same way `repItem` is, so the engine answers for
+another skill without the build being moved to it and back. The index within
+a group has no such argument, so that one field is set and restored around
+the call.
+
 ## Reading
 
 | Route | Takes | Answers |
@@ -105,6 +114,7 @@ client can tell an expensive question from a slow one.
 | `GET /items/filters` | | What each of those axes offers |
 | `GET /skills` | `group?` | Socket groups, and the gems in one of them |
 | `GET /skills/group` | `index` | What a socket group does |
+| `GET /skills/stats` | `group`, `skill?` | One skill's own stat sheet, without making it the main one |
 | `GET /gem` | `group`, `gem` | One gem at its current level and quality |
 | `GET /gems/search` | `q` | Every gem in the game, by name |
 | `GET /config` | | The Configuration tab: only the options this build uses |
@@ -126,7 +136,7 @@ you hover something.
 | --- | --- | --- |
 | `GET /tree/whatif` | `node` | A passive: the node alone, and the whole route to it with a per-point column |
 | `GET /items/whatif` | `slot` | A flask or charm being switched on, or off |
-| `GET /gem/whatif` | `group`, `gem`, `subject` | A gem disabled, or taken to 20 quality |
+| `GET /gem/whatif` | `group`, `gem`, `subject`, `level?` | A gem disabled, taken to 20 quality, or taken to another level |
 | `GET /skills/whatif` | `group` | A whole socket group switched |
 | `GET /config/whatif` | `var`, `value?` | One configuration option changed |
 | `GET /craft/anoint/whatif` | `slot`, `node?` | One anoint on the bench item |

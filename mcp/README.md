@@ -73,7 +73,7 @@ can accumulate.
 
 ## The tools
 
-Nineteen, over the bridge's forty-five routes. The grouping is the point: the
+Twenty, over the bridge's forty-six routes. The grouping is the point: the
 engine exposes a route per control, and a model handed forty tools spends
 its context on the schema list and still picks the wrong one. So these are
 grouped by the question somebody actually has, and the routes that differ
@@ -85,7 +85,7 @@ discriminator.
 | `pob_build` | The open build and its whole stat sheet. The place to start. |
 | `pob_tree` | What is allocated on the passive tree, or one node in full |
 | `pob_items` | What is equipped, or one item's modifiers and what it is worth |
-| `pob_skills` | The socket groups, or the gems in one of them |
+| `pob_skills` | The socket groups, the gems in one, or one skill's own stats |
 | `pob_config` | The assumptions the numbers rest on |
 | `pob_calcs` | The Calculations tab, section summaries or matching rows |
 | `pob_breakdown` | The engine's working behind one number |
@@ -101,6 +101,7 @@ discriminator.
 | `pob_compare` | This build against another one, stat by stat |
 | `pob_compare_load` | Load, choose or drop a build to compare against |
 | `pob_notes` | What the build's author wrote about it |
+| `pob_set_main_skill` | Point the build at a different skill |
 
 `pob_what_if` takes a `change` of `passive`, `config`, `slot`, `gem` or
 `socket_group`; `pob_craft_price` takes `anoint`, `corruption` or
@@ -141,6 +142,30 @@ tier's id, which is what the list prints in front of each modifier, and the
 tier is resolved against the row being filled, so a modifier that cannot go
 in that row is refused by name. PoB excludes a series already in one row
 from the others, which is why the same one cannot be put in two.
+
+## One skill at a time
+
+Everything a build reports is about its main skill. The stat sheet, every
+what-if and the whole Calcs tab answer for that one skill, which is easy to
+forget and expensive to forget: a passive that helps a different skill
+prices as worth nothing, and the answer looks like a verdict on the passive.
+
+So `pob_skills` with `stats=true` gives one skill's own sheet without
+touching the build, and a what-if that moves nothing says which skill it was
+about rather than only "nothing changes". Some groups grant more than one
+skill, so `skill` picks which: on a group granting Ice-Tipped Arrows and Ice
+Fragments, the first has a mana cost and no damage and the second has the
+damage.
+
+`pob_set_main_skill` is the other half, for when the main skill really is
+wrong rather than when something needs looking up. It is a write, and
+guarded like the others.
+
+Which weapon set each group is on is now on every line of `pob_skills`,
+because it is invisible everywhere else and wrong often enough to matter. A
+group tied to neither set follows whichever set is active, which is what a
+mark wants and rarely what anything else does, so the ones that are not
+marks are listed again at the end.
 
 ## The comparison
 
