@@ -393,6 +393,15 @@ behind a switch in the HUD. That switch is PoB's `Ctrl+D` made visible,
 and it exists for the same reason PoB has one: two full recalculations is
 not a thing to fire while a pointer travels across 4546 nodes.
 
+The route a click would allocate has a switch of its own beside it, and
+that one starts off. It is cheap to compute, so cost is not the reason:
+the route redraws on every node the pointer crosses, and most of the time
+the tree is being read rather than clicked, so what it mostly does is
+flicker under the cursor. Turning it on costs nothing for the moment
+somebody is planning a click. The point cost in the tooltip is not part of
+it and shows either way, because that comes from the allocation snapshot
+rather than from the route.
+
 Verified in the browser on Eldritch Will, 30 points away: the node alone
 gave `+2 Total Life (+3.1%)`, and the route gave `+15.0 Average Hit
 (+10.0%) [+0.5 (+0.3%) per point]`.

@@ -155,6 +155,8 @@ export function TreeView() {
   const previewDelta = useTreeStore((s) => s.previewDelta);
   const showDeltas = useTreeStore((s) => s.showDeltas);
   const setShowDeltas = useTreeStore((s) => s.setShowDeltas);
+  const showPaths = useTreeStore((s) => s.showPaths);
+  const setShowPaths = useTreeStore((s) => s.setShowPaths);
   const load = useTreeStore((s) => s.load);
   const refreshAlloc = useTreeStore((s) => s.refreshAlloc);
   const toggle = useTreeStore((s) => s.toggle);
@@ -863,6 +865,18 @@ export function TreeView() {
           <span className={styles.hudValue}>{frameMs}</span> ms/frame
         </span>
         <span>{spriteMode ? 'art' : 'dots'}</span>
+        <button
+          className={styles.hudToggle}
+          data-on={showPaths ? 'true' : undefined}
+          onClick={() => setShowPaths(!showPaths)}
+          title={
+            showPaths
+              ? 'Stop highlighting the route a click would allocate'
+              : 'Highlight the route a click would allocate, on hover'
+          }
+        >
+          path preview {showPaths ? 'on' : 'off'}
+        </button>
         <button
           className={styles.hudToggle}
           data-on={showDeltas ? 'true' : undefined}

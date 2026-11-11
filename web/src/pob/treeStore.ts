@@ -80,6 +80,18 @@ interface TreeStore {
   showDeltas: boolean;
   setShowDeltas(on: boolean): void;
 
+  /**
+   * Whether the route a click would take is drawn under the pointer.
+   *
+   * Off unless it is turned on, which is the other way round from the
+   * switch above. The route redraws on every node the pointer crosses, so
+   * reading the tree means watching it flicker, and most of the time the
+   * tree is being read rather than clicked. It costs nothing to turn on
+   * for the moment somebody is actually planning a click.
+   */
+  showPaths: boolean;
+  setShowPaths(on: boolean): void;
+
   load(): Promise<void>;
   refreshAlloc(): Promise<void>;
   toggle(id: number): Promise<void>;
@@ -100,6 +112,16 @@ export const useTreeStore = create<TreeStore>((set, get) => {
       return window.localStorage.getItem('pob.tree.deltas') !== 'off';
     } catch {
       return true;
+    }
+  };
+
+  // Read the other way round, so the default is off: nothing stored means
+  // no route following the pointer.
+  const readShowPaths = () => {
+    try {
+      return window.localStorage.getItem('pob.tree.paths') === 'on';
+    } catch {
+      return false;
     }
   };
 
@@ -141,6 +163,19 @@ export const useTreeStore = create<TreeStore>((set, get) => {
     preview: null,
     delta: null,
     showDeltas: readShowDeltas(),
+    showPaths: readShowPaths(),
+
+    setShowPaths: (on) => {
+      try {
+        window.localStorage.setItem('pob.tree.paths', on ? 'on' : 'off');
+      } catch {
+        // A refused write costs the preference, not the feature.
+      }
+      // Turning it off takes the drawn route with it. Leaving the last one
+      // on screen after the switch is a highlight with nothing explaining
+      // it, which is the same reason clearHover drops it.
+      set({ showPaths: on, preview: on ? get().preview : null });
+    },
 
     setShowDeltas: (on) => {
       try {
@@ -176,7 +211,7 @@ export const useTreeStore = create<TreeStore>((set, get) => {
     },
 
     previewPath: async (id) => {
-      if (id === null) {
+      if (id === null || !get().showPaths) {
         if (get().preview) set({ preview: null });
         return;
       }
@@ -191,8 +226,9 @@ export const useTreeStore = create<TreeStore>((set, get) => {
         const result = await bridge.treePath(id);
         if (!result.ready) return;
         pathCache.set(id, { path: result.path, cost: result.cost });
-        // The pointer may have moved on while this was in flight.
-        if (get().reachable.has(id) || get().allocated.has(id)) {
+        // The pointer may have moved on, or the switch been thrown, while
+        // this was in flight.
+        if (get().showPaths && (get().reachable.has(id) || get().allocated.has(id))) {
           set({ preview: { id, path: result.path, cost: result.cost } });
         }
       } catch {
