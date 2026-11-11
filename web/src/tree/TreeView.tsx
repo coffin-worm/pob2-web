@@ -58,6 +58,16 @@ const SPRITE_SCALE = 0.06;
 /** Unallocated art, dimmed so the lit tree reads at a glance. */
 const DIM_ALPHA = 0.5;
 
+/**
+ * Set I and Set II, in PoB's own two colours (`colorCodes.NEGATIVE` and
+ * `POSITIVE`), so a tree read here and a tree read there say the same thing.
+ * Red and green alone would be a poor way to tell two things apart, so the
+ * ring around a Set II node is dashed as well, and the hover text names the
+ * set outright.
+ */
+const WEAPON_SET_COLOURS = ['#dd0022', '#33ff77'];
+const WEAPON_SET_NAMES = ['Set I', 'Set II'];
+
 interface Camera {
   x: number;
   y: number;
@@ -136,6 +146,7 @@ export function TreeView() {
   const arcErrors = useTreeStore((s) => s.arcErrors);
   const art = useTreeStore((s) => s.art);
   const allocated = useTreeStore((s) => s.allocated);
+  const weaponSets = useTreeStore((s) => s.weaponSets);
   const reachable = useTreeStore((s) => s.reachable);
   const backdrop = useTreeStore((s) => s.backdrop);
   const preview = useTreeStore((s) => s.preview);
@@ -374,17 +385,26 @@ export function TreeView() {
       // curve to approximate and nothing to go subtly out of true.
       const dimPath = new Path2D();
       const litPath = new Path2D();
+      // One more shape per weapon set, so a set's branch is drawn in its own
+      // colour instead of disappearing into the lit tree. PoB takes the set
+      // from whichever end of the connector has one.
+      const setPaths = [new Path2D(), new Path2D()];
+      const pathFor = (a: TreeNode, b: TreeNode) => {
+        if (!allocated.has(a.id) || !allocated.has(b.id)) return dimPath;
+        const set = weaponSets.get(a.id) ?? weaponSets.get(b.id);
+        return set ? setPaths[set - 1] : litPath;
+      };
 
       for (const [a, b] of drawLines) {
         if (!visible(a.x, a.y) && !visible(b.x, b.y)) continue;
-        const path = allocated.has(a.id) && allocated.has(b.id) ? litPath : dimPath;
+        const path = pathFor(a, b);
         path.moveTo(a.x, a.y);
         path.lineTo(b.x, b.y);
       }
 
       for (const { a, b, cx, cy, r } of drawArcs) {
         if (!visible(a.x, a.y) && !visible(b.x, b.y)) continue;
-        const path = allocated.has(a.id) && allocated.has(b.id) ? litPath : dimPath;
+        const path = pathFor(a, b);
         const from = Math.atan2(a.y - cy, a.x - cx);
         const to = Math.atan2(b.y - cy, b.x - cx);
         // The short way round: the long way would cut across the tree.
@@ -401,6 +421,10 @@ export function TreeView() {
       ctx.lineWidth = CONNECTOR_WIDTH * 1.8;
       ctx.strokeStyle = '#c9a227';
       ctx.stroke(litPath);
+      for (const [index, path] of setPaths.entries()) {
+        ctx.strokeStyle = WEAPON_SET_COLOURS[index];
+        ctx.stroke(path);
+      }
 
       // The route a click would take, over the connectors and under the
       // nodes. Drawn from the same two shapes as everything else: a
@@ -484,6 +508,28 @@ export function TreeView() {
         ctx.fill(lit);
       }
 
+      // The ring that says which weapon set paid for a node. Drawn over the
+      // node art rather than tinting it: the frame carries the node's own
+      // state, which is not this one's to overwrite.
+      if (weaponSets.size > 0) {
+        ctx.lineWidth = 3 / cam.scale;
+        for (const [index, colour] of WEAPON_SET_COLOURS.entries()) {
+          const set = index + 1;
+          const ring = new Path2D();
+          for (const { node, radius } of drawNodes) {
+            if (weaponSets.get(node.id) !== set) continue;
+            if (!visible(node.x, node.y)) continue;
+            const r = (sprites ? hitRadius(node) : radius) + 5 / cam.scale;
+            ring.moveTo(node.x + r, node.y);
+            ring.arc(node.x, node.y, r, 0, Math.PI * 2);
+          }
+          ctx.setLineDash(set === 2 ? [9 / cam.scale, 7 / cam.scale] : []);
+          ctx.strokeStyle = colour;
+          ctx.stroke(ring);
+        }
+        ctx.setLineDash([]);
+      }
+
       // ----------------------------------------------------- search + hover
       const found = matchRef.current;
       if (found.size > 0) {
@@ -533,7 +579,7 @@ export function TreeView() {
 
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [drawNodes, drawLines, drawArcs, allocated, reachable, art, backdrop]);
+  }, [drawNodes, drawLines, drawArcs, allocated, reachable, weaponSets, art, backdrop]);
 
   const toTree = (clientX: number, clientY: number) => {
     const rect = wrapRef.current!.getBoundingClientRect();
@@ -605,7 +651,10 @@ export function TreeView() {
   };
 
   const stateOf = (node: TreeNode) => {
-    if (allocated.has(node.id)) return 'allocated';
+    if (allocated.has(node.id)) {
+      const set = weaponSets.get(node.id);
+      return set ? `allocated, ${WEAPON_SET_NAMES[set - 1]}` : 'allocated';
+    }
     const cost = reachable.get(node.id);
     if (cost === undefined) return 'not reachable';
     // The number people actually want from a tree: not "you can take
@@ -790,6 +839,17 @@ export function TreeView() {
         <span>
           <span className={styles.hudValue}>{allocated.size}</span> allocated
         </span>
+        {/* Only when there are any: on a build with no weapon set passives
+            this would be two zeroes nobody asked about. */}
+        {weaponSets.size > 0 &&
+          WEAPON_SET_NAMES.map((name, index) => {
+            const count = [...weaponSets.values()].filter((set) => set === index + 1).length;
+            return (
+              <span key={name} className={styles.hudSet} data-set={index + 1}>
+                <span className={styles.hudValue}>{count}</span> {name}
+              </span>
+            );
+          })}
         <span>
           <span className={styles.hudValue}>{drawNodes.length}</span> nodes
         </span>

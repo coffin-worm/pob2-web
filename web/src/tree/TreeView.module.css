@@ -162,6 +162,28 @@
   color: var(--stat-negative, #f05050);
 }
 
+/* The two weapon sets. The dot carries the tree's own colour, and Set II's
+ * dashes, so the pair is told apart by more than colour; the words stay as
+ * legible as the rest of the HUD rather than taking a dark red. */
+.hudSet::before {
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  margin-right: 0.4em;
+  border: 2px solid currentcolor;
+  border-radius: 50%;
+  content: '';
+}
+
+.hudSet[data-set='1']::before {
+  border-color: #dd0022;
+}
+
+.hudSet[data-set='2']::before {
+  border-color: #33ff77;
+  border-style: dashed;
+}
+
 /* PoB's Ctrl+D, as something you can see and click. It is in the HUD
  * rather than a menu because its cost is the reason it exists. */
 .hudToggle {

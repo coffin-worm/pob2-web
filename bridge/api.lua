@@ -545,16 +545,30 @@ end
 --- `path` is PoB's own reachability answer, rebuilt by
 --- BuildAllDependsAndPaths: a node with no path cannot be reached from the
 --- allocated tree, which is exactly what makes it unclickable.
+---
+--- `weaponSets` carries the allocated nodes that belong to one weapon set
+--- rather than to the tree as a whole, as `[id, 1]` or `[id, 2]`. They are
+--- in `allocated` as well: the set is a fact about how the point was paid
+--- for, not a separate kind of allocation.
 function api.treeAlloc(build)
 	local spec = build and build.spec
 	if not spec or not spec.nodes then
 		return { ready = false }
 	end
 
-	local allocated, reachable = asArray({}), asArray({})
+	local allocated, reachable, weaponSets = asArray({}), asArray({}), asArray({})
 	for id, node in pairs(spec.nodes) do
 		if node.alloc then
 			allocated[#allocated + 1] = id
+			-- A node paid for out of one weapon set's own points rather
+			-- than the shared pool. PoB keeps that on the node as
+			-- `allocMode`, 0 for the ordinary case, and only the exceptions
+			-- are worth sending: a tree has a handful of these and a
+			-- hundred of the others.
+			local mode = node.allocMode or 0
+			if mode > 0 then
+				weaponSets[#weaponSets + 1] = asArray({ id, mode })
+			end
 		elseif node.path and #node.path > 0 then
 			-- Each reachable node travels with what clicking it would
 			-- cost. pathDist is PoB's own figure from the same search that
@@ -571,6 +585,7 @@ function api.treeAlloc(build)
 		ready = true,
 		allocated = allocated,
 		reachable = reachable,
+		weaponSets = weaponSets,
 		classId = spec.curClassId or 0,
 		ascendClassId = spec.curAscendClassId or 0,
 		backdrop = api.treeBackdrop(spec),

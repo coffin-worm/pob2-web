@@ -46,6 +46,13 @@ interface TreeStore {
   allocated: Set<number>;
   /** Reachable node id to what clicking it would cost in new points. */
   reachable: Map<number, number>;
+  /**
+   * The allocated nodes that belong to one weapon set, by set.
+   *
+   * Empty for most builds. A node in here is in `allocated` as well, so
+   * nothing has to consult both to know whether a node is taken.
+   */
+  weaponSets: Map<number, 1 | 2>;
   backdrop: TreeBackdrop | null;
 
   /**
@@ -104,6 +111,7 @@ export const useTreeStore = create<TreeStore>((set, get) => {
         connection: 'live',
         allocated: new Set(snapshot.allocated),
         reachable: new Map(snapshot.reachable),
+        weaponSets: new Map(snapshot.weaponSets ?? []),
         backdrop: snapshot.backdrop ?? null,
         preview: null,
       });
@@ -128,6 +136,7 @@ export const useTreeStore = create<TreeStore>((set, get) => {
     art: null,
     allocated: new Set(),
     reachable: new Map(),
+    weaponSets: new Map(),
     backdrop: null,
     preview: null,
     delta: null,

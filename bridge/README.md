@@ -86,7 +86,7 @@ client can tell an expensive question from a slow one.
 | `GET /calcs` | | The Calculations tab, a few hundred rows with cell references |
 | `GET /calcs/breakdown` | `ref` | The engine's working behind one cell |
 | `GET /tree` | | The tree's geometry, ~420 kB. Fetch once; it does not change |
-| `GET /tree/alloc` | | What is allocated, and what is reachable, with path costs |
+| `GET /tree/alloc` | | What is allocated, which weapon set paid for it, and what is reachable with path costs |
 | `GET /tree/path` | `node` | The route a click on one node would allocate |
 | `GET /items` | | Slots, the item list and the item sets |
 | `GET /item` | `id`, `slot?` | One item's tooltip, with a slot comparison if asked |

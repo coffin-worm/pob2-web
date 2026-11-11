@@ -283,6 +283,13 @@ export type TreeAllocSnapshot =
        * engine's `pathDist` from the same search that built the path.
        */
       reachable: [number, number][];
+      /**
+       * The allocated nodes that were paid for out of one weapon set's own
+       * points, as [id, 1] or [id, 2]. They are in `allocated` too: the set
+       * says where the point came from, not that the node is allocated in
+       * some other way.
+       */
+      weaponSets: [number, 1 | 2][];
       classId: number;
       ascendClassId: number;
       /** Follows the class rather than the tree, so it rides with this. */

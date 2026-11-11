@@ -157,6 +157,45 @@ describe('importCharacter, with a payload shaped like the real one', () => {
     expect(await equipped('Ring 1')).toBeTruthy()
   })
 
+  it('reports which weapon set a node was allocated to', async () => {
+    await freshBuild()
+    expect((await importFixture()).status).toBe(200)
+
+    // Nodes one click off the imported route. Taking them from the engine
+    // rather than naming them keeps this honest if the tree moves.
+    const { reachable } = (await engine.get('/tree/alloc')).body
+    const next = (reachable as [number, number][])
+      .filter(([, cost]) => cost === 1)
+      .map(([id]) => id)
+      .sort((a, b) => a - b)
+    expect(next.length, 'the imported tree has somewhere to grow').toBeGreaterThan(3)
+    const set1 = next.slice(0, 2)
+    const set2 = next.slice(2, 4)
+
+    // PoB's own shape for this: the weapon set nodes arrive beside the
+    // hashes, keyed "set1" and "set2".
+    const withSets = {
+      ...character,
+      passives: { ...character.passives, specialisations: { set1, set2 } },
+    }
+    await freshBuild()
+    const { status, body } = await importFixture({}, JSON.stringify(withSets))
+    expect(status).toBe(200)
+    expect(body.points.weaponSet1.used).toBe(set1.length)
+    expect(body.points.weaponSet2.used).toBe(set2.length)
+
+    const alloc = (await engine.get('/tree/alloc')).body
+    const sets = new Map<number, number>(alloc.weaponSets)
+    for (const id of set1) expect(sets.get(id), `node ${id} is Set I`).toBe(1)
+    for (const id of set2) expect(sets.get(id), `node ${id} is Set II`).toBe(2)
+    // Only the exceptions travel: the route itself belongs to no set.
+    expect(sets.size).toBe(set1.length + set2.length)
+    for (const id of character.passives.hashes) expect(sets.has(id)).toBe(false)
+    // And they are allocated like any other node.
+    const allocated = new Set<number>(alloc.allocated)
+    for (const id of [...set1, ...set2]) expect(allocated.has(id)).toBe(true)
+  })
+
   it('takes the character on its own as well as inside the envelope', async () => {
     await freshBuild()
     const { status, body } = await importFixture({}, JSON.stringify(character))

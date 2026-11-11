@@ -341,6 +341,33 @@ Checked rather than assumed: preview a node, allocate it, and compare.
 Predicted 4 points, cost 4, and every node in the previewed route came back
 allocated.
 
+### Which weapon set a node belongs to
+
+A passive paid for out of one weapon set's own points is allocated like any
+other, so until now it was drawn like any other: the tree said 38 allocated
+and nothing said which of them belonged to Set I.
+
+PoB keeps that on the node as `allocMode`, 0 for the shared pool and 1 or 2
+for a set, and `/tree/alloc` now sends the exceptions as `[id, set]` pairs.
+Only the exceptions: a tree has a handful of these and a hundred of the
+others, and a node in that list is in `allocated` as well, so nothing has to
+read both to know a node is taken.
+
+Drawn the way PoB draws it, in its own two colours (`colorCodes.NEGATIVE`
+and `POSITIVE`): the connectors into a set's branch take the set's colour,
+and the node gets a ring in it. Red and green alone would be a poor way to
+tell two things apart, so Set II's ring is dashed, the hover text says
+**allocated, Set I** outright, and the HUD counts the two separately
+against the budgets already in the header.
+
+The rings are drawn over the node art rather than tinting it. The frame
+carries the node's own state, allocated or reachable or neither, and that is
+not this feature's to overwrite.
+
+**Choosing a set when you allocate is still PoB's.** This reads the sets a
+build already has, which is what an imported character arrives with; the
+desktop's own mode switch for allocating *into* a set is not here yet.
+
 ### What the point is worth
 
 A route preview says what a click would cost. It does not say whether the
@@ -1729,7 +1756,7 @@ idea of what PoB does would have agreed with me about the resistance
 penalty too.
 
 `npm run test:engine` boots a real engine and drives the bridge over HTTP:
-sixteen tests, about ten seconds. The ones worth having are the refusals.
+seventeen tests, about eight seconds. The ones worth having are the refusals.
 Every way an import can be malformed is asserted to leave the build name,
 level and class exactly as they were, because PoB deletes the equipment and
 the skill groups *before* it reads the payload, and a regression there
@@ -1747,12 +1774,13 @@ and the rings carry 25% of each resistance, so the penalty bug reads as
 and the test says `expected -60 to be -20`.
 
 `npm run test:e2e` runs Playwright against the real UI and a real engine:
-seventeen tests, about forty-three seconds. Nine views open with no console
+eighteen tests, about forty seconds. Nine views open with no console
 error, a pasted code is read, rubbish and an unknown host are refused,
 Ctrl+V stages an item, and saving writes a file the engine then lists. The
 same fixture is imported once more through the two buttons, with only
 pathofexile.com stood in for, and the sidebar is read the way you would read
-it: all three elemental resistances positive.
+it: all three elemental resistances positive. One more imports a character
+with weapon set passives and reads the tree's own count of them.
 
 Two things keep a test run from touching anything of yours. Both layers
 point `POB_USER_PATH` at a temporary directory, so no test writes to the
