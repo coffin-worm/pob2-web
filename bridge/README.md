@@ -209,6 +209,10 @@ being wrong rather than as one dropdown being wrong.
 build imported before this existed. `GET /state` carries `act`, so a client
 can show the estimate and notice when the two disagree.
 
+A fixture character is imported through this command in `web/tests/`, at both
+layers, and asserts the penalty matches the act. Taking the correction back
+out fails those tests on the number the bug produces.
+
 ## The files
 
 | File | What it is |

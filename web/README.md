@@ -1729,16 +1729,30 @@ idea of what PoB does would have agreed with me about the resistance
 penalty too.
 
 `npm run test:engine` boots a real engine and drives the bridge over HTTP:
-ten tests, about four seconds. The ones worth having are the refusals.
+sixteen tests, about ten seconds. The ones worth having are the refusals.
 Every way an import can be malformed is asserted to leave the build name,
 level and class exactly as they were, because PoB deletes the equipment and
 the skill groups *before* it reads the payload, and a regression there
 would quietly gut a build rather than fail loudly.
 
+The import that *works* is tested from a fixture,
+`tests/engine/fixtures/character.json`, which is a character payload shaped
+like the one pathofexile.com answers with. None of it came from an account:
+the name is invented, and the two rings and the 35-point route were built
+against this checkout's own data. It imports into the build that is already
+open, wears a ring in each hand, builds the socket group, and lands on the
+act PoB estimated rather than on Endgame. The route is a mid-campaign one
+and the rings carry 25% of each resistance, so the penalty bug reads as
+-35% where the fix reads as +5%: take the correction out of `bridge/api.lua`
+and the test says `expected -60 to be -20`.
+
 `npm run test:e2e` runs Playwright against the real UI and a real engine:
-sixteen tests, about thirty-seven seconds. Nine views open with no console
+seventeen tests, about forty-three seconds. Nine views open with no console
 error, a pasted code is read, rubbish and an unknown host are refused,
-Ctrl+V stages an item, and saving writes a file the engine then lists.
+Ctrl+V stages an item, and saving writes a file the engine then lists. The
+same fixture is imported once more through the two buttons, with only
+pathofexile.com stood in for, and the sidebar is read the way you would read
+it: all three elemental resistances positive.
 
 Two things keep a test run from touching anything of yours. Both layers
 point `POB_USER_PATH` at a temporary directory, so no test writes to the

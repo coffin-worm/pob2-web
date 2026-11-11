@@ -1,0 +1,89 @@
+{
+  "_comment": [
+    "A character payload shaped like the one pathofexile.com answers with, so the",
+    "import can be tested without an account. Nothing here came from a real",
+    "account: the name is made up, and the two rings and the passive route were",
+    "built against this repo's own tree data.",
+    "",
+    "The route is 35 points, which PoB estimates as a character partway through",
+    "the campaign rather than one at the end of it. That is the whole point of",
+    "the fixture: an Endgame estimate would take 60% off every elemental",
+    "resistance, which is the bug the import used to have. tests/README.md says",
+    "how to regenerate the hashes if the tree data moves under them."
+  ],
+  "character": {
+    "name": "Fixture",
+    "realm": "poe2",
+    "league": "Standard",
+    "class": "Ranger",
+    "classId": 2,
+    "ascendancyClass": 0,
+    "level": 47,
+    "experience": 60000000,
+    "passives": {
+      "hashes": [
+        270, 27980, 33722, 4140, 59093, 23382, 7960, 48552, 31238, 1433,
+        44733, 30979, 46358, 59376, 34058, 4456, 57710, 40783, 11672, 47177,
+        8569, 31950, 58329, 61196, 56045, 24647, 5702, 13411, 34136, 29479,
+        24825, 16460, 43746, 38143, 56651
+      ],
+      "specialisations": {},
+      "skill_overrides": {},
+      "jewel_data": {},
+      "quest_stats": []
+    },
+    "jewels": [],
+    "equipment": [
+      {
+        "id": "fixture-ring-1",
+        "inventoryId": "Ring",
+        "name": "Fixture Band",
+        "typeLine": "Gold Ring",
+        "baseType": "Gold Ring",
+        "frameType": 2,
+        "ilvl": 45,
+        "identified": true,
+        "corrupted": false,
+        "properties": [],
+        "requirements": [{ "name": "Level", "values": [["20", 0]] }],
+        "implicitMods": ["12% increased Rarity of Items found"],
+        "explicitMods": [
+          "+40 to maximum Life",
+          "+25% to Fire Resistance",
+          "+25% to Cold Resistance"
+        ]
+      },
+      {
+        "id": "fixture-ring-2",
+        "inventoryId": "Ring2",
+        "name": "Fixture Loop",
+        "typeLine": "Gold Ring",
+        "baseType": "Gold Ring",
+        "frameType": 2,
+        "ilvl": 45,
+        "identified": true,
+        "corrupted": false,
+        "properties": [],
+        "requirements": [{ "name": "Level", "values": [["20", 0]] }],
+        "implicitMods": ["12% increased Rarity of Items found"],
+        "explicitMods": ["+30 to maximum Life", "+25% to Lightning Resistance"]
+      }
+    ],
+    "skills": [
+      {
+        "id": "fixture-skill-1",
+        "typeLine": "Lightning Arrow",
+        "support": false,
+        "properties": [],
+        "socketedItems": [
+          {
+            "id": "fixture-support-1",
+            "typeLine": "Lightning Attunement",
+            "support": true,
+            "properties": []
+          }
+        ]
+      }
+    ]
+  }
+}
