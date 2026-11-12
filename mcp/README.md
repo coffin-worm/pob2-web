@@ -80,6 +80,25 @@ measurements, under "Dying with its host".
 An engine the server merely attached to is left alone whichever way the
 server goes, because it belongs to whoever started it.
 
+An engine can also go while the server stays: somebody closes the app, the
+dev server restarts, the engine follows the host that started it. The next
+call then finds nothing listening on the port it had, and the server used
+to keep that dead port for the rest of its life, which turned one restart
+into every later call failing on an address that had stopped meaning
+anything. A refused connection now makes it forget the engine, look again
+the same way it looked the first time, and ask once more.
+
+Everything cached goes at the same time, because all of it belonged to that
+engine: the passive tree it was read from, and the claim on the crafting
+bench, which is about an item in a process that no longer exists.
+
+One retry, and a `POST` is retried only when the connection was refused.
+Refused means nothing was received, so sending it again cannot repeat
+anything. A connection that dies mid-request may have been acted on
+already, and this is the transport for `POST /action`, so a blind retry
+there could equip an item twice; that case reports what it does not know
+instead.
+
 ## The tools
 
 Twenty, over the bridge's forty-six routes. The grouping is the point: the
@@ -229,6 +248,9 @@ practice:
   The rest are the engine's defaults and the same for every build.
 - `pob_calcs` with no filter lists sections and their headline figures,
   because the whole tab is a few hundred rows.
+- A stat filter hides stats, never warnings. Asking about "mana" should not
+  also hide the engine saying a skill cannot be used, so warning-toned
+  lines come through under a heading that says they are not matches.
 - `pob_craft_price change="catalysts"` names in one line the ten or twelve
   catalysts that scale nothing on the item, and gives a comparison only to
   the ones that do. That is the answer, not a saving: a catalyst only

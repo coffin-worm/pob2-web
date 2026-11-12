@@ -129,10 +129,21 @@ export function header(state: BridgeSnapshot): string {
 export function stats(lines: StatLine[], filter?: string): string {
   const wanted = filter?.trim().toLowerCase();
   const out: string[] = [];
+  /**
+   * Warning-toned lines a filter would otherwise have hidden.
+   *
+   * A filter is a question about one stat. A warning is the engine saying
+   * the build does not work: a requirement unmet, a skill that cannot be
+   * used. Dropping that because it does not contain the word "mana"
+   * answers the question and loses the point. They are gathered rather
+   * than printed in place, so it stays obvious they are not matches.
+   */
+  const kept: string[] = [];
 
   for (const line of lines) {
     const label = strip(line.label).trim();
     const value = line.value === undefined ? undefined : strip(line.value).trim();
+    const text = value === undefined ? label : `${label}: ${value}`;
 
     if (line.size === 'header') {
       if (!wanted) {
@@ -140,19 +151,30 @@ export function stats(lines: StatLine[], filter?: string): string {
       }
       continue;
     }
-    if (wanted && !`${label} ${value ?? ''}`.toLowerCase().includes(wanted)) continue;
+    if (wanted && !`${label} ${value ?? ''}`.toLowerCase().includes(wanted)) {
+      if (line.tone === 'warning') kept.push(text);
+      continue;
+    }
     if (line.note) {
       out.push(`    ${label}${value ? `: ${value}` : ''}`);
       continue;
     }
-    out.push(value === undefined ? label : `${label}: ${value}`);
+    out.push(text);
   }
 
-  const text = tidy(out);
-  if (text === '') {
+  const body = tidy(out);
+  if (body === '' && kept.length === 0) {
     return wanted ? `No stat mentions "${filter}".` : 'The engine reported no stats.';
   }
-  return text;
+
+  const head = body === '' ? `No stat mentions "${String(filter)}".` : body;
+  if (kept.length === 0) return head;
+  return [
+    head,
+    '',
+    'Warnings, which no filter hides:',
+    ...kept.map((line) => `- ${line}`),
+  ].join('\n');
 }
 
 /* -------------------------------------------------------------- the tooltips */

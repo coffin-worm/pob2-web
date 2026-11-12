@@ -15,6 +15,22 @@ const REQUEST_TIMEOUT_MS = 300_000;
 
 export class BridgeError extends Error {}
 
+/**
+ * The engine we were talking to is not answering its port.
+ *
+ * Private, because it never leaves this file: it is the one failure worth
+ * reconnecting over, and a caller that saw it would only be told the same
+ * thing again after the retry.
+ */
+class Gone extends Error {
+  constructor(
+    message: string,
+    readonly code: string | undefined,
+  ) {
+    super(message);
+  }
+}
+
 export class Bridge {
   private engine: Engine | null = null;
   private connecting: Promise<Engine> | null = null;
@@ -41,6 +57,21 @@ export class Bridge {
         throw error;
       });
     return this.connecting;
+  }
+
+  /**
+   * Forget the engine, so the next question goes looking for one again.
+   *
+   * Everything cached here belongs to the engine it came from. The bench
+   * claim is about an item in that process memory, and the tree came out of
+   * that process game data, so a different engine shares none of it and
+   * keeping any of it would be answering about a build that is not there.
+   */
+  private forget() {
+    this.engine = null;
+    this.connecting = null;
+    this.nodes = null;
+    this.claimed = false;
   }
 
   /** Whether this process started the engine, so nothing else is watching it. */
@@ -89,7 +120,50 @@ export class Bridge {
     });
   }
 
+  /**
+   * Ask the engine, and look again if the engine has gone.
+   *
+   * An engine ends for ordinary reasons: somebody closes the app, or
+   * restarts the dev server, or the engine follows the host that started
+   * it. The port file already names whatever replaced it. Holding on to a
+   * dead engine for the rest of this process turns one restart into every
+   * later call failing, with a message about a port that stopped meaning
+   * anything some time ago.
+   *
+   * Only one retry, and only when nothing was listening. A connection
+   * refused is proof the request was never received, so repeating it
+   * cannot repeat anything. A connection that dies mid-request is not: the
+   * engine may have acted on it already, and this is the transport for
+   * `POST /action`, so a blind retry there could equip an item twice. A
+   * GET is safe either way, being a question.
+   */
   private async request<T>(route: string, init?: RequestInit): Promise<T> {
+    try {
+      return await this.attempt<T>(route, init);
+    } catch (error) {
+      if (!(error instanceof Gone)) throw error;
+      const replayable = init?.method !== 'POST' || error.code === 'ECONNREFUSED';
+      if (!replayable) {
+        this.forget();
+        throw new BridgeError(
+          `${error.message}. The request may or may not have been carried out, ` +
+            'so it was not sent again. Ask what the build looks like now.',
+        );
+      }
+      this.forget();
+      try {
+        return await this.attempt<T>(route, init);
+      } catch (again) {
+        if (!(again instanceof Gone)) throw again;
+        throw new BridgeError(
+          `${again.message}. That was a second attempt, against a freshly ` +
+            'located engine, so there is probably no engine running.',
+        );
+      }
+    }
+  }
+
+  private async attempt<T>(route: string, init?: RequestInit): Promise<T> {
     const engine = await this.ready();
     let response: Response;
     try {
@@ -99,7 +173,18 @@ export class Bridge {
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      throw new BridgeError(`the engine on ${engine.base} did not answer: ${reason}`);
+      const code = (error as { cause?: { code?: unknown } } | null)?.cause?.code;
+      const said = typeof code === 'string' ? code : undefined;
+      // A timeout is the engine thinking, not the engine missing, and the
+      // budget here is five minutes. Reconnecting over one would throw away
+      // a working engine and spend another five minutes proving it.
+      // Checked by name rather than by type: the timeout arrives as a
+      // DOMException, whose relationship to Error is not worth relying on.
+      const name = (error as { name?: unknown } | null)?.name;
+      const timedOut = name === 'TimeoutError' || name === 'AbortError';
+      const message = `the engine on ${engine.base} did not answer: ${reason}`;
+      if (timedOut) throw new BridgeError(message);
+      throw new Gone(message, said);
     }
 
     const body: unknown = await response.json().catch(() => null);
