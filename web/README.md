@@ -1414,10 +1414,56 @@ fails as something else when it is wrong:
 Signing in is an ordinary link to `/poe/signin`, which sets up PKCE and
 redirects. Not a scripted `window.open`: the navigation is then the
 user's own click, there is no popup-blocker gap, and the credentials are
-typed on GGG's page. The token lives in the dev server's memory (not on
-disk, not in the browser, not in a log) so a restart means signing in
-again. That is the right trade for a refresh token that can read someone's
-account, and it is why the browser is only ever told `authenticated: true`.
+typed on GGG's page. The access token lives in the dev server's memory,
+never in the browser and never in a log, which is why the browser is only
+ever told `authenticated: true`.
+
+### The sign-in that survives a restart
+
+Signing in once per dev-server start was the first design here, on the
+grounds that a refresh token can read someone's account and so should not
+be written down. It was the wrong trade. A sign-in you do constantly stops
+being read, and the secret in question is one PoB upstream already writes
+to Settings.xml in the clear (`Main.lua:789`), two directories away.
+Whether it sits on disk was never the question, only what it costs when it
+does.
+
+So `plugins/token-store.ts` keeps the refresh token, and only the refresh
+token, in `%LOCALAPPDATA%/pob2-web/poe-token.json`, encrypted with DPAPI at
+`CurrentUser` scope. `ConvertFrom-SecureString` with no key argument is
+exactly `CryptProtectData`, so this is one PowerShell spawn rather than a
+native module with a compiler in it, and the plaintext goes in through an
+environment variable, because a command line is readable by every process
+on the machine and an environment block is not. The ciphertext is bound to
+the Windows account that wrote it, so a copy taken off the machine is so
+much noise.
+
+LocalAppData rather than Documents, which follows the user into OneDrive:
+a token that syncs is a token on two machines. Rather than TEMP, which is
+the opposite mistake, and is where the port file belongs precisely because
+that one should not survive a reboot.
+
+Four things there that are decisions rather than code:
+
+- **Only the refresh token.** The access token beside it lasts ten minutes,
+  so keeping it would buy nothing and widen what a stolen file is worth.
+  Startup always spends the refresh grant, which has the useful side effect
+  of proving the saved sign-in still works before the panel claims to be
+  signed in.
+- **Written back after every grant**, because GGG may hand back a new
+  refresh token when it spends one. Saving only at sign-in leaves the file
+  holding a token that was rotated out from under it, which then fails
+  later, elsewhere, and looks like the encryption rather than the rotation.
+- **A refused grant forgets the file; a network error does not.** Only
+  `invalid_grant` means the token is dead. Throwing the file away over a
+  flaky minute would cost a sign-in for nothing.
+- **Every failure is "not signed in".** A file from another Windows account,
+  one from before a profile reset, a truncated write, a PowerShell that will
+  not run: none of them are worth refusing to start over, and all of them
+  are a state the panel already handles.
+
+`POST /poe/signout` deletes the file, because a sign-out that comes back
+after a restart is not one.
 
 ### An envelope, and who opens it
 
@@ -1452,7 +1498,10 @@ the unwrap gets the enveloped one past the first.
   verified (the redirect, the PKCE parameters, the port binding, a
   forged `state` being refused, a stray probe not consuming the
   sign-in) but completing a sign-in needs a real account, so the first
-  real character import is the first time that half runs.
+  real character import is the first time that half runs. The saved
+  sign-in goes further: the absent, corrupt and refused files are tested
+  against GGG's own endpoint, and the signed-in path against a stubbed
+  one, which is the only way to reach it without an account.
 
 ## The build list, and the filesystem that was missing
 

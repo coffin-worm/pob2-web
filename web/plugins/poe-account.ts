@@ -5,6 +5,8 @@ import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Connect, Plugin, PreviewServer, ViteDevServer } from 'vite';
 
+import { tokenStore } from './token-store.ts';
+
 /**
  * Sign in to pathofexile.com and list your characters.
  *
@@ -37,11 +39,17 @@ import type { Connect, Plugin, PreviewServer, ViteDevServer } from 'vite';
  *  - The User-Agent is `Path of Building/<version>` from `manifest.xml`,
  *    as `Launch.lua:273` sends it.
  *
- * Tokens live in this process's memory and nowhere else. They are not
- * written to disk, not given to the browser, and not logged; a dev-server
- * restart means signing in again. That is the right trade for a refresh
- * token that can read someone's account, and it is why the browser only ever
- * sees "authenticated: true".
+ * The access token lives in this process's memory and nowhere else. It is
+ * not given to the browser and not logged, which is why the browser only
+ * ever sees "authenticated: true".
+ *
+ * The refresh token beside it is kept across restarts, encrypted to the
+ * Windows user, by `token-store.ts`. Signing in once per dev-server start
+ * was the original trade here and it was the wrong one: it made the sign-in
+ * a thing you did constantly rather than a thing you did once. The secret
+ * being kept is the same one PoB upstream already writes to Settings.xml in
+ * the clear, so whether it sits on disk was never the question, only what
+ * it costs when it does.
  */
 
 const CLIENT_ID = 'pob';
@@ -105,6 +113,13 @@ export function poeAccount(options: Options): Plugin {
   const mount = options.mount ?? '/poe';
   const ua = userAgent(options.repoRoot);
 
+  /** The dev-server terminal. What happened to the token, never the token. */
+  const note = (message: string) => {
+    console.log(`[poe-account] ${message}`);
+  };
+
+  const store = tokenStore(note);
+
   let token: Token | null = null;
   let pending: Pending | null = null;
   /**
@@ -158,6 +173,53 @@ export function poeAccount(options: Options): Plugin {
       expiresAt: Date.now() + (parsed.expires_in ?? 600) * 1000,
     };
   };
+
+  /**
+   * Keep whatever refresh token is now held, or drop the saved one.
+   *
+   * Called after every grant, because GGG may hand back a new refresh token
+   * when it spends one. Saving only at sign-in would leave the file holding
+   * a token that was rotated out from under it, which then fails later,
+   * elsewhere, and looks like the encryption rather than the rotation.
+   */
+  const remember = () => {
+    if (token?.refreshToken) store.save(token.refreshToken);
+    else store.forget();
+  };
+
+  /**
+   * Spend the saved sign-in, once per process.
+   *
+   * The refresh grant is the only way to learn whether a saved token is
+   * still good, so this is the restore and the check in one. A refused
+   * grant forgets the file. A network failure does not: the token is
+   * probably fine, and a flaky minute should not cost a sign-in.
+   */
+  const restore = async () => {
+    const saved = store.load();
+    if (!saved) return;
+    try {
+      token = await postToken({
+        client_id: CLIENT_ID,
+        grant_type: 'refresh_token',
+        refresh_token: saved,
+      });
+      remember();
+      note('signed in from the saved token');
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      if (/invalid_grant/.test(why)) {
+        store.forget();
+        note('the saved sign-in was refused, so it has been forgotten');
+      } else {
+        note(`could not spend the saved sign-in: ${why}`);
+      }
+    }
+  };
+
+  /** The restore, started once and awaited by anything that needs it. */
+  let ready: Promise<void> | null = null;
+  const hydrate = () => (ready ??= restore());
 
   /**
    * Bind the redirect server to one of the registered ports.
@@ -288,6 +350,7 @@ export function poeAccount(options: Options): Plugin {
       })
         .then((fresh) => {
           token = fresh;
+          remember();
           finish(true);
         })
         .catch((err: unknown) => {
@@ -323,6 +386,7 @@ export function poeAccount(options: Options): Plugin {
 
   /** A valid access token, refreshed if it is close to expiry. */
   const validToken = async (): Promise<string | null> => {
+    await hydrate();
     if (!token) return null;
     // Thirty seconds of slack: a token that expires mid-flight reads as a
     // mysterious 401 rather than as the clock.
@@ -337,11 +401,15 @@ export function poeAccount(options: Options): Plugin {
         grant_type: 'refresh_token',
         refresh_token: token.refreshToken,
       });
+      remember();
       return token.accessToken;
     } catch (err) {
-      lastError = `could not refresh the token: ${
-        err instanceof Error ? err.message : String(err)
-      }`;
+      const why = err instanceof Error ? err.message : String(err);
+      lastError = `could not refresh the token: ${why}`;
+      // A refused grant is a dead token and worth forgetting. A network
+      // error is not, and throwing the file away over one would turn a
+      // flaky minute into another sign-in.
+      if (/invalid_grant/.test(why)) store.forget();
       token = null;
       return null;
     }
@@ -406,6 +474,7 @@ export function poeAccount(options: Options): Plugin {
       try {
         switch (route) {
           case 'GET /status': {
+            await hydrate();
             reply(200, {
               authenticated: Boolean(token),
               signInPending: Boolean(pending),
@@ -440,6 +509,7 @@ export function poeAccount(options: Options): Plugin {
 
           case 'POST /signout': {
             token = null;
+            store.forget();
             clearPending();
             lastError = null;
             reply(200, { authenticated: false });
@@ -507,6 +577,10 @@ export function poeAccount(options: Options): Plugin {
     };
 
     server.middlewares.use(mount, handler);
+
+    // Started here rather than on the first request, so the panel knows
+    // whether it is signed in before anybody asks it to be.
+    void hydrate();
 
     const shutdown = () => clearPending();
     server.httpServer?.once('close', shutdown);
