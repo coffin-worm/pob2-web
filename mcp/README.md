@@ -119,6 +119,46 @@ already, and this is the transport for `POST /action`, so a blind retry
 there could equip an item twice; that case reports what it does not know
 instead.
 
+## Which build is answering
+
+Every `pob_build` answer ends with a line saying when this server was built
+and what the checkout has done since:
+
+```
+Server built 2026-11-12 05:58, after the checkout's latest commit 02c625065.
+```
+
+or, when the code on disk has moved on:
+
+```
+Server built 2026-11-10 05:58, but the checkout is at 02c625065 from
+2026-11-12 05:47. This server cannot contain that work, so a tool missing
+or refusing an argument is the likely reason: rebuild `mcp/` and restart
+the client.
+```
+
+This exists because the failure it describes is invisible from the inside.
+A client holds the tool list it was handed at `initialize`, and a server
+built before the work being asked about behaves perfectly: it just behaves
+like an older version, so a fix that landed an hour ago looks like a fix
+that did not work. One chat session reported three bugs that had all been
+fixed before it wrote the report, and had no way to tell.
+
+A notification would not have helped. Nothing changes inside a process, so
+there is nothing to notify about, and a rebuilt server is a different
+process whose handshake a client may or may not apply to a conversation
+already open. What was missing was never a message, it was a fact.
+
+Both halves are read at runtime: the newest timestamp among the built files,
+and `git log -1` in the checkout. That keeps the build a plain `tsc` with no
+generated file to commit or ignore, at the price of comparing a file
+timestamp against a commit date rather than a commit against a commit. So it
+answers "probably stale" rather than "stale", with a minute of slack, which
+is the honest shape of what can be known from inside the process. A rebuild
+moves the first half past the second.
+
+Without git, or outside a repository, the line says when the server was
+built and draws no comparison.
 ## The tools
 
 Twenty, over the bridge's forty-six routes. The grouping is the point: the

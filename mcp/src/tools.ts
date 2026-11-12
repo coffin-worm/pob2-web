@@ -17,6 +17,7 @@ import { z } from 'zod';
 
 import type { Bridge } from './client.js';
 import * as show from './render.js';
+import { buildLine } from './version.js';
 import type {
   AnointWhatIf,
   BridgeSnapshot,
@@ -181,8 +182,8 @@ export function register(server: McpServer, bridge: Bridge) {
     },
     async ({ filter, stats = true }) => {
       const state = await bridge.get<BridgeSnapshot>('/state');
-      if (!state.ready) return ok(show.header(state));
-      if (!stats) return ok(show.header(state));
+      if (!state.ready) return ok([show.header(state), '', buildLine()].join('\n'));
+      if (!stats) return ok([show.header(state), '', buildLine()].join('\n'));
 
       const sheet = await bridge.get<StatsSnapshot>('/stats');
       const parts = [show.header(state)];
@@ -198,6 +199,9 @@ export function register(server: McpServer, bridge: Bridge) {
       } else {
         parts.push('', 'The engine has no stats for this build.');
       }
+      // Last, because it is about the server rather than the build, and a
+      // reader who does not need it should meet it after the answer.
+      parts.push('', buildLine());
       return ok(parts.join('\n'));
     },
   );
