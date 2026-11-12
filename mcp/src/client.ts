@@ -15,6 +15,11 @@ const REQUEST_TIMEOUT_MS = 300_000;
 
 export class BridgeError extends Error {}
 
+/** The engine an error was about, for a notice that names what was lost. */
+function engineOf(message: string): string {
+  return /(http:\/\/\S+?)(?= did not answer)/.exec(message)?.[1] ?? 'the engine';
+}
+
 /**
  * The engine we were talking to is not answering its port.
  *
@@ -36,6 +41,16 @@ export class Bridge {
   private connecting: Promise<Engine> | null = null;
   private nodes: Map<number, TreeNode> | null = null;
   private claimed = false;
+  /**
+   * A word owed to whoever asks next, because the engine changed.
+   *
+   * Reconnecting is the right thing to do and the wrong thing to do
+   * quietly. A later answer is about a different process: the crafting
+   * bench there is empty, and anything equipped on the old engine went
+   * with it. Held here until something says it, rather than being logged
+   * where only the terminal would see it.
+   */
+  private swapped: string | null = null;
   private readonly own: boolean;
 
   constructor(options: { own?: boolean } = {}) {
@@ -95,6 +110,19 @@ export class Bridge {
     return this.claimed || (await this.ready()).ours;
   }
 
+  /**
+   * The engine-changed notice, said once.
+   *
+   * Taken rather than read, because it describes a transition and not a
+   * state. Repeating it on every answer afterwards would make it noise,
+   * and noise is how a warning stops being read.
+   */
+  takeNotice(): string | null {
+    const notice = this.swapped;
+    this.swapped = null;
+    return notice;
+  }
+
   claimBench() {
     this.claimed = true;
   }
@@ -150,9 +178,17 @@ export class Bridge {
             'so it was not sent again. Ask what the build looks like now.',
         );
       }
+      const lost = engineOf(error.message);
       this.forget();
       try {
-        return await this.attempt<T>(route, init);
+        const answer = await this.attempt<T>(route, init);
+        this.swapped =
+          `Note: the engine changed. ${lost} stopped answering, and this is a ` +
+          `different engine on ${this.engine?.base ?? 'another port'}. Anything ` +
+          'staged on the crafting bench, or equipped but not saved, belonged to ' +
+          'the engine that has gone. Check the build before relying on what an ' +
+          'earlier answer said about it.';
+        return answer;
       } catch (again) {
         if (!(again instanceof Gone)) throw again;
         throw new BridgeError(

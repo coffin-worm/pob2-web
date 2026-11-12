@@ -51,8 +51,11 @@ import type {
 
 type Result = { content: { type: 'text'; text: string }[]; isError?: boolean };
 
-const ok = (text: string): Result => ({ content: [{ type: 'text', text }] });
-const no = (text: string): Result => ({ content: [{ type: 'text', text }], isError: true });
+const plain = (text: string): Result => ({ content: [{ type: 'text', text }] });
+const problem = (text: string): Result => ({
+  content: [{ type: 'text', text }],
+  isError: true,
+});
 
 /** Read-only, and safe to call again with the same arguments. */
 const reads = { readOnlyHint: true, idempotentHint: true, openWorldHint: false };
@@ -93,6 +96,26 @@ const keyed = (table: Record<string, string | number>) =>
     .join(',');
 
 export function register(server: McpServer, bridge: Bridge) {
+  /**
+   * An answer, with a word first if the engine changed under us.
+   *
+   * Put here, around the two result helpers, rather than at the forty-odd
+   * places that build an answer. A notice that matters only after a
+   * reconnect is exactly the kind a new tool would forget to carry, and
+   * the one time it is needed is the time nobody is looking for it.
+   */
+  const noticed = (result: Result): Result => {
+    const notice = bridge.takeNotice();
+    if (!notice) return result;
+    return {
+      ...result,
+      content: [{ type: 'text' as const, text: notice }, ...result.content],
+    };
+  };
+
+  const ok = (text: string): Result => noticed(plain(text));
+  const no = (text: string): Result => noticed(problem(text));
+
   /**
    * Why a change can be worth nothing.
    *

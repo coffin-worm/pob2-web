@@ -92,6 +92,26 @@ Everything cached goes at the same time, because all of it belonged to that
 engine: the passive tree it was read from, and the claim on the crafting
 bench, which is about an item in a process that no longer exists.
 
+The answer from the new engine says so, once, naming the engine that went:
+
+```
+Note: the engine changed. http://127.0.0.1:50221 stopped answering, and
+this is a different engine on http://127.0.0.1:50240. Anything staged on
+the crafting bench, or equipped but not saved, belonged to the engine that
+has gone. Check the build before relying on what an earlier answer said
+about it.
+```
+
+Reconnecting quietly would be the worse half of a good idea. The answer
+would look like the next in a series and is actually the first about a
+different process, where the bench is empty and an earlier equip never
+happened. It is said by wrapping the two helpers that build every answer,
+rather than at the forty-odd places that call them, because a notice which
+matters only after a reconnect is exactly the kind a new tool would forget
+to carry, and the one time it is needed is the time nobody is looking for
+it. Said once, too: it describes a transition, and repeating it on every
+answer afterwards is how a warning stops being read.
+
 One retry, and a `POST` is retried only when the connection was refused.
 Refused means nothing was received, so sending it again cannot repeat
 anything. A connection that dies mid-request may have been acted on
