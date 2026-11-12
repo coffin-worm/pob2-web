@@ -4088,6 +4088,305 @@ function api.treeWhatIf(build, nodeId)
 	}
 end
 
+--- One power scan at a time, like the item sort above it.
+---
+--- Keyed by the question, so asking the same one again reads the finished
+--- report rather than measuring the tree twice, and asking a different one
+--- drops the old job. The build's own revision is part of the key: every
+--- number in a report is a difference against the build as it was, so a
+--- build that has moved invalidates the lot.
+local powerJob = nil
+
+--- How long one request will spend resuming PoB's power coroutine.
+---
+--- Larger than the item sort's, because a tree scan is a few hundred full
+--- passes with no way to show a partial order: the report exists or it
+--- does not. Still a fraction of a client's patience, and the scan carries
+--- on across requests either way.
+local POWER_BUDGET = 0.5
+
+--- A clock that moves, for the length of a scan.
+---
+--- PowerBuilder yields to the draw loop every 100ms by its own reckoning,
+--- and its reckoning is GetTime, which the headless build stubs to a
+--- constant zero. Left that way the coroutine never yields at all: the
+--- whole tree is measured inside one resume, with nothing able to answer
+--- an HTTP request in the meantime and no progress to report if anything
+--- went wrong. Giving it a clock restores the yield it was written around,
+--- so the slicing below is PoB's own rather than something invented here.
+local function withClock(fn)
+	local real = GetTime
+	_G.GetTime = function()
+		return math_floor(os.clock() * 1000)
+	end
+	local ok, err = pcall(fn)
+	_G.GetTime = real
+	if not ok then
+		return nil, tostring(err)
+	end
+	return true
+end
+
+--- The powerStatList entry a stat key names, for nodes.
+---
+--- The same list the item sort reads, with the other half of its filter:
+--- `ignoreForNodes` marks the entries that mean nothing on a passive, and
+--- the combined offence/defence entry has no stat to ask for. Matched
+--- against the engine's name and the label alike, because "Full DPS" is
+--- what a reader sees and "FullDPS" is what the output calls it.
+local function powerEntry(key)
+	if type(data) ~= "table" or type(data.powerStatList) ~= "table" then
+		return nil
+	end
+	local wanted = tostring(key or ""):lower():gsub("%s+", "")
+	for _, stat in ipairs(data.powerStatList) do
+		local label = tostring(stat.label or ""):lower():gsub("%s+", "")
+		if stat.stat and not stat.ignoreForNodes
+			and (stat.stat:lower() == wanted or label == wanted) then
+			return stat
+		end
+	end
+	return nil
+end
+
+--- Which way is up for a stat, as the sidebar has it.
+---
+--- The report sorts on this and so does the route column, which the report
+--- does not sort on. Read off the build's own display list rather than
+--- decided here, because "Taken Fire dmg" is a stat where less is more and
+--- the sidebar is where that is already written down.
+local function lowerIsBetter(build, stat)
+	for _, entry in ipairs(build.displayStats or {}) do
+		if entry.stat == stat.stat then
+			return entry.lowerIsBetter and true or false
+		end
+	end
+	return false
+end
+
+--- Rank the tree by what each node is worth, as the Power Report does.
+---
+--- PoB already answers this question, and answers it better than a loop
+--- here would. CalcsTab:PowerBuilder runs the misc calculator over the
+--- tree caching by modKey, so the several hundred identical small nodes
+--- cost one pass between them, and it walks outward by distance so a depth
+--- limit stops early rather than filtering late.
+---
+--- Two numbers come back per node and the second is the one that decides
+--- anything. `power` is the node by itself, which is what it would be
+--- worth if it were free. `pathPower` is the whole route to it divided by
+--- what the route costs, which is what the point actually buys: a notable
+--- eight points away is not a notable, it is nine nodes, and only the
+--- per-point column says whether that is a deal.
+---
+--- Allocated nodes are measured too, by removal rather than addition. That
+--- is the other half of the same question and the cheaper half to act on:
+--- a point already spent that moves nothing is a point to take back.
+---
+--- Ascendancy nodes are not in the report. PoB leaves them out because
+--- they are not bought with passive points, so ranking them per point
+--- would be a category error.
+function api.treePower(build, query)
+	local spec = build and build.spec
+	local calcsTab = build and build.calcsTab
+	local treeTab = build and build.treeTab
+	if not spec or not spec.nodes or not calcsTab or not treeTab then
+		return { ready = false }
+	end
+	if not calcsTab.mainEnv or not calcsTab.miscCalculator then
+		return { ready = false, error = "the calculator is not available yet" }
+	end
+
+	query = query or {}
+	local stat = powerEntry(query.stat or "FullDPS")
+	if not stat then
+		return { ready = false, error = "no such stat: " .. tostring(query.stat) }
+	end
+	local depth = tonumber(query.depth)
+	if depth and depth < 1 then
+		depth = nil
+	end
+	local include = query.include or "unallocated"
+	local order = query.order == "node" and "node" or "route"
+	local limit = tonumber(query.limit) or 20
+
+	local key = table.concat({
+		stat.stat, tostring(depth or "all"), tostring(build.outputRevision),
+	}, "\1")
+
+	if not powerJob or powerJob.key ~= key then
+		powerJob = {
+			key = key,
+			stat = stat,
+			-- Put back once the report is done. The heat map is something
+			-- somebody chose in the app, and a question asked over the
+			-- wire has no business changing what their tree is coloured by
+			-- after it has its answer.
+			wasStat = calcsTab.powerStat,
+			wasDepth = calcsTab.nodePowerMaxDepth,
+			wasProgress = build.powerBuilderProgressCallback,
+		}
+		calcsTab.powerStat = stat
+		calcsTab.nodePowerMaxDepth = depth
+		calcsTab.powerBuildFlag = true
+		-- PoB reports progress to a toast nobody can see here. Borrowed
+		-- rather than replaced: a percentage is the only honest thing to
+		-- say while a scan is still running.
+		local job = powerJob
+		build.powerBuilderProgressCallback = function(percent)
+			job.percent = percent
+			if job.wasProgress then
+				job.wasProgress(percent)
+			end
+		end
+	end
+
+	local job = powerJob
+
+	local function restore()
+		calcsTab.powerStat = job.wasStat
+		calcsTab.nodePowerMaxDepth = job.wasDepth
+		build.powerBuilderProgressCallback = job.wasProgress
+	end
+
+	if not job.report then
+		-- Restored by hand, as every other measurement here does: the
+		-- calculator raises it, and leaving it raised would have the UI
+		-- believe somebody had changed something.
+		local buildFlag = build.buildFlag
+		local started = os.clock()
+		local ok, err = withClock(function()
+			repeat
+				calcsTab:BuildPower()
+			until not calcsTab.powerBuilder or os.clock() - started > POWER_BUDGET
+		end)
+		build.buildFlag = buildFlag
+
+		if not ok then
+			powerJob = nil
+			restore()
+			return { ready = false, error = err }
+		end
+
+		if calcsTab.powerBuilder then
+			-- Still measuring. There is no partial order worth sending: a
+			-- ranking of the half of the tree nearest the start would read
+			-- as an answer and be a map of where the scan had got to.
+			return {
+				ready = true,
+				stat = stat.stat,
+				statLabel = strip(stat.label or stat.stat),
+				scanning = true,
+				percent = job.percent,
+				results = asArray({}),
+			}
+		end
+
+		local okReport, report = pcall(treeTab.BuildPowerReportList, treeTab, stat)
+		restore()
+		if not okReport then
+			powerJob = nil
+			return { ready = false, error = tostring(report) }
+		end
+		job.report = report
+	end
+
+	local worse = lowerIsBetter(build, stat)
+	local kept = {}
+	for _, row in ipairs(job.report) do
+		local allocated = row.allocated and true or false
+		local wanted = include == "all"
+			or (include == "allocated" and allocated)
+			or (include ~= "allocated" and not allocated)
+		-- The report covers the whole tree whatever the scan covered, so a
+		-- depth limit has to be applied again here or the tail of the list
+		-- would be the nodes that were never measured, all sitting at zero
+		-- and indistinguishable from the ones that are worth nothing.
+		if wanted and depth and not allocated
+			and type(row.pathDist) == "number" and row.pathDist > depth then
+			wanted = false
+		end
+		if wanted then
+			kept[#kept + 1] = row
+		end
+	end
+
+	local function rank(row)
+		if order == "node" then
+			return row.power or 0
+		end
+		return row.pathPower or 0
+	end
+	table.sort(kept, function(a, b)
+		local ra, rb = rank(a), rank(b)
+		if ra ~= rb then
+			if worse then
+				return ra < rb
+			end
+			return ra > rb
+		end
+		-- Ties are the whole top of the list when the question is which
+		-- allocated points do nothing, and they are common on the other
+		-- side too, where a stat is moved by a kind of node rather than by
+		-- a particular one. The shorter route breaks them either way: it
+		-- is the cheaper buy going out, and going back it is the one that
+		-- can actually be acted on, since a node sixteen others hang off
+		-- is not a point anybody is refunding on its own.
+		local pa = type(a.pathDist) == "number" and a.pathDist or 0
+		local pb = type(b.pathDist) == "number" and b.pathDist or 0
+		if pa ~= pb then
+			return pa < pb
+		end
+		return tostring(a.name or "") < tostring(b.name or "")
+	end)
+
+	local results = asArray({})
+	for i = 1, math.min(#kept, limit) do
+		local row = kept[i]
+		local stats = asArray({})
+		for _, line in ipairs(row.sd or {}) do
+			stats[#stats + 1] = strip(line)
+		end
+		results[i] = {
+			id = row.id,
+			name = strip(row.name or ""),
+			type = row.type,
+			allocated = row.allocated and true or nil,
+			-- What the route costs, which is what the per-point column is
+			-- divided by. A cluster notable has no route on this tree, so
+			-- it has no cost to divide by either.
+			points = type(row.pathDist) == "number" and row.pathDist or nil,
+			cluster = row.pathDist == "Cluster" or nil,
+			power = row.power,
+			pathPower = row.pathPower,
+			stats = stats,
+		}
+	end
+
+	-- The baseline is read off the calculator's own base output rather than
+	-- off the sidebar, because that is the output every number above is a
+	-- difference from. They part company on Full DPS in particular: the
+	-- main pass leaves it at zero unless the build asked for it, while the
+	-- power scan asks for it explicitly, so the sidebar's figure would make
+	-- the deltas look like they were measured against nothing.
+	local _, calcBase = calcsTab:GetMiscCalculator()
+	local okBase, base = pcall(
+		data.powerStatList.GetFromOutput, calcBase, stat, true)
+
+	return {
+		ready = true,
+		stat = stat.stat,
+		statLabel = strip(stat.label or stat.stat),
+		baseline = (okBase and type(base) == "number") and base or nil,
+		lowerIsBetter = worse or nil,
+		order = order,
+		include = include,
+		depth = depth,
+		total = #kept,
+		results = results,
+	}
+end
+
 --- What switching a flask or a charm on, or off, would do.
 ---
 --- Equipped but inactive is a state only these two have, and the question

@@ -264,6 +264,47 @@ export type WhatIf =
       unparsed?: string[];
     };
 
+/** One row of the power report: a node, and what it is worth. */
+export interface PowerNode {
+  id: number;
+  name: string;
+  type?: string;
+  allocated?: boolean;
+  /** What the route to it costs in points. Absent on a cluster notable. */
+  points?: number;
+  cluster?: boolean;
+  /** The node by itself, as a change in the chosen stat. */
+  power: number;
+  /** The whole route to it, divided by what the route costs. */
+  pathPower: number;
+  stats: string[];
+}
+
+/**
+ * The tree ranked by what each node is worth.
+ *
+ * `scanning` means the engine is still measuring and `results` is empty:
+ * there is no partial order to show, because the scan walks outward from
+ * the allocated tree and a ranking of what it has reached so far would
+ * read as an answer.
+ */
+export type TreePowerSnapshot =
+  | { ready: false; error?: string }
+  | {
+      ready: true;
+      stat: string;
+      statLabel: string;
+      scanning?: true;
+      percent?: number;
+      baseline?: number;
+      lowerIsBetter?: true;
+      order?: 'node' | 'route';
+      include?: string;
+      depth?: number;
+      total?: number;
+      results: PowerNode[];
+    };
+
 export type TreeWhatIf =
   | { ready: false; error?: string }
   | {

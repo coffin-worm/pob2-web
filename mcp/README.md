@@ -168,7 +168,7 @@ built and draws no comparison.
 
 ## The tools
 
-Twenty-four, over the bridge's forty-six routes. The grouping is the point:
+Twenty-six, over the bridge's forty-seven routes. The grouping is the point:
 the engine exposes a route per control, and a model handed forty tools spends
 its context on the schema list and still picks the wrong one. So these are
 grouped by the question somebody actually has, and the routes that differ
@@ -197,8 +197,10 @@ discriminator.
 | `pob_compare_load` | Load, choose or drop a build to compare against |
 | `pob_notes` | What the build's author wrote about it |
 | `pob_set_main_skill` | Point the build at a different skill |
+| `pob_best_points` | Rank the tree by what a point buys |
 | `pob_tree_edit` | Allocate and refund passive points |
 | `pob_skill_edit` | Add, remove and change gems and socket groups |
+| `pob_config_set` | Change what the numbers assume, by option or by preset |
 | `pob_new_build` | Start an empty build on a class and ascendancy |
 | `pob_save_build` | Write the open build to a file, under a new name |
 
@@ -363,15 +365,16 @@ every slot it fits about 0.6 kB.
 
 ## Writing
 
-Ten tools change something, and one of them writes to disk.
+Eleven tools change something, and one of them writes to disk.
 
 `pob_open_build` replaces what the engine has open, and `pob_new_build`
 replaces it with an empty one. `pob_stage_item` replaces what is on the
 bench and `pob_craft_apply` changes it, and the bench is not part of the
 build: no slot changes, no item is equipped, and the character's numbers do
-not move. `pob_equip_staged`, `pob_tree_edit`, `pob_skill_edit` and
-`pob_set_main_skill` change the build itself, so every number moves, and
-`pob_compare_load` changes what the build is being compared against.
+not move. `pob_equip_staged`, `pob_tree_edit`, `pob_skill_edit`,
+`pob_config_set` and `pob_set_main_skill` change the build itself, so every
+number moves, and `pob_compare_load` changes what the build is being
+compared against.
 
 `pob_save_build` is the one that writes a file. It saves under a name you
 give it, refuses a name already taken rather than overwriting, and replaces
@@ -395,6 +398,41 @@ are now asked to discard it, with PoB's own `abortSave` flag, so the undo
 these tools promise is real. Measured: a build edited, reopened, edited
 again and then replaced by a new one leaves its file byte for byte as it
 was, and writes no `~~temp~~.xml`.
+
+### Where the next points go
+
+`pob_best_points` ranks the whole tree by what each node is worth, which
+is the app's own Power Report rather than anything reasoned about here.
+Two numbers per node: what it is worth on its own, and what the whole
+route to it is worth per point. The second is the default order, because
+it is the one that answers the question actually being asked. Together
+with `pob_tree_edit` that closes a loop in two calls, rank and take, and
+the ranking is measured again against the build it just changed.
+
+Asked for the points already spent instead, it measures each by taking
+it back, which answers the opposite question: a row near zero is a point
+doing nothing. Ascendancy nodes are in neither, because they are not
+bought with passive points.
+
+The first call measures the tree and takes a few seconds; later calls
+read the report it built, until the build moves and makes it a report
+about a build that no longer exists.
+
+### What the numbers assume
+
+`pob_config_set` is the other half of `pob_config`: the tab could be
+read and one option could be priced, and now it can be set. A preset
+sets several at once under a name, and there are four of them, all about
+which enemy is being fought.
+
+They are thin on purpose. Path of Building has no notion of a preset, so
+every name here is ours, and it has already done the bundling that
+matters: `enemyIsBoss` is a list option whose own code sets the enemy's
+resistances, the effect of curses and exposure on it, its poise, its
+damage and its level. Writing those out again under a friendlier name
+would be a worse copy of a table the engine keeps against the game. So a
+preset names the options it writes, the answer says which it wrote, and
+pob_config says which preset a build is on, defaults included.
 
 ### What an edit answers with
 

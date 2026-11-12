@@ -145,6 +145,7 @@ the call.
 | `GET /tree` | | The tree's geometry, ~420 kB. Fetch once; it does not change |
 | `GET /tree/alloc` | | What is allocated, which weapon set paid for it, and what is reachable with path costs |
 | `GET /tree/path` | `node` | The route a click on one node would allocate |
+| `GET /tree/power` | `stat?`, `order?`, `include?`, `depth?`, `limit?` | Every node ranked by what it is worth, which is the app's own Power Report |
 | `GET /items` | | Slots, the item list and the item sets |
 | `GET /item` | `id`, `slot?` | One item's tooltip, with a slot comparison if asked |
 | `GET /item/edit` | `id` | What is editable: text, modifier rolls, variant |
@@ -291,6 +292,36 @@ that without asking. That is right in a tree you can see, where the branch
 goes dark under the cursor, and wrong over a wire: a refund meant to free one
 point can free nine without a word. So the dependents are counted and named
 and the refund refused, until `cascade` says they were the point.
+
+### Ranking the tree
+
+`/tree/power` is PoB's Power Report. The app builds it to colour the
+tree: `CalcsTab:PowerBuilder` runs the misc calculator over every node,
+caching by `modKey` so the several hundred identical small nodes cost one
+pass between them, and `TreeTab:BuildPowerReportList` turns the result
+into rows. Both are called here rather than reimplemented, so the numbers
+are the ones the heat map is drawn from.
+
+Two per node. `power` is the node by itself and `pathPower` is the whole
+route to it divided by what the route costs, which is the one that
+decides anything: a notable eight points away is not a notable, it is
+nine nodes. An allocated node is measured by removal instead, so its
+number is what the stat would do if the point came back.
+
+The scan is spread over requests like the item sort, and for the same
+reason, but there is no partial order to hand back: PoB walks outward
+from what is allocated, so a ranking of what it has reached is a map of
+where the scan got to rather than an answer. `scanning` says so, and the
+next request carries it on. A full tree is about fifteen seconds and
+`depth` cuts that to a few.
+
+One thing had to be given back to PoB before its own code would work.
+`PowerBuilder` yields to the draw loop every 100ms by its own reckoning,
+and its reckoning is `GetTime`, which the headless build stubs to a
+constant zero: left alone the coroutine never yields and the whole tree
+is measured inside one resume, with nothing able to answer an HTTP
+request in the meantime. A clock that moves is installed for the length
+of a scan and taken away afterwards, so the slicing is PoB's own.
 
 ### Editing gems and socket groups
 

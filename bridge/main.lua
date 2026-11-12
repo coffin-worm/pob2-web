@@ -387,6 +387,17 @@ routes["GET /tree/whatif"] = function(_, query)
 	return 200, whatIf
 end
 
+--- Every node ranked by what it is worth, which is the app's own
+--- Power Report. One scan measures the tree and later requests read the
+--- report it built, so the first call is the slow one; `scanning` says
+--- the answer is not ready and asking again carries the scan on.
+routes["GET /tree/power"] = function(_, query)
+	local started = os.clock()
+	local power = api.treePower(currentBuild(), query)
+	power.buildMs = math.floor((os.clock() - started) * 1000 + 0.5)
+	return 200, power
+end
+
 --- What switching a flask or charm on, or off, would do.
 routes["GET /items/whatif"] = function(_, query)
 	local started = os.clock()

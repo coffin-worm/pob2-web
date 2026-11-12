@@ -36,8 +36,10 @@ import type {
   SkillStats,
   SocketGroup,
   StagedItem,
+  PowerNode,
   StatLine,
   TreeNode,
+  TreePowerSnapshot,
   WhatIf,
 } from './bridge-types.js';
 
@@ -354,6 +356,103 @@ export interface TreeSummary {
  * listing them individually would bury the four that decide how the build
  * works. Keystones and notables are named; the rest are counted.
  */
+/**
+ * A power number, at a readable precision.
+ *
+ * These are differences rather than totals, so one list runs from a tenth
+ * of a percent to six figures of damage. Fixed decimals would print either
+ * noise or nothing, so the precision follows the size of the number.
+ */
+function amount(value: number): string {
+  const size = Math.abs(value);
+  const places = size >= 1000 ? 0 : size >= 10 ? 1 : 2;
+  const text = value.toLocaleString(undefined, {
+    minimumFractionDigits: places,
+    maximumFractionDigits: places,
+  });
+  return value > 0 ? `+${text}` : text;
+}
+
+/** What one row costs, in the words the column means. */
+function cost(entry: PowerNode): string {
+  if (entry.cluster === true) return 'cluster notable';
+  const points = entry.points ?? 1;
+  const plural = `${points} point${points === 1 ? '' : 's'}`;
+  return entry.allocated === true ? `${plural} back` : plural;
+}
+
+/**
+ * The Power Report: the tree ranked by what each node is worth.
+ *
+ * Two numbers per row, because they answer different questions and only
+ * one of them is being sorted on. The node alone is what it would be worth
+ * if it were free. The route is what a point actually buys, which is the
+ * whole way there divided by what the way costs, and it is the one that
+ * decides anything: a notable eight points away is not a notable, it is
+ * nine nodes.
+ *
+ * An allocated node is measured by taking it away, so its number is what
+ * the stat would do if the point came back. That makes a row near zero the
+ * interesting one, which is why the sign is spelled out in the heading
+ * rather than left for a reader to work out.
+ */
+export function power(answer: TreePowerSnapshot): string {
+  if (!answer.ready) return answer.error ?? 'The engine has no tree to rank.';
+  if (answer.scanning === true) {
+    return (
+      'The scan is still running' +
+      (answer.percent === undefined ? '' : `, ${answer.percent}% of the way through`) +
+      '. Asking again with the same arguments carries it on.'
+    );
+  }
+  if (answer.results.length === 0) {
+    return 'Nothing to rank: nothing in that part of the tree moves that stat.';
+  }
+
+  const byRoute = answer.order !== 'node';
+  const sorted = byRoute
+    ? `what a point buys in ${answer.statLabel}, counting the whole route to it`
+    : `what the node alone is worth in ${answer.statLabel}`;
+  const now =
+    answer.baseline === undefined
+      ? '.'
+      : `, which is ${answer.baseline.toLocaleString(undefined, {
+          maximumFractionDigits: 1,
+        })} now.`;
+
+  const notes: string[] = [`Ranked by ${sorted}${now}`];
+  if (answer.total !== undefined && answer.total > answer.results.length) {
+    notes.push(
+      `${answer.total.toLocaleString()} nodes are in the ranking; these are ` +
+        `the best ${answer.results.length}.`,
+    );
+  }
+  if (answer.include === 'allocated') {
+    notes.push(
+      'These are points already spent, measured by taking them back, so the ' +
+        'number is what the stat would do if the node were refunded: a row ' +
+        'near zero is a point doing nothing.',
+    );
+  }
+
+  const rows: string[] = [];
+  for (const entry of answer.results) {
+    const figures = [`${amount(entry.power)} on its own`];
+    if (entry.cluster !== true) {
+      figures.push(`${amount(entry.pathPower)} a point for the route`);
+    }
+    rows.push(
+      `- ${strip(entry.name)} (${(entry.type ?? 'node').toLowerCase()}, id ` +
+        `${entry.id}, ${cost(entry)}): ${figures.join(', ')}`,
+    );
+    for (const line of entry.stats.slice(0, 4)) {
+      rows.push(`  ${strip(line)}`);
+    }
+  }
+
+  return `${notes.join(' ')}\n\n${rows.join('\n')}`;
+}
+
 export function tree({ allocated, nodes }: TreeSummary): string {
   const byType = new Map<string, TreeNode[]>();
   let unknown = 0;

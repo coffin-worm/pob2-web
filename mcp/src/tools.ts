@@ -1,7 +1,7 @@
 /**
  * What a client can ask.
  *
- * Two dozen tools over fifty-odd routes, which is deliberate. The engine
+ * Twenty-six tools over fifty-odd routes, which is deliberate. The engine
  * answers a UI and exposes a route per control; a model handed forty tools
  * spends its context on the schema list and still picks the wrong one. So
  * these are grouped by the question somebody actually has, and the routes
@@ -17,6 +17,8 @@ import { z } from 'zod';
 
 import { BridgeError } from './client.js';
 import type { Bridge } from './client.js';
+import { effective, matching, presetByName, presetNames } from './presets.js';
+import type { ConfigPreset } from './presets.js';
 import * as show from './render.js';
 import { buildLine } from './version.js';
 import type {
@@ -27,6 +29,7 @@ import type {
   CalcsSnapshot,
   CodeInspection,
   CompareSnapshot,
+  ConfigOption,
   ConfigSnapshot,
   CorruptPreview,
   CraftAffixes,
@@ -47,6 +50,7 @@ import type {
   StagedItem,
   StatsSnapshot,
   TreeAllocSnapshot,
+  TreePowerSnapshot,
   TreeWhatIf,
   WhatIf,
 } from './bridge-types.js';
@@ -96,6 +100,24 @@ const keyed = (table: Record<string, string | number>) =>
   Object.entries(table)
     .map(([slot, value]) => `${slot}:${value}`)
     .join(',');
+
+/**
+ * Every option's effective value, which is its default when nobody set it.
+ *
+ * An option nobody has touched still decides something: the engine
+ * assumes a guardian or pinnacle boss until told otherwise. So "what is
+ * this build configured as" is a question about defaults as much as
+ * about what somebody typed.
+ */
+const configured = (config: ConfigSnapshot): Map<string, ConfigOption> => {
+  const current = new Map<string, ConfigOption>();
+  if (config.ready) {
+    for (const section of config.sections) {
+      for (const option of section.options) current.set(option.var, option);
+    }
+  }
+  return current;
+};
 
 export function register(server: McpServer, bridge: Bridge) {
   /**
@@ -370,8 +392,15 @@ export function register(server: McpServer, bridge: Bridge) {
       const config = await bridge.get<ConfigSnapshot>('/config');
       if (!config.ready) return no('The engine has no configuration for this build.');
 
+      // Said first, because it is the one-line version of the whole tab:
+      // most of what a reader wants from the configuration is which
+      // enemy the numbers are against.
+      const active = matching(configured(config));
       const parts = [
-        `${config.shown} of the engine's ${config.total} options apply to this build.`,
+        `${config.shown} of the engine's ${config.total} options apply to this build.` +
+          (active.length > 0
+            ? ` The ${active.join(' and ')} preset is on.`
+            : ' No named preset matches; pob_config_set has them.'),
         '',
         show.config(config.sections, { all, filter }),
       ];
@@ -1817,6 +1846,91 @@ export function register(server: McpServer, bridge: Bridge) {
     },
   );
 
+  /* ------------------------------------------------------- ranking the tree */
+
+  server.registerTool(
+    'pob_best_points',
+    {
+      title: 'Rank the tree by what a point buys',
+      description:
+        'Every node in the tree ranked by what it is worth, measured by the ' +
+        'engine rather than read off the modifier text. This is the app\'s own ' +
+        'Power Report, which is how it colours the tree, and it is the tool ' +
+        'for "where should the next points go".\n\n' +
+        'Two numbers come back per node. The node alone is what it would be ' +
+        'worth if it were free. The route is the whole way there divided by ' +
+        'what the way costs, and that is the one the list is sorted on by ' +
+        'default, because a notable eight points away is not a notable, it is ' +
+        'nine nodes.\n\n' +
+        'With `include: "allocated"` it measures the points already spent, by ' +
+        'taking each one back, which answers the opposite question: which of ' +
+        'this build\'s points are doing nothing. A row near zero is a point to ' +
+        'reclaim.\n\n' +
+        'The first call measures the tree and takes a few seconds; later calls ' +
+        'read the report it built, until the build changes. `depth` keeps the ' +
+        'scan near the allocated tree and makes it much faster. Ascendancy ' +
+        'nodes are not in it, because they are not bought with points.',
+      inputSchema: {
+        stat: z
+          .string()
+          .optional()
+          .describe(
+            'Which stat to rank by, e.g. "FullDPS", "Life", "TotalEHP", ' +
+              '"Mana". Defaults to FullDPS.',
+          ),
+        order: z
+          .enum(['route', 'node'])
+          .optional()
+          .describe(
+            'Rank by what the route costs per point (the default), or by ' +
+              'what the node is worth on its own.',
+          ),
+        include: z
+          .enum(['unallocated', 'allocated', 'all'])
+          .optional()
+          .describe(
+            'Nodes that could be taken (the default), points already spent, ' +
+              'or both.',
+          ),
+        depth: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('Only nodes within this many points of the allocated tree.'),
+        limit: z.number().int().min(1).max(60).optional().describe('At most this many. Default 15.'),
+      },
+      annotations: reads,
+    },
+    async ({ stat = 'FullDPS', order = 'route', include = 'unallocated', depth, limit = 15 }) => {
+      const ask = () =>
+        bridge.get<TreePowerSnapshot>('/tree/power', {
+          stat,
+          order,
+          include,
+          depth,
+          limit,
+        });
+
+      // Carried to the end here rather than handed back half done, for the
+      // same reason the item sort is: the engine measures the tree outward
+      // from what is allocated, so a scan stopped early is not a provisional
+      // ranking, it is a ranking of the nodes nearest the start.
+      let found = await ask();
+      const started = Date.now();
+      let stalled = 0;
+      while (found.ready && found.scanning === true && Date.now() - started < SCAN_BUDGET_MS) {
+        const before = found.percent ?? 0;
+        found = await ask();
+        if (!found.ready) break;
+        stalled = (found.percent ?? 0) > before ? 0 : stalled + 1;
+        if (stalled >= 3) break;
+      }
+
+      return ok(show.power(found));
+    },
+  );
+
   /* --------------------------------------------------- changing the skills */
 
   /**
@@ -2314,6 +2428,134 @@ export function register(server: McpServer, bridge: Bridge) {
           show.header(state),
         ].join('\n'),
       );
+    },
+  );
+
+  /* ------------------------------------------- changing the configuration */
+
+  server.registerTool(
+    'pob_config_set',
+    {
+      title: 'Change the configuration',
+      description:
+        'Set the assumptions the numbers rest on: which enemy is being ' +
+        'fought, which charges are up, what the character is standing in. ' +
+        'pob_what_if change="config" prices one of these; this one makes it, ' +
+        'and the answer says what moved on the stat sheet.\n\n' +
+        `\`preset\` sets several at once under a name: ${presetNames.join(', ')}. ` +
+        'Path of Building has no notion of a preset, so these are ours and ' +
+        'they are thin on purpose: each names the options it writes, and the ' +
+        'answer says which ones it wrote.\n\n' +
+        '`set` takes the variable names pob_config prints in brackets, with ' +
+        'the value each should take. A list option wants one of its own ' +
+        'values, spelled as pob_config shows it. `clear` puts options back to ' +
+        'the engine\'s default, which is not the same as setting them to ' +
+        'zero.\n\n' +
+        'Nothing is written to disk, and opening the build again undoes it.',
+      inputSchema: {
+        preset: z
+          .enum(presetNames as [string, ...string[]])
+          .optional()
+          .describe('A named bundle of options to apply.'),
+        set: z
+          .array(
+            z.object({
+              option: z.string().describe('The variable name, e.g. "enemyIsBoss".'),
+              value: z
+                .union([z.string(), z.number(), z.boolean()])
+                .describe('What it should be.'),
+            }),
+          )
+          .optional()
+          .describe('Options to set, by variable name.'),
+        clear: z
+          .array(z.string())
+          .optional()
+          .describe('Options to put back to the engine\'s default.'),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Required when the engine is one this server did not start.'),
+      },
+      annotations: writes,
+    },
+    async ({ preset, set = [], clear = [], confirm }) => {
+      if (preset === undefined && set.length === 0 && clear.length === 0) {
+        return no('Give a `preset`, or options in `set` or `clear`.');
+      }
+      if (!(await bridge.ours()) && confirm !== true) {
+        return no(
+          'That engine was already running when this server attached to it, ' +
+            'so somebody may have a window open on the build. The ' +
+            'configuration decides what every number on their screen means. ' +
+            'Call again with confirm=true if that is wanted.',
+        );
+      }
+
+      const wanted: { option: string; value?: string | number | boolean }[] = [];
+      let chosen: ConfigPreset | undefined;
+      if (preset !== undefined) {
+        chosen = presetByName(preset);
+        if (chosen === undefined) {
+          return no(`There is no preset called "${preset}". There are: ${presetNames.join(', ')}.`);
+        }
+        wanted.push(...chosen.options);
+      }
+      // After the preset, so an explicit value wins over the bundle's: a
+      // preset plus one change is a thing somebody will ask for, and the
+      // last write is the one that lands.
+      for (const entry of set) wanted.push(entry);
+      for (const option of clear) wanted.push({ option });
+
+      const sheetBefore = await bridge.get<StatsSnapshot>('/stats');
+
+      const refused: string[] = [];
+      for (const entry of wanted) {
+        // No `value` key at all is how the bridge is told to clear one: it
+        // coerces by the option's declared type, and nil is the only value
+        // that means "whatever the engine would have assumed".
+        const why = await attempt(
+          'setConfig',
+          entry.value === undefined
+            ? { var: entry.option }
+            : { var: entry.option, value: entry.value },
+        );
+        if (why !== null) refused.push(`- ${entry.option}: ${show.strip(why)}`);
+      }
+
+      const after = await bridge.get<ConfigSnapshot>('/config');
+      const sheetAfter = await bridge.get<StatsSnapshot>('/stats');
+
+      const landed = configured(after);
+      // Read back rather than echoed: an option that was set twice in one
+      // call, or set to something the engine rounded, should answer with
+      // what it says now and not with what it was asked for. One the
+      // engine has never heard of is not in the map, and saying nothing
+      // about it is right, because the refusal above already did.
+      const rows: string[] = [];
+      for (const name of wanted.map((entry) => entry.option)) {
+        if (rows.some((row) => row.startsWith(`- ${name}: `))) continue;
+        const option = landed.get(name);
+        if (option === undefined) continue;
+        const value = effective(option);
+        const how = option.value === undefined ? " (the engine's own default)" : '';
+        rows.push(`- ${name}: ${value === undefined ? 'nothing' : String(value)}${how}`);
+      }
+
+      const parts: string[] = [];
+      if (refused.length > 0) {
+        parts.push(`## ${refused.length} of these did not happen`, ...refused, '');
+      }
+      if (chosen !== undefined) {
+        parts.push(`The ${chosen.name} preset is on. ${chosen.about}`, '');
+      }
+      if (rows.length > 0) {
+        parts.push('These options now read:', ...rows);
+      }
+      if (sheetBefore.ready && sheetAfter.ready) {
+        parts.push('', '## What moved', show.moved(sheetBefore.lines, sheetAfter.lines));
+      }
+      return ok(parts.join('\n'));
     },
   );
 }
