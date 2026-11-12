@@ -336,6 +336,17 @@ the file keeps. The instance is rebuilt as `addGem` builds a new one and
 marked `new`, which is PoB's own flag for "give this its natural maximum
 level on the next pass" (`SkillsTab.lua:1366`).
 
+`setWeaponSet` takes 1 or 2 and is the Items tab's weapon swap, which is
+a narrower thing than it looks. The set a build is calculated in is the
+main socket group's own: `env.weaponSet = override.weaponSet or
+build.skillsTab:GetSocketGroupWeaponSet(mainSocketGroup)`
+(`CalcSetup.lua:1074`), and that function only falls through to
+`activeItemSet.useSecondWeaponSet` when the group is tied to neither set
+(`SkillsTab.lua:1398`). So with a main skill restricted to set I the
+swap moves reservation and leaves every other number alone, and with a
+main skill on both sets it decides which weapons the build is holding.
+Measured both ways on a real build.
+
 `setSocketGroupWeaponSet` takes `{ group, set }` where `set` is 1, 2 or
 `both`. PoB keeps this as two flags and reads "neither" as "both": the
 checkbox callback refuses to clear the second one rather than let a group

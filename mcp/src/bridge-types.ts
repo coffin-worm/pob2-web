@@ -115,6 +115,8 @@ export interface ItemSlot {
   itemId: number;
   flask?: boolean;
   active?: boolean;
+  /** 1 or 2 on a slot that belongs to one weapon set, absent on the rest. */
+  weaponSet?: number;
 }
 
 export interface ItemSummary {

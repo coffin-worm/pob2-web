@@ -168,7 +168,7 @@ built and draws no comparison.
 
 ## The tools
 
-Twenty-six, over the bridge's forty-seven routes. The grouping is the point:
+Twenty-seven, over the bridge's forty-seven routes. The grouping is the point:
 the engine exposes a route per control, and a model handed forty tools spends
 its context on the schema list and still picks the wrong one. So these are
 grouped by the question somebody actually has, and the routes that differ
@@ -201,6 +201,7 @@ discriminator.
 | `pob_tree_edit` | Allocate and refund passive points |
 | `pob_skill_edit` | Add, remove and change gems and socket groups |
 | `pob_config_set` | Change what the numbers assume, by option or by preset |
+| `pob_weapon_set` | Hold weapon set I or weapon set II |
 | `pob_new_build` | Start an empty build on a class and ascendancy |
 | `pob_save_build` | Write the open build to a file, under a new name |
 
@@ -365,16 +366,16 @@ every slot it fits about 0.6 kB.
 
 ## Writing
 
-Eleven tools change something, and one of them writes to disk.
+Twelve tools change something, and one of them writes to disk.
 
 `pob_open_build` replaces what the engine has open, and `pob_new_build`
 replaces it with an empty one. `pob_stage_item` replaces what is on the
 bench and `pob_craft_apply` changes it, and the bench is not part of the
 build: no slot changes, no item is equipped, and the character's numbers do
 not move. `pob_equip_staged`, `pob_tree_edit`, `pob_skill_edit`,
-`pob_config_set` and `pob_set_main_skill` change the build itself, so every
-number moves, and `pob_compare_load` changes what the build is being
-compared against.
+`pob_config_set`, `pob_weapon_set` and `pob_set_main_skill` change the
+build itself, so every number moves, and `pob_compare_load` changes what
+the build is being compared against.
 
 `pob_save_build` is the one that writes a file. It saves under a name you
 give it, refuses a name already taken rather than overwriting, and replaces
@@ -417,6 +418,23 @@ bought with passive points.
 The first call measures the tree and takes a few seconds; later calls
 read the report it built, until the build moves and makes it a report
 about a build that no longer exists.
+
+### Which weapon set is held
+
+`pob_weapon_set` is the Items tab's weapon swap, and it is worth knowing
+what that actually decides before reading its answer. The set a build is
+calculated in is the main socket group's own, not the swap button
+(`CalcSetup.lua:1074`), and the button only gets a say when the main
+group is tied to neither set. So a main skill restricted to set I stays
+calculated in set I whatever is held, and swapping then moves what the
+other set reserves and nothing else. The tool says which of the two
+cases it was, because a swap where the weapons changed and the damage
+did not is otherwise a mystery.
+
+Which makes "measure this build on the other weapon set"
+`pob_set_main_skill`, to a group on that set. Ranking the tree for the
+other set is the same thing, since `pob_best_points` measures the build
+as it stands.
 
 ### What the numbers assume
 

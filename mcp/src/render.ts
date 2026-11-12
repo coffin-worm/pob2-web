@@ -590,6 +590,36 @@ function weaponSetLabel(label: string): string {
   return 'weapon sets I+II';
 }
 
+/**
+ * The weapon slots alone, for when the question is which set is held.
+ *
+ * `equipment` prints every slot, which is most of a screen and all of it
+ * unchanged by a weapon swap. These are the slots that did change, and
+ * the item names are the only way to tell the two sets apart.
+ */
+export function weapons(snapshot: {
+  slots: ItemSlot[];
+  items: ItemSummary[];
+}): string {
+  const byId = new Map(snapshot.items.map((item) => [item.id, item]));
+  // PoB marks a slot with the set it belongs to; the fallback is for a
+  // build whose slots predate that and carry only their names.
+  const held = snapshot.slots.filter(
+    (slot) => slot.weaponSet !== undefined || /^Weapon/.test(slot.name),
+  );
+  if (held.length === 0) return 'The build has no weapon slots.';
+
+  return held
+    .map((slot) => {
+      const item = slot.itemId === 0 ? undefined : byId.get(slot.itemId);
+      if (!item) return `- ${strip(slot.label)}: empty`;
+      const base =
+        item.base && !item.name.includes(item.base) ? `, ${strip(item.base)}` : '';
+      return `- ${strip(slot.label)}: ${strip(item.name)} (${item.rarity.toLowerCase()}${base}) [id ${item.id}]`;
+    })
+    .join('\n');
+}
+
 export function groups(list: SocketGroup[], mainGroup: number): string {
   if (list.length === 0) return 'This build has no socket groups.';
 

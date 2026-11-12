@@ -1,7 +1,7 @@
 /**
  * What a client can ask.
  *
- * Twenty-six tools over fifty-odd routes, which is deliberate. The engine
+ * Twenty-seven tools over fifty-odd routes, which is deliberate. The engine
  * answers a UI and exposes a route per control; a model handed forty tools
  * spends its context on the schema list and still picks the wrong one. So
  * these are grouped by the question somebody actually has, and the routes
@@ -2428,6 +2428,106 @@ export function register(server: McpServer, bridge: Bridge) {
           show.header(state),
         ].join('\n'),
       );
+    },
+  );
+
+  /* ------------------------------------------------ which weapons are held */
+
+  server.registerTool(
+    'pob_weapon_set',
+    {
+      title: 'Switch the active weapon set',
+      description:
+        "Hold weapon set I or weapon set II, which is the app's weapon swap " +
+        'buttons on the Items tab.\n\n' +
+        'What that changes is narrower than it sounds, and worth knowing ' +
+        'before reading the answer. The weapon set a build is calculated in ' +
+        "is the main socket group's own, not this one: a main skill " +
+        'restricted to set I is calculated in set I whatever is held, and ' +
+        'swapping then only changes what the groups in the other set ' +
+        'reserve. It is when the main skill is on both sets that this decides ' +
+        'which weapons the numbers are using, and then everything moves. The ' +
+        'answer says which of the two cases it was.\n\n' +
+        'So "measure this build on the other weapon set" is ' +
+        'pob_set_main_skill, to a group on that set, rather than this tool. ' +
+        'Ranking the tree for the other set is the same thing, because ' +
+        'pob_best_points measures the build as it stands.\n\n' +
+        'Passive points are not what changes here either. A node bought out ' +
+        "of a weapon set's own points is paid for from that pool whichever " +
+        'set is held; pob_tree_edit `weaponSet` is the one that decides ' +
+        'which pool pays.\n\n' +
+        'Nothing is written to disk.',
+      inputSchema: {
+        set: z
+          .union([z.literal(1), z.literal(2)])
+          .describe('Which weapon set to hold.'),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Required when the engine is one this server did not start.'),
+      },
+      annotations: writes,
+    },
+    async ({ set, confirm }) => {
+      if (!(await bridge.ours()) && confirm !== true) {
+        return no(
+          'That engine was already running when this server attached to it, ' +
+            'so somebody may have a window open on the build. Swapping their ' +
+            'weapons changes every number on it. Call again with ' +
+            'confirm=true if that is wanted.',
+        );
+      }
+
+      const before = await bridge.get<ItemsSnapshot>('/items');
+      if (!before.ready) return no('The engine has no equipment for this build.');
+      const sheetBefore = await bridge.get<StatsSnapshot>('/stats');
+
+      const already = before.weaponSet === set;
+      const why = await attempt('setWeaponSet', set);
+      if (why !== null) return no(`Not switched: ${show.strip(why)}`);
+
+      const after = await bridge.get<ItemsSnapshot>('/items');
+      if (!after.ready) return ok(`Weapon set ${set === 2 ? 'II' : 'I'} is active.`);
+      const sheetAfter = await bridge.get<StatsSnapshot>('/stats');
+
+      // Said, rather than left to be inferred from an answer where the
+      // weapons changed and the damage did not. A main skill pinned to one
+      // set keeps the calculation there, so a swap away from it moves
+      // reservation and nothing else, and a reader who expected otherwise
+      // needs telling why. Only when the two disagree: when the set held
+      // is the set calculated in, there is nothing to explain.
+      const skills = await bridge.get<SkillsSnapshot>('/skills');
+      const main = skills.ready
+        ? skills.groups.find((group) => group.index === skills.mainGroup)
+        : undefined;
+      const pinned =
+        main?.weaponSet === 'Set 1' ? 1 : main?.weaponSet === 'Set 2' ? 2 : undefined;
+
+      const parts = [
+        `Weapon set ${after.weaponSet === 2 ? 'II' : 'I'} is ` +
+          (already ? 'active, and already was.' : 'now active.'),
+      ];
+      if (pinned !== undefined && pinned !== after.weaponSet) {
+        const named = show.strip(main?.label ?? '') || main?.skills[0] || 'the main skill';
+        parts.push(
+          '',
+          `The main skill is ${named}, which is on weapon set ` +
+            `${pinned === 2 ? 'II' : 'I'} only, so the build is still ` +
+            `calculated in set ${pinned === 2 ? 'II' : 'I'} with those ` +
+            'weapons. What a swap changes while that is true is which ' +
+            'groups reserve. To measure the set now held, make one of its ' +
+            'skills the main one with pob_set_main_skill.',
+        );
+      }
+      parts.push('', '### Held', show.weapons(after));
+      // A swap to the set already held is a legitimate call, from a
+      // conversation that does not know which one is up, and printing an
+      // empty "what moved" under it would read as a result rather than as
+      // the absence of one.
+      if (!already && sheetBefore.ready && sheetAfter.ready) {
+        parts.push('', '## What moved', show.moved(sheetBefore.lines, sheetAfter.lines));
+      }
+      return ok(parts.join('\n'));
     },
   );
 
