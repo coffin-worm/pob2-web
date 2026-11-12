@@ -28,6 +28,9 @@ PoB's native DLLs; nothing in `api.lua` or `server.lua` knows it exists.
 Four environment variables override the defaults, which otherwise follow the
 checkout: `POB_SRC`, `POB_RUNTIME`, `POB_BRIDGE_DIR` and `POB_BRIDGE_PORT`.
 
+A fifth is not a default at all. `POB_BRIDGE_OWNER` names a process id,
+and the engine exits when that process does.
+
 ## Finding it
 
 Without `POB_BRIDGE_PORT` the engine takes the first free port of 49090,
@@ -50,6 +53,42 @@ with filesystem access and has no authentication of any kind, which is why
 it is loopback-only and why `Access-Control-Allow-Origin` can safely be
 `*`.
 
+## Dying with its host
+
+A host that starts the engine owns it, and every host already ends it. The
+dev server and the MCP server kill it from their exit handlers, and the
+launcher puts it in a Windows job object with
+`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`.
+
+The interesting case is a host killed outright with `taskkill /f`, which
+runs no handler at all. That turns out to be covered as well, and not by
+anything in this repository: node puts every child it spawns into a job
+object of its own that kills on close, so a force-killed dev server or MCP
+server takes its engine with it about a second later. Measured three ways,
+with the engine writing to a pipe, writing to a file, and with the watchdog
+below switched off, it died every time. The orphan this was written to
+prevent does not happen today.
+
+It is kept because for two hosts out of three that guarantee is an
+implementation detail of libuv rather than a promise libuv makes, and
+because it is cheap. `POB_BRIDGE_OWNER` is a process id, and the frame loop
+asks every two seconds whether that process has exited, through a handle
+opened once at startup and kept. Keeping the handle is what makes watching
+a pid safe: Windows holds a process object open while anyone has a handle
+to it, so the handle goes on naming the process it was opened for even
+after that process dies, and a recycled pid can never be mistaken for a
+live owner.
+
+When the watchdog is what ends the engine, the engine quits the way it
+would on any quit and takes its announcement back, which was measured with
+an owner that was no relation to the engine at all. When the kernel gets
+there first, which is usually, the port file is left behind for the next
+run to health-check, which is what already happened to any engine killed
+outright.
+
+Only a spawning host sets it. The launcher does not, because its job object
+is kernel-enforced and needs no help, and nothing sets it for an engine
+started by hand, which answers for as long as it is left alone.
 ## Conventions
 
 **Every answer is a whole snapshot, not a diff.** One command can move

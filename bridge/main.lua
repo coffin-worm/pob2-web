@@ -15,7 +15,7 @@
 --   "C:\Program Files\LOVE\lovec.exe" <checkout>\bridge
 --
 -- POB_SRC, POB_RUNTIME, POB_BRIDGE_DIR and POB_BRIDGE_PORT override the
--- defaults below.
+-- defaults below. POB_BRIDGE_OWNER names a process to die with.
 
 --- A directory from the environment, with either slash and a guaranteed
 --- trailing one, since every use here concatenates a file name onto it.
@@ -57,6 +57,86 @@ local TICK = 1 / 30
 local function log(fmt, ...)
 	io.stdout:write(string.format("[bridge] " .. fmt .. "\n", ...))
 	io.stdout:flush()
+end
+
+----------------------------------------------------------------- the owner
+
+-- Seconds between checks. An engine that outlives its host by two seconds
+-- costs nobody anything, and at this rate the asking is thirty syscalls a
+-- minute.
+local OWNER_POLL = 2
+
+--- Answers whether the process that started this one has exited, or nil
+--- when nobody asked to be watched.
+local ownerExited = nil
+local ownerCheckAt = 0
+
+--- Tie this engine to the process that started it.
+---
+--- Every host already does this from the outside, and does it well enough
+--- that this is a second line of defence rather than the first. A host
+--- killed outright still takes the engine with it: node puts each child it
+--- spawns into a job object that kills on close, so neither the dev server
+--- nor the MCP server can orphan one, and the launcher sets up the same
+--- thing explicitly. Measured, the engine goes about a second after a
+--- taskkill /f on any of them, whether its output was a pipe or a file.
+---
+--- What that rests on for two hosts out of three is an implementation
+--- detail of libuv rather than anything libuv promises. So the engine is
+--- told whose life its own hangs on and asks after it. When this is what
+--- ends the engine, it quits properly and takes its announcement back.
+--- When the kernel gets there first, which is usually, the port file is
+--- left behind for the next run to health-check, exactly as before.
+---
+--- The handle is opened once and kept, which is what makes watching a pid
+--- safe. Windows keeps a process object alive while anyone holds a handle
+--- to it, so this one goes on naming the process it was opened for even
+--- after that process dies. A pid looked up fresh each time could by then
+--- have been reused by a stranger, and this would kill the engine over it.
+local function watchOwner()
+	local pid = tonumber(os.getenv("POB_BRIDGE_OWNER"))
+	if not pid then
+		return
+	end
+	if jit and jit.os ~= "Windows" then
+		log("POB_BRIDGE_OWNER is set, but watching the owner is Windows-only so far")
+		return
+	end
+	local okFfi, ffi = pcall(require, "ffi")
+	if not okFfi then
+		log("POB_BRIDGE_OWNER is set, but FFI is not here to watch pid %d with", pid)
+		return
+	end
+	-- __stdcall is what these two are on x86 and is ignored on x64, so
+	-- declaring it covers both. Declaring a symbol twice is an error rather
+	-- than a no-op and something else may have got here first, so a failure
+	-- on this line is not yet a reason to stop.
+	pcall(ffi.cdef, [[
+		void* __stdcall OpenProcess(uint32_t access, int inherit, uint32_t pid);
+		uint32_t __stdcall WaitForSingleObject(void* handle, uint32_t ms);
+	]])
+	local SYNCHRONIZE = 0x00100000
+	local okOpen, handle = pcall(function()
+		return ffi.C.OpenProcess(SYNCHRONIZE, 0, pid)
+	end)
+	if not okOpen or handle == nil then
+		-- Either the owner died in the moment it took to get here, or this
+		-- host cannot ask the question. Staying up is the lesser mistake: an
+		-- engine nobody reaps is untidy, and one that quits during boot
+		-- because a syscall was unavailable is broken.
+		log("cannot watch pid %d, so this engine may outlive its host", pid)
+		return
+	end
+	local WAIT_OBJECT_0 = 0
+	ownerExited = function()
+		-- Only the signalled answer counts. The call failing means the
+		-- question went wrong, not that the owner has gone.
+		local okWait, state = pcall(function()
+			return ffi.C.WaitForSingleObject(handle, 0)
+		end)
+		return okWait and state == WAIT_OBJECT_0
+	end
+	log("tied to pid %d: when it goes, this engine goes", pid)
 end
 
 --- Where something else can find this engine.
@@ -711,6 +791,8 @@ end
 ------------------------------------------------------------- love callbacks
 
 function love.load()
+	watchOwner()
+
 	local ok, err = pcall(boot)
 	booted, bootErr = ok, err
 	if not ok then
@@ -796,6 +878,21 @@ function love.run()
 	if love.timer then love.timer.step() end
 
 	return function()
+		-- Asked here rather than on a timer, because the quit this pushes is
+		-- picked up by the poll just below, on this same pass through the loop,
+		-- and that is the path that takes the announcement back.
+		if ownerExited and os.time() >= ownerCheckAt then
+			ownerCheckAt = os.time() + OWNER_POLL
+			if ownerExited() then
+				-- Queued before the engine says anything, because the owner is
+				-- often the process holding the other end of stdout. Saying this
+				-- out loud can fail by the time it is true, and a line nobody
+				-- can hear is not worth leaving a port file behind for.
+				love.event.quit(0)
+				pcall(log, "the owner has gone, so this engine is stopping")
+			end
+		end
+
 		if love.event then
 			love.event.pump()
 			for name, a in love.event.poll() do

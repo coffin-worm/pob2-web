@@ -129,6 +129,10 @@ export function pobBridge(options: Options): Plugin {
             POB_RUNTIME: runtimeDir,
             POB_BRIDGE_DIR: bridgeDir,
             POB_BRIDGE_PORT: String(port),
+            // Tie the engine to this process. The shutdown below kills it on a
+            // clean stop and cannot run on a forced one, so the engine is told
+            // whose death to watch for instead.
+            POB_BRIDGE_OWNER: String(process.pid),
           },
           stdio: ['ignore', 'pipe', 'pipe'],
         });

@@ -129,6 +129,11 @@ A few behaviours worth knowing, all of which cost something to get wrong:
   enough to matter, and a surviving engine is then *reused* by the next
   start, so you edit `api.lua`, restart, and nothing changes. It shells out
   to `taskkill /f /t`.
+- **A forced kill does not leave one behind either.** The teardown above
+  runs on a clean stop and not on a `taskkill /f`, but node puts every child
+  it spawns into a job object that kills on close, so the engine goes about
+  a second later anyway. It is handed the dev server's process id and
+  watches that too, as a second line of defence. See `bridge/README.md`.
 - **No LÖVE, no engine.** The dev server still comes up and says so in the
   terminal and on the page. `POB_LOVE` points at `lovec.exe` if it is
   somewhere unusual.

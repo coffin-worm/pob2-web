@@ -204,6 +204,10 @@ async function start(root: string): Promise<Engine> {
       POB_RUNTIME: path.join(root, 'runtime'),
       POB_BRIDGE_DIR: bridgeDir,
       POB_BRIDGE_PORT: String(port),
+      // Tie the engine to this process. The exit handler in index.ts kills
+      // it on a clean stop and cannot run on a forced one, so the engine is
+      // told whose death to watch for instead.
+      POB_BRIDGE_OWNER: String(process.pid),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

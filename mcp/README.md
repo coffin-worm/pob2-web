@@ -66,10 +66,19 @@ have the build changed under them.
 | `POB_MCP_OWN` | `1` to always start a private engine |
 
 An engine this server started is killed when the server exits, and its
-announcement in the port file is taken back at the same time. A client that
-kills the server outright can orphan one; the next run attaches to it rather
-than piling up another, which is the reason nothing worse than one orphan
-can accumulate.
+announcement in the port file is taken back at the same time. That covers
+every exit a handler can see: a client closing stdin, a signal, an uncaught
+failure.
+
+A client that kills the server outright runs no handler, and the engine
+still goes about a second later, because node puts every child it spawns
+into a job object that kills on close. The engine is handed this process id
+as well and watches it, which is a belt to that kernel-enforced braces
+rather than the thing doing the work. `bridge/README.md` has the
+measurements, under "Dying with its host".
+
+An engine the server merely attached to is left alone whichever way the
+server goes, because it belongs to whoever started it.
 
 ## The tools
 
