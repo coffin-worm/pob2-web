@@ -621,7 +621,34 @@ routes["POST /action"] = function(payload)
 	return 200, api.snapshot(currentBuild())
 end
 
-routes["POST /build/new"] = function()
+--- Stop PoB saving the open build on its way out, for one mode change.
+---
+--- Build.lua:1152 saves the build whenever Shutdown runs in dev mode: to
+--- its own file if it has one, and to ~~temp~~.xml if it does not. That
+--- is a kindness to somebody pressing F5 in an editor and a trap here,
+--- because every route below replaces the open build, and replacing it
+--- would write whatever state it happens to be in over the file it came
+--- from. "Open another build" and "start a new one" would then be ways
+--- of saving the one you were leaving, which is the opposite of what
+--- they say they do, and the opposite of what reopening a build to
+--- undo an experiment is for.
+---
+--- `abortSave` is PoB's own flag for exactly this, set while a build is
+--- loading and cleared by Shutdown itself, so it lasts one mode change
+--- and nothing has to put it back. Asked for by the caller rather than
+--- assumed: the web UI has its own idea of when work is lost, and this
+--- is not the place to change its mind.
+local function discardOpenBuild(payload)
+	if type(payload) ~= "table" or not payload.discard then
+		return
+	end
+	local build = currentBuild()
+	if build then
+		build.abortSave = true
+	end
+end
+routes["POST /build/new"] = function(payload)
+	discardOpenBuild(payload)
 	newBuild()
 	settle(2)
 	return 200, api.snapshot(currentBuild())
@@ -651,6 +678,7 @@ routes["POST /build/open"] = function(payload)
 	-- its contents but no file behind it, so Save has nothing to write to
 	-- and the build list cannot tell which of its entries is the open one.
 	-- The path is what makes this an opened file rather than pasted text.
+	discardOpenBuild(payload)
 	__mainObject__.main:SetMode("BUILD", path, name, xml)
 	runCallback("OnFrame")
 	settle(3)
@@ -716,6 +744,7 @@ routes["POST /code/import"] = function(payload)
 	-- Named for what it is, since a code carries no file name and
 	-- "Imported build" tells you nothing once you have two of them.
 	local name = detail.ascendancy or detail.class or "Imported build"
+	discardOpenBuild(payload)
 	loadBuildFromXML(xml, name)
 	settle(4)
 	return 200, api.snapshot(currentBuild())

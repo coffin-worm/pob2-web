@@ -214,8 +214,25 @@ export function comparison(answer: WhatIf, subject?: string): string {
     return `The engine could not price that: ${strip(answer.error ?? 'no reason given')}`;
   }
   const head = subject ? `${subject}` : '';
+
+  // Before the numbers, because every number below was computed from an
+  // item missing these lines, and on the nothing-changes path too, since
+  // that is the answer they most often explain.
+  const unread =
+    answer.unparsed && answer.unparsed.length > 0
+      ? [
+          'The engine did not read these lines on the item, so nothing below',
+          'counts them:',
+        ].join(' ') +
+        '\n' +
+        answer.unparsed.map((line) => `- ${strip(line)}`).join('\n') +
+        '\n\n'
+      : '';
+
   if (answer.unchanged) {
-    return head === '' ? 'Nothing changes.' : `${head}: nothing changes.`;
+    const said = head === '' ? 'Nothing changes.' : `${head}: nothing changes.`;
+    if (unread === '') return said;
+    return (head === '' ? '' : `${head}\n\n`) + unread + 'Nothing changes.';
   }
 
   const blocks = [...new Set(answer.lines.map((line) => line.block))].sort((a, b) => a - b);
@@ -226,7 +243,101 @@ export function comparison(answer: WhatIf, subject?: string): string {
       ? 'The engine said nothing about that change.'
       : `${head}: the engine said nothing about that change.`;
   }
-  return (head === '' ? '' : `${head}\n\n`) + parts.join('\n\n');
+  return (head === '' ? '' : `${head}\n\n`) + unread + parts.join('\n\n');
+}
+
+/**
+ * The stat sheet before a change against the stat sheet after it.
+ *
+ * What an edit was worth, read off the same sidebar a person reads. Not
+ * a what-if: the change has been made, both sheets are the engine own
+ * work, and the difference between them is simply what moved.
+ *
+ * Lines are matched by label and by how many of that label have been
+ * seen, because a sheet can carry two rows under one name and matching
+ * on the name alone would report the second as a change to the first.
+ */
+export function moved(before: StatLine[], after: StatLine[]): string {
+  const index = (lines: StatLine[]) => {
+    const seen = new Map<string, number>();
+    const values = new Map<string, string>();
+    for (const line of lines) {
+      if (line.value === undefined || line.note === true) continue;
+      const n = (seen.get(line.label) ?? 0) + 1;
+      seen.set(line.label, n);
+      values.set(`${line.label}#${n}`, line.value);
+    }
+    return values;
+  };
+
+  const was = index(before);
+  const now = index(after);
+  const label = (key: string) => strip(key.slice(0, key.lastIndexOf('#')));
+
+  const changes: string[] = [];
+  for (const [key, value] of now) {
+    const old = was.get(key);
+    if (old === undefined) {
+      changes.push(
+        `- ${label(key)}: ${strip(value)}, which the sheet did not report before`,
+      );
+    } else if (old !== value) {
+      changes.push(`- ${label(key)}: ${strip(old)} -> ${strip(value)}`);
+    }
+  }
+  for (const [key, value] of was) {
+    if (!now.has(key)) {
+      changes.push(`- ${label(key)}: was ${strip(value)}, and is no longer reported`);
+    }
+  }
+
+  if (changes.length === 0) return 'Nothing on the stat sheet moved.';
+  return changes.join('\n');
+}
+
+/**
+ * Which nodes an edit added and which it took away.
+ *
+ * Read from the allocation before and after rather than from what was
+ * asked for, because allocating one node allocates the route to it: the
+ * answer to what that cost is a list nobody typed.
+ */
+export function treeChange(
+  before: number[],
+  after: number[],
+  nodes: Map<number, TreeNode>,
+  sets: Map<number, number>,
+): string {
+  const had = new Set(before);
+  const has = new Set(after);
+  const name = (id: number) => {
+    const node = nodes.get(id);
+    if (!node) return `node ${id}`;
+    const where = node.ascendancy ? ` [${node.ascendancy}]` : '';
+    const set = sets.get(id);
+    const paid = set === 1 ? ' (weapon set I)' : set === 2 ? ' (weapon set II)' : '';
+    return `${node.name}${where} (id ${id}, ${node.type})${paid}`;
+  };
+
+  const added = after
+    .filter((id) => !had.has(id))
+    .map(name)
+    .sort();
+  const gone = before
+    .filter((id) => !has.has(id))
+    .map(name)
+    .sort();
+
+  const out: string[] = [];
+  if (added.length > 0) {
+    out.push(`### Allocated (${added.length})`, ...added.map((text) => `- ${text}`));
+  }
+  if (gone.length > 0) {
+    if (out.length > 0) out.push('');
+    out.push(`### Refunded (${gone.length})`, ...gone.map((text) => `- ${text}`));
+  }
+  if (out.length === 0) return 'The allocated tree is exactly as it was.';
+  return out.join('\n');
 }
 
 /* ------------------------------------------------------------ the passives */
@@ -373,6 +484,13 @@ export function equipment(
  */
 const BOTH_SETS_IS_FINE = /\bmark\b/i;
 
+/** PoB's "Set 1", "Set 2" and "Both", as a reader of the game says them. */
+function weaponSetLabel(label: string): string {
+  if (/1/.test(label)) return 'weapon set I';
+  if (/2/.test(label)) return 'weapon set II';
+  return 'weapon sets I+II';
+}
+
 export function groups(list: SocketGroup[], mainGroup: number): string {
   if (list.length === 0) return 'This build has no socket groups.';
 
@@ -390,7 +508,11 @@ export function groups(list: SocketGroup[], mainGroup: number): string {
       group.enabled ? '' : 'disabled',
       // Said on every group, because which set a skill is on is invisible
       // everywhere else in this answer and wrong often enough to matter.
-      group.weaponSet ? `weapon ${group.weaponSet.toLowerCase()}` : '',
+      //
+      // In roman numerals, which is how the game writes them, and PoB's
+      // own "Both" spelled out: "weapon both" was a label that had to be
+      // worked out rather than read.
+      group.weaponSet ? weaponSetLabel(group.weaponSet) : '',
       group.fullDPS ? 'in full DPS' : '',
       group.source ? `granted by ${strip(group.source)}` : '',
     ].filter(Boolean);

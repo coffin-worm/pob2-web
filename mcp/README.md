@@ -1,7 +1,7 @@
 # The MCP server
 
-Lets an AI client read a Path of Building 2 build, and price changes to it,
-through the real calculation engine.
+Lets an AI client read a Path of Building 2 build, price changes to it and
+make them, through the real calculation engine.
 
 The interesting half is not the reading. It is that a model can ask "what
 would this passive be worth" and get PoB's own answer: a full recalculation
@@ -9,6 +9,12 @@ with the change applied, reported as a difference, with the build left
 exactly as it was. That is the same mechanism the desktop app uses when you
 hover a node, and it is the difference between a model reasoning about
 modifier text and a model reading a number the engine computed.
+
+From there it can build rather than only judge: `pob_tree_edit` spends and
+refunds points, `pob_skill_edit` changes the gems, and `pob_new_build` and
+`pob_save_build` start a variant and hand it back as a file somebody can
+open. The same mechanism is what makes that worth doing, because an edit
+answers with what moved on the stat sheet rather than with "done".
 
 ## Running it
 
@@ -159,10 +165,11 @@ moves the first half past the second.
 
 Without git, or outside a repository, the line says when the server was
 built and draws no comparison.
+
 ## The tools
 
-Twenty, over the bridge's forty-six routes. The grouping is the point: the
-engine exposes a route per control, and a model handed forty tools spends
+Twenty-four, over the bridge's forty-six routes. The grouping is the point:
+the engine exposes a route per control, and a model handed forty tools spends
 its context on the schema list and still picks the wrong one. So these are
 grouped by the question somebody actually has, and the routes that differ
 only in which control they drive are folded into one tool with a
@@ -190,6 +197,10 @@ discriminator.
 | `pob_compare_load` | Load, choose or drop a build to compare against |
 | `pob_notes` | What the build's author wrote about it |
 | `pob_set_main_skill` | Point the build at a different skill |
+| `pob_tree_edit` | Allocate and refund passive points |
+| `pob_skill_edit` | Add, remove and change gems and socket groups |
+| `pob_new_build` | Start an empty build on a class and ascendancy |
+| `pob_save_build` | Write the open build to a file, under a new name |
 
 `pob_what_if` takes a `change` of `passive`, `config`, `slot`, `gem` or
 `socket_group`; `pob_craft_price` takes `anoint`, `corruption` or
@@ -352,19 +363,67 @@ every slot it fits about 0.6 kB.
 
 ## Writing
 
-Four tools change anything, and none of them writes to disk.
+Ten tools change something, and one of them writes to disk.
 
-`pob_open_build` replaces what the engine has open. `pob_stage_item`
-replaces what is on the bench and `pob_craft_apply` changes it, and the
-bench is not part of the build: no slot changes, no item is equipped, and
-the character's numbers do not move. `pob_equip_staged` is the one that
-moves them, and it is the only tool here that changes the build itself: the
-bench item joins the build's item list and goes into a slot.
+`pob_open_build` replaces what the engine has open, and `pob_new_build`
+replaces it with an empty one. `pob_stage_item` replaces what is on the
+bench and `pob_craft_apply` changes it, and the bench is not part of the
+build: no slot changes, no item is equipped, and the character's numbers do
+not move. `pob_equip_staged`, `pob_tree_edit`, `pob_skill_edit` and
+`pob_set_main_skill` change the build itself, so every number moves, and
+`pob_compare_load` changes what the build is being compared against.
 
-On an engine this server started, all four are harmless. On an engine it
-merely attached to, somebody may have a window on that build, so
-`pob_open_build`, `pob_stage_item` and `pob_equip_staged` refuse until
-called again with `confirm: true`.
+`pob_save_build` is the one that writes a file. It saves under a name you
+give it, refuses a name already taken rather than overwriting, and replaces
+an existing build only when `overwrite` says to. The bridge's `saveBuild`
+and `deleteBuild` are still not exposed, so there is no way from here to
+save over the file a build was opened from without naming it, and no way to
+delete a build at all.
+
+On an engine this server started, all of them are harmless. On an engine it
+merely attached to, somebody may have a window on that build, so every one
+of them refuses until called again with `confirm: true`.
+
+### Opening something else does not save what you were on
+
+It used to. PoB saves the open build on its way out whenever it is running
+in dev mode, which the bridge engine always is: to its own file if it has
+one, and to `~~temp~~.xml` if it does not (`Build.lua:1152`). So opening a
+second build wrote the first one back to disk, and reopening a build to undo
+an experiment was the way to keep it. The three routes that replace a build
+are now asked to discard it, with PoB's own `abortSave` flag, so the undo
+these tools promise is real. Measured: a build edited, reopened, edited
+again and then replaced by a new one leaves its file byte for byte as it
+was, and writes no `~~temp~~.xml`.
+
+### What an edit answers with
+
+`pob_tree_edit` and `pob_skill_edit` read the stat sheet before the change
+and again after it, and report the lines that differ. Not a what-if: the
+change has been made, both sheets are the engine's own, and the difference
+between them is simply what moved. It is what makes iterating possible in
+one call each way, and it reads like this:
+
+```
+Gem 5 in group 4 is now Fork.
+
+## What moved
+- Average Damage: 5,291.0 -> 4,514.4
+- Hit DPS: 3,449.8 -> 2,943.5
+- Ignite DPS: 2.7, which the sheet did not report before
+- Mana Cost per second: 121.00 -> 133.00
+```
+
+Lines are matched by label and by how many of that label have been seen,
+because a sheet can carry two rows under one name and matching on the name
+alone would report the second as a change to the first. A line that appears
+or disappears is said in words, since a stat the sheet stops reporting at
+all is a different thing from one that went to zero.
+
+`pob_tree_edit` adds what the allocation itself did, read from the tree
+before and after rather than from what was asked for: allocating one node
+allocates the route to it, so the answer to what that cost is a list nobody
+typed.
 
 `pob_craft_apply` asks only when there is work to lose: an item this server
 staged is its own to change, and an empty bench holds nobody's craft, so the

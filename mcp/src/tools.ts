@@ -1,7 +1,7 @@
 /**
  * What a client can ask.
  *
- * Twenty tools over forty-odd routes, which is deliberate. The engine
+ * Two dozen tools over fifty-odd routes, which is deliberate. The engine
  * answers a UI and exposes a route per control; a model handed forty tools
  * spends its context on the schema list and still picks the wrong one. So
  * these are grouped by the question somebody actually has, and the routes
@@ -15,6 +15,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+import { BridgeError } from './client.js';
 import type { Bridge } from './client.js';
 import * as show from './render.js';
 import { buildLine } from './version.js';
@@ -807,11 +808,21 @@ export function register(server: McpServer, bridge: Bridge) {
         // than replacing a working build with an empty one.
         const look = await bridge.get<CodeInspection>('/code/inspect', { code });
         if (!look.valid) return no(`That code does not decode: ${show.strip(look.error)}`);
-        const state = await bridge.post<BridgeSnapshot>('/code/import', { code });
+        // `discard` so that opening something else cannot save what is
+        // being left: PoB's dev-mode exit would otherwise write the open
+        // build back to its own file, which would make reopening a build
+        // to undo an experiment the way to keep it.
+        const state = await bridge.post<BridgeSnapshot>('/code/import', {
+          code,
+          discard: true,
+        });
         return ok(`Imported.\n\n${show.header(state)}`);
       }
 
-      const state = await bridge.post<BridgeSnapshot>('/build/open', { path });
+      const state = await bridge.post<BridgeSnapshot>('/build/open', {
+        path,
+        discard: true,
+      });
       return ok(`Opened.\n\n${show.header(state)}`);
     },
   );
@@ -1666,4 +1677,644 @@ export function register(server: McpServer, bridge: Bridge) {
       );
     },
   );
+
+  /* ----------------------------------------------------- changing the tree */
+
+  /**
+   * One edit, with the engine's refusal instead of a thrown error.
+   *
+   * A list of nodes is carried out one at a time and carried to the end
+   * rather than abandoned at the first refusal, because the refusals here
+   * are per node and worth reading: a refund that would take a branch with
+   * it, a keystone that cannot be reached from a weapon set. Stopping at
+   * the first would hide the other nine answers.
+   */
+  const attempt = async (action: string, value: unknown): Promise<string | null> => {
+    try {
+      await bridge.post<BridgeSnapshot>('/action', { action, value });
+      return null;
+    } catch (error) {
+      if (error instanceof BridgeError) return error.message;
+      throw error;
+    }
+  };
+
+  /** Which allocated nodes were paid for out of a weapon set, by id. */
+  const paidFrom = (snapshot: TreeAllocSnapshot): Map<number, number> => {
+    const sets = new Map<number, number>();
+    if (snapshot.ready) {
+      for (const [id, set] of snapshot.weaponSets ?? []) sets.set(id, set);
+    }
+    return sets;
+  };
+
+  server.registerTool(
+    'pob_tree_edit',
+    {
+      title: 'Allocate and refund passives',
+      description:
+        'Spend and refund passive points on the open build. This is the tree ' +
+        'half of theorycrafting: pob_what_if prices a node, this one takes ' +
+        'it, and the answer says what moved on the stat sheet.\n\n' +
+        'Allocating a node allocates the whole route to it, because that is ' +
+        "what AllocNode does and what clicking it in the app does. So one id " +
+        'can cost several points, and the answer names every node that came ' +
+        'with it. pob_what_if change="passive" reports that cost beforehand.\n\n' +
+        'Refunds happen before allocations, so points freed in a call pay for ' +
+        'what the same call allocates. A refund that would take other nodes ' +
+        'with it, because they hang off the one being refunded, is refused ' +
+        'and names them; `cascade` carries it out anyway.\n\n' +
+        'Nothing is written to disk. The saved file is untouched, so this is ' +
+        'undone by opening the build again with pob_open_build.',
+      inputSchema: {
+        allocate: z
+          .array(z.number().int())
+          .optional()
+          .describe('Node ids to allocate, each with the route to it.'),
+        refund: z.array(z.number().int()).optional().describe('Node ids to refund.'),
+        weaponSet: z
+          .union([z.literal(1), z.literal(2)])
+          .optional()
+          .describe(
+            'Pay for the new nodes out of this weapon set\'s own points ' +
+              'rather than the shared pool. Keystones and jewel sockets ' +
+              'cannot be bought this way.',
+          ),
+        attribute: z
+          .enum(['str', 'dex', 'int'])
+          .optional()
+          .describe(
+            'Which attribute the small attribute passives on the route should ' +
+              'grant. Defaults to whatever was chosen last.',
+          ),
+        cascade: z
+          .boolean()
+          .optional()
+          .describe('Allow a refund that also refunds the nodes hanging off it.'),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Required when the engine is one this server did not start.'),
+      },
+      annotations: writes,
+    },
+    async ({ allocate = [], refund = [], weaponSet, attribute, cascade, confirm }) => {
+      if (allocate.length === 0 && refund.length === 0) {
+        return no('Give at least one node id, in `allocate` or in `refund`.');
+      }
+      if (!(await bridge.ours()) && confirm !== true) {
+        return no(
+          'That engine was already running when this server attached to it, ' +
+            'so somebody may have a window open on the build. Spending their ' +
+            'passive points would change the tree they are looking at. Call ' +
+            'again with confirm=true if that is wanted.',
+        );
+      }
+
+      const nodes = await bridge.treeNodes();
+      const before = await bridge.get<TreeAllocSnapshot>('/tree/alloc');
+      if (!before.ready) return no('The engine has no tree allocated.');
+      const sheetBefore = await bridge.get<StatsSnapshot>('/stats');
+
+      const named = (id: number) => nodes.get(id)?.name ?? `node ${id}`;
+      const refused: string[] = [];
+
+      for (const id of refund) {
+        const why = await attempt('deallocNode', { node: id, cascade: cascade === true });
+        if (why !== null) refused.push(`- ${named(id)}: ${show.strip(why)}`);
+      }
+      for (const id of allocate) {
+        const why = await attempt('allocNode', {
+          node: id,
+          weaponSet: weaponSet ?? 0,
+          attribute,
+        });
+        if (why !== null) refused.push(`- ${named(id)}: ${show.strip(why)}`);
+      }
+
+      const after = await bridge.get<TreeAllocSnapshot>('/tree/alloc');
+      const sheetAfter = await bridge.get<StatsSnapshot>('/stats');
+      const state = await bridge.get<BridgeSnapshot>('/state');
+
+      const parts: string[] = [];
+      if (refused.length > 0) {
+        parts.push(`## ${refused.length} of these did not happen`, ...refused, '');
+      }
+      parts.push(
+        show.treeChange(
+          before.allocated,
+          after.ready ? after.allocated : before.allocated,
+          nodes,
+          paidFrom(after),
+        ),
+        '',
+        show.header(state),
+      );
+      if (sheetBefore.ready && sheetAfter.ready) {
+        parts.push('', '## What moved', show.moved(sheetBefore.lines, sheetAfter.lines));
+      }
+      return ok(parts.join('\n'));
+    },
+  );
+
+  /* --------------------------------------------------- changing the skills */
+
+  /**
+   * A gem by name rather than by the id the engine wants.
+   *
+   * The id is PoB's internal key, which nothing a reader sees ever prints.
+   * An exact name is required even when one gem matches: "Fire" would
+   * otherwise pick whichever of forty gems happened to sort first, and a
+   * build quietly holding the wrong gem is worse than a question.
+   */
+  const gemByName = async (name: string): Promise<{ id: string } | { problem: string }> => {
+    const wanted = name.trim();
+    if (wanted.length < 2) {
+      return { problem: 'Give at least two letters of the gem name.' };
+    }
+    const found = await bridge.get<GemSearchSnapshot>('/gems/search', { q: wanted });
+    const exact = found.results.find(
+      (gem) => gem.name.toLowerCase() === wanted.toLowerCase(),
+    );
+    if (exact) return { id: exact.id };
+    if (found.results.length === 0) {
+      return { problem: `No gem is called "${wanted}".` };
+    }
+    const near = found.results.slice(0, 8).map((gem) => gem.name);
+    return {
+      problem:
+        `No gem is called exactly "${wanted}". These match it: ` +
+        `${near.join(', ')}. pob_search what="gem" lists more.`,
+    };
+  };
+
+  server.registerTool(
+    'pob_skill_edit',
+    {
+      title: 'Change the gems and socket groups',
+      description:
+        'Add, remove and change gems, and the socket groups that hold them. ' +
+        'The skill half of theorycrafting: a support added here is worth what ' +
+        "the answer says it moved, out of the engine's own stat sheet.\n\n" +
+        '`action` picks what to do:\n' +
+        '- "add_gem": put `gemName` in `group`, at its own maximum level.\n' +
+        '- "swap_gem": replace gem number `gem` in `group` with `gemName`, in ' +
+        'place, keeping the order.\n' +
+        '- "remove_gem": take gem number `gem` out of `group`.\n' +
+        '- "set_gem": change one gem\'s `level`, `quality`, `count` or ' +
+        '`enabled`.\n' +
+        '- "add_group": an empty socket group, which becomes the last one.\n' +
+        '- "remove_group": delete `group` and its gems.\n' +
+        '- "set_group": the group\'s `label`, `enabled`, `fullDPS` or ' +
+        '`weaponSet`.\n\n' +
+        'Gem and group numbers are the ones pob_skills prints, counting from ' +
+        '1. A group granted by an item or a passive is rebuilt by the engine ' +
+        'on every pass, so its gems cannot be edited and the answer says so ' +
+        'rather than losing the change quietly.\n\n' +
+        'Nothing is written to disk.',
+      inputSchema: {
+        action: z
+          .enum([
+            'add_gem',
+            'swap_gem',
+            'remove_gem',
+            'set_gem',
+            'add_group',
+            'remove_group',
+            'set_group',
+          ])
+          .describe('What to do.'),
+        group: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('The socket group number from pob_skills. Not used by "add_group".'),
+        gem: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('The gem number within the group, for the gem actions.'),
+        gemName: z
+          .string()
+          .optional()
+          .describe('For "add_gem" and "swap_gem": the gem\'s name, spelled in full.'),
+        level: z.number().int().min(1).optional().describe('For "set_gem": the gem level.'),
+        quality: z
+          .number()
+          .int()
+          .min(0)
+          .max(23)
+          .optional()
+          .describe('For "set_gem": the gem quality.'),
+        count: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('For "set_gem": how many copies of the gem, where that is a thing.'),
+        enabled: z
+          .boolean()
+          .optional()
+          .describe('For "set_gem" and "set_group": whether it applies at all.'),
+        label: z.string().optional().describe('For "set_group": the group\'s own name.'),
+        fullDPS: z
+          .boolean()
+          .optional()
+          .describe('For "set_group": whether this group counts towards Full DPS.'),
+        weaponSet: z
+          .enum(['1', '2', 'both'])
+          .optional()
+          .describe(
+            'For "set_group": which weapon sets the group is used in. A group ' +
+              'granted by a weapon belongs to that weapon\'s set and cannot be ' +
+              'moved.',
+          ),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Required when the engine is one this server did not start.'),
+      },
+      annotations: writes,
+    },
+    async (args) => {
+      const { action, group, gem } = args;
+      if (!(await bridge.ours()) && args.confirm !== true) {
+        return no(
+          'That engine was already running when this server attached to it, ' +
+            'so somebody may have a window open on the build. Changing its ' +
+            'gems changes every number they are looking at. Call again with ' +
+            'confirm=true if that is wanted.',
+        );
+      }
+
+      const before = await bridge.get<SkillsSnapshot>('/skills');
+      if (!before.ready) return no('The engine has no skills for this build.');
+
+      const needsGroup = action !== 'add_group';
+      if (needsGroup && group === undefined) {
+        return no(`action="${action}" needs a \`group\` number from pob_skills.`);
+      }
+      const holding =
+        group === undefined
+          ? undefined
+          : before.groups.find((entry) => entry.index === group);
+      if (needsGroup && holding === undefined) {
+        return no(`This build has no socket group ${String(group)}.`);
+      }
+
+      const gemAction =
+        action === 'add_gem' ||
+        action === 'swap_gem' ||
+        action === 'remove_gem' ||
+        action === 'set_gem';
+      // The engine rebuilds a sourced group's gem list from the item or the
+      // passive that grants it on every pass, so an edit to it would be
+      // undone by the next calculation. Refused here rather than attempted,
+      // because the attempt would appear to work.
+      if (gemAction && holding?.source !== undefined) {
+        return no(
+          `Socket group ${String(group)} comes from ${show.strip(holding.source)}, ` +
+            'and the engine rebuilds its gems from there on every pass, so an ' +
+            'edit to them would not survive. Make a group of your own with ' +
+            'action="add_group" instead.',
+        );
+      }
+      if (
+        (action === 'swap_gem' || action === 'remove_gem' || action === 'set_gem') &&
+        gem === undefined
+      ) {
+        return no(`action="${action}" needs a \`gem\` number from pob_skills.`);
+      }
+
+      const sheetBefore = await bridge.get<StatsSnapshot>('/stats');
+
+      let did: string;
+      if (action === 'add_gem' || action === 'swap_gem') {
+        if (args.gemName === undefined) {
+          return no(`action="${action}" needs a \`gemName\`.`);
+        }
+        const found = await gemByName(args.gemName);
+        if ('problem' in found) return no(found.problem);
+        if (action === 'add_gem') {
+          await bridge.post<BridgeSnapshot>('/action', {
+            action: 'addGem',
+            value: { group, gem: found.id },
+          });
+          did = `Added ${args.gemName} to group ${String(group)}.`;
+        } else {
+          await bridge.post<BridgeSnapshot>('/action', {
+            action: 'swapGem',
+            value: { group, gem, to: found.id },
+          });
+          did = `Gem ${String(gem)} in group ${String(group)} is now ${args.gemName}.`;
+        }
+      } else if (action === 'remove_gem') {
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'deleteGem',
+          value: { group, gem },
+        });
+        did = `Took gem ${String(gem)} out of group ${String(group)}.`;
+      } else if (action === 'set_gem') {
+        const { level, quality, count, enabled } = args;
+        if (
+          level === undefined &&
+          quality === undefined &&
+          count === undefined &&
+          enabled === undefined
+        ) {
+          return no(
+            'action="set_gem" needs at least one of `level`, `quality`, ' +
+              '`count` or `enabled`.',
+          );
+        }
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'setGem',
+          value: { group, gem, level, quality, count, enabled },
+        });
+        did = `Changed gem ${String(gem)} in group ${String(group)}.`;
+      } else if (action === 'add_group') {
+        await bridge.post<BridgeSnapshot>('/action', { action: 'addSocketGroup' });
+        did = 'Added an empty socket group at the end.';
+      } else if (action === 'remove_group') {
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'deleteSocketGroup',
+          value: group,
+        });
+        did = `Deleted socket group ${String(group)}.`;
+      } else {
+        const { label, enabled, fullDPS, weaponSet } = args;
+        if (
+          label === undefined &&
+          enabled === undefined &&
+          fullDPS === undefined &&
+          weaponSet === undefined
+        ) {
+          return no(
+            'action="set_group" needs at least one of `label`, `enabled`, ' +
+              '`fullDPS` or `weaponSet`.',
+          );
+        }
+        // One call per thing changed, because each is its own control in
+        // the app and its own refusal here: the weapon set can be locked
+        // to a weapon while the label is free to change.
+        const said: string[] = [];
+        let refused: string | null = null;
+        if (label !== undefined) {
+          await bridge.post<BridgeSnapshot>('/action', {
+            action: 'setSocketGroupLabel',
+            value: { group, label },
+          });
+          said.push(`named "${label}"`);
+        }
+        if (enabled !== undefined) {
+          await bridge.post<BridgeSnapshot>('/action', {
+            action: 'setSocketGroupEnabled',
+            value: { group, enabled },
+          });
+          said.push(enabled ? 'enabled' : 'disabled');
+        }
+        if (fullDPS !== undefined) {
+          await bridge.post<BridgeSnapshot>('/action', {
+            action: 'setSocketGroupFullDPS',
+            value: { group, fullDPS },
+          });
+          said.push(fullDPS ? 'counted in Full DPS' : 'left out of Full DPS');
+        }
+        if (weaponSet !== undefined) {
+          refused = await attempt('setSocketGroupWeaponSet', { group, set: weaponSet });
+          if (refused === null) {
+            said.push(
+              weaponSet === 'both'
+                ? 'used in both weapon sets'
+                : `used in weapon set ${weaponSet === '1' ? 'I' : 'II'} only`,
+            );
+          }
+        }
+        // The refusal is its own sentence rather than an item in the
+        // list, because it is the opposite of what the list is: things
+        // that did not change, and why.
+        did =
+          (said.length > 0
+            ? `Socket group ${String(group)} is now ${said.join(', ')}.`
+            : `Socket group ${String(group)} is as it was.`) +
+          (refused === null
+            ? ''
+            : ` Its weapon sets did not change: ${show.strip(refused)}.`);
+      }
+
+      const after = await bridge.get<SkillsSnapshot>('/skills', { group });
+      const sheetAfter = await bridge.get<StatsSnapshot>('/stats');
+      if (!after.ready) return ok(`${did} The engine has no skill list to show.`);
+
+      const parts = [did, ''];
+      const one = group === undefined ? [] : after.groups.filter((e) => e.index === group);
+      if (one.length > 0) {
+        parts.push(
+          show.groups(one, after.mainGroup),
+          '',
+          '## Its gems',
+          show.gems(after.gems ?? []),
+        );
+      } else {
+        parts.push(show.groups(after.groups, after.mainGroup));
+      }
+      if (sheetBefore.ready && sheetAfter.ready) {
+        parts.push('', '## What moved', show.moved(sheetBefore.lines, sheetAfter.lines));
+      }
+      return ok(parts.join('\n'));
+    },
+  );
+
+  /* ------------------------------------------------- new builds, and saving */
+
+  server.registerTool(
+    'pob_new_build',
+    {
+      title: 'Start a new build',
+      description:
+        'Create an empty build: a class, an ascendancy and a level, with no ' +
+        'points spent, nothing equipped and no skills. This is how a variant ' +
+        'gets built from scratch rather than by editing somebody else\'s.\n\n' +
+        'It replaces the build the engine has open, which is why it refuses ' +
+        'while that build has unsaved changes. Nothing is written to disk ' +
+        'here: the new build exists in the engine and nowhere else until ' +
+        'pob_save_build gives it a file.\n\n' +
+        'To start from an existing build instead, open it with pob_open_build ' +
+        'and save it under a new name, which leaves the original alone.',
+      inputSchema: {
+        class: z
+          .string()
+          .describe('A class name, as pob_build prints it, e.g. "Witch" or "Ranger".'),
+        ascendancy: z
+          .string()
+          .optional()
+          .describe('An ascendancy of that class. Left unchosen if omitted.'),
+        level: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe('The character level. PoB starts a build at 1.'),
+        name: z.string().optional().describe('What to call it. Also the file name later.'),
+        discard: z
+          .boolean()
+          .optional()
+          .describe('Throw away unsaved changes in the build that is open.'),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Required when the engine is one this server did not start.'),
+      },
+      annotations: writes,
+    },
+    async (args) => {
+      if (!(await bridge.ours()) && args.confirm !== true) {
+        return no(
+          'That engine was already running when this server attached to it, ' +
+            'so somebody may have a window open on the build. Starting a new ' +
+            'build would close theirs. Call again with confirm=true if that ' +
+            'is wanted.',
+        );
+      }
+
+      const open = await bridge.get<BridgeSnapshot>('/state');
+      if (open.ready && open.unsaved && args.discard !== true) {
+        return no(
+          `"${open.buildName}" has changes that are not in ` +
+            `${open.dbFileName ?? 'any file'}, and starting a new build would ` +
+            'close it and lose them. Save it first with pob_save_build, or ' +
+            'call again with discard=true.',
+        );
+      }
+
+      // The discard is real: without it PoB would save the build being
+      // closed, so the refusal above would be guarding against a loss
+      // that never happens and `discard` would mean its opposite.
+      await bridge.post<BridgeSnapshot>('/build/new', { discard: true });
+
+      // The class list comes with the build, so it is read after the build
+      // exists rather than guessed at from the old one.
+      const fresh = await bridge.get<BridgeSnapshot>('/state');
+      if (!fresh.ready) return no('The engine did not open a new build.');
+      const wanted = args.class.trim().toLowerCase();
+      const chosen = fresh.classes.find((entry) => entry.name.toLowerCase() === wanted);
+      if (!chosen) {
+        return no(
+          `There is no class called "${args.class}". The classes are: ` +
+            `${fresh.classes.map((entry) => entry.name).join(', ')}.`,
+        );
+      }
+      await bridge.post<BridgeSnapshot>('/action', { action: 'setClass', value: chosen.id });
+
+      const refused: string[] = [];
+      if (args.ascendancy !== undefined) {
+        // The ascendancies belong to the class, so this list only means
+        // anything once the class is set.
+        const withClass = await bridge.get<BridgeSnapshot>('/state');
+        const want = args.ascendancy.trim().toLowerCase();
+        const asc = withClass.ready
+          ? withClass.ascendancies.find((entry) => entry.name.toLowerCase() === want)
+          : undefined;
+        if (!asc) {
+          refused.push(
+            `${chosen.name} has no ascendancy called "${args.ascendancy}". ` +
+              (withClass.ready
+                ? `Its ascendancies are: ${withClass.ascendancies
+                    .map((entry) => entry.name)
+                    .join(', ')}.`
+                : ''),
+          );
+        } else {
+          await bridge.post<BridgeSnapshot>('/action', {
+            action: 'setAscendancy',
+            value: asc.id,
+          });
+        }
+      }
+      if (args.level !== undefined) {
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'setCharacterLevel',
+          value: args.level,
+        });
+      }
+      if (args.name !== undefined) {
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'setBuildName',
+          value: args.name,
+        });
+      }
+
+      const made = await bridge.get<BridgeSnapshot>('/state');
+      return ok(
+        [
+          ...(refused.length > 0 ? refused.concat('') : []),
+          show.header(made),
+          '',
+          'It exists in the engine only. pob_save_build writes it to a file.',
+        ].join('\n'),
+      );
+    },
+  );
+
+  server.registerTool(
+    'pob_save_build',
+    {
+      title: 'Save the build to a file',
+      description:
+        "Write the open build to a file in Path of Building's builds folder, " +
+        'under a name you give. This is the only tool here that writes to ' +
+        'disk, and it is how a build gets handed over: once it is saved it ' +
+        'shows up in pob_builds and in the app.\n\n' +
+        'A name that is already taken is refused rather than overwritten, ' +
+        'because the build it would replace is somebody\'s work and the ' +
+        'refusal costs nothing. `overwrite` carries it out, and replaces that ' +
+        'file for good.\n\n' +
+        'Saving under a new name also leaves the file the build came from ' +
+        'exactly as it was, which is the safe way to keep a variant.',
+      inputSchema: {
+        name: z
+          .string()
+          .describe('What to call the file, without ".xml". Also the build\'s name.'),
+        folder: z
+          .string()
+          .optional()
+          .describe('A subfolder of the builds folder, which must already exist.'),
+        overwrite: z
+          .boolean()
+          .optional()
+          .describe('Replace an existing build of that name. It cannot be undone.'),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Required when the engine is one this server did not start.'),
+      },
+      annotations: writes,
+    },
+    async ({ name, folder, overwrite, confirm }) => {
+      if (!(await bridge.ours()) && confirm !== true) {
+        return no(
+          'That engine was already running when this server attached to it, ' +
+            'so the build being saved is one somebody else loaded, and saving ' +
+            'writes whatever state it is in now. Call again with confirm=true ' +
+            'if that is wanted.',
+        );
+      }
+
+      const why = await attempt('saveBuildAs', { name, folder, overwrite });
+      if (why !== null) return no(`Not saved: ${show.strip(why)}`);
+
+      const state = await bridge.get<BridgeSnapshot>('/state');
+      return ok(
+        [
+          `Saved to ${state.ready ? (state.dbFileName ?? 'the builds folder') : 'disk'}.`,
+          '',
+          show.header(state),
+        ].join('\n'),
+      );
+    },
+  );
 }
+

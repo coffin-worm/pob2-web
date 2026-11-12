@@ -4096,6 +4096,39 @@ end
 --- and reads the current state out of the calculation environment rather
 --- than off the slot, because a flask can be active in the build without
 --- the slot saying so.
+--- Lines PoB did not understand.
+---
+--- `extra` on a mod line is the part the parser could not place, and
+--- every mod list the item builds skips a line that has one
+--- (Item.lua 2764, 2788 and 2842). So the line is in the text and in
+--- none of the numbers, which the tooltip cannot show, because a
+--- tooltip draws what parsed.
+---
+--- Two ways to get here. Staging text somebody assembled by hand rather
+--- than copied out of the game is one. The other is an item whose real
+--- text says something PoB does not model, which is not a mistake
+--- anybody made and is the only explanation of a number that will not
+--- move.
+local UNPARSED_FIELDS = {
+	"implicitModLines",
+	"explicitModLines",
+	"enchantModLines",
+	"runeModLines",
+	"buffModLines",
+	"classRequirementModLines",
+}
+
+local function unparsedLines(item)
+	local unparsed = asArray({})
+	for _, field in ipairs(UNPARSED_FIELDS) do
+		for _, modLine in ipairs(item[field] or {}) do
+			if modLine.extra then
+				unparsed[#unparsed + 1] = strip(modLine.line or tostring(modLine.extra))
+			end
+		end
+	end
+	return unparsed
+end
 function api.slotWhatIf(build, slotName)
 	local tab = build and build.itemsTab
 	local slot = tab and tab.slots and tab.slots[tostring(slotName)]
@@ -4135,7 +4168,18 @@ function api.slotWhatIf(build, slotName)
 	if not ok then
 		return { ready = false, error = tostring(output) }
 	end
-	return renderCompare(build, calcBase, output, header)
+	local answer = renderCompare(build, calcBase, output, header)
+	-- A flask that moves nothing is the one answer this needs
+	-- explaining, and the explanation is usually a line on the item that
+	-- PoB never read. "This Flask cannot be Used but applies its Effect
+	-- constantly" has no rule in ModParser, so the flask is modelled as
+	-- an ordinary one and the toggle is the only thing that decides
+	-- whether it applies.
+	local unparsed = unparsedLines(item)
+	if #unparsed > 0 then
+		answer.unparsed = unparsed
+	end
+	return answer
 end
 
 --- What anointing this notable would do.
@@ -4702,29 +4746,7 @@ function api.stagedItem(build)
 		slots[#slots + 1] = row
 	end
 
-	-- Lines PoB did not understand.
-	--
-	-- `extra` on a mod line is the part the parser could not place, and
-	-- every mod list the item builds skips a line that has one
-	-- (Item.lua 2764, 2788 and 2842). So the line is in the text and in
-	-- none of the numbers, which the tooltip cannot show, because a
-	-- tooltip draws what parsed. Staging text somebody assembled by hand
-	-- rather than copied out of the game is the usual way to get here.
-	local unparsed = asArray({})
-	for _, field in ipairs({
-		"implicitModLines",
-		"explicitModLines",
-		"enchantModLines",
-		"runeModLines",
-		"buffModLines",
-		"classRequirementModLines",
-	}) do
-		for _, modLine in ipairs(item[field] or {}) do
-			if modLine.extra then
-				unparsed[#unparsed + 1] = strip(modLine.line or tostring(modLine.extra))
-			end
-		end
-	end
+	local unparsed = unparsedLines(item)
 
 	-- A rune shown but not named.
 	--
@@ -5413,6 +5435,166 @@ function commands.toggleNode(build, value)
 	return true
 end
 
+--- Nodes that belong to the tree as a whole rather than to a weapon set.
+---
+--- PoB's own rule, from PassiveTreeView.lua:395: a keystone, a jewel
+--- socket, or a node holding one. They come out of the shared pool, and
+--- the tree view refuses to touch them from a weapon set at all.
+local function globalNode(node)
+	return node.type == "Keystone" or node.type == "Socket" or node.containJewelSocket
+end
+
+local function nodeName(node)
+	local name = strip(node.dn or node.name or "")
+	return name ~= "" and name or ("node " .. tostring(node.id))
+end
+
+-- The order the attribute popup offers them in, which is also the order
+-- SwitchAttributeNode indexes (TreeTab.lua:854).
+local ATTRIBUTE_INDEX = { str = 1, dex = 2, int = 3 }
+
+--- Allocate a node, and everything on the way to it.
+---
+--- One call rather than a loop, because AllocNode walks the path PoB
+--- already computed: asking for a notable eight points away takes the
+--- route with it, which is what clicking it in the app does. What that
+--- costs is on the node before anything is spent, which /tree/path
+--- reports.
+---
+--- `weaponSet` is the spec's own allocMode, the thing Alt+scroll changes
+--- in the tree view: 1 or 2 pays for the new nodes out of that weapon
+--- set's points instead of the shared pool. It is set for the call and put
+--- back afterwards, because in the app it is a view somebody is looking at
+--- rather than anything about the build.
+function commands.allocNode(build, value)
+	local spec = build.spec
+	local args = type(value) == "table" and value or { node = value }
+	local node = spec and spec.nodes and spec.nodes[tonumber(args.node) or 0]
+	if not node then
+		return nil, "no node with id " .. tostring(args.node)
+	end
+	if node.alloc then
+		return nil, nodeName(node) .. " is already allocated"
+	end
+	if not node.path or #node.path == 0 then
+		return nil, nodeName(node) .. " cannot be reached from the allocated tree"
+	end
+
+	local set = math.floor(tonumber(args.weaponSet) or 0)
+	if set < 0 or set > 2 then
+		return nil, "weaponSet is 1 or 2, or left out for the shared pool"
+	end
+
+	-- PoB's refusals, with PoB's reasons (PassiveTreeView.lua:2121 and
+	-- :2136). Stated rather than attempted: AllocNode itself would carry
+	-- either of these out, and the app only avoids them by not offering
+	-- the click.
+	if globalNode(node) then
+		local kind = node.type == "Keystone" and "a keystone" or "a jewel socket"
+		if set > 0 then
+			return nil, kind .. " comes out of the shared pool, so it cannot be "
+				.. "allocated to weapon set " .. set
+		end
+		local viewer = build.treeTab and build.treeTab.viewer
+		if viewer and viewer.IsConnectedToWeaponSetNodes then
+			local okConn, connected = pcall(viewer.IsConnectedToWeaponSetNodes, viewer, node)
+			if okConn and connected then
+				return nil, kind .. " cannot be allocated from here: the way to it "
+					.. "runs through weapon set nodes, which have to be refunded first"
+			end
+		end
+	end
+
+	-- Which attribute a small attribute node grants is a choice, and the
+	-- app asks for it in a popup and remembers the answer for the next
+	-- one. The same two steps in the same order as that popup's Allocate
+	-- button (TreeTab.lua:857), so the route behind the node follows the
+	-- choice as well.
+	if args.attribute ~= nil then
+		local index = ATTRIBUTE_INDEX[tostring(args.attribute):lower()]
+		if not index then
+			return nil, "attribute is str, dex or int"
+		end
+		spec.attributeIndex = index
+		if node.isAttribute then
+			pcall(spec.SwitchAttributeNode, spec, node.id, index)
+		end
+	end
+
+	local previous = spec.allocMode or 0
+	spec.allocMode = set
+	local ok, err = pcall(spec.AllocNode, spec, node)
+	spec.allocMode = previous
+	if not ok then
+		return nil, tostring(err)
+	end
+	-- AllocNode returns nothing and gives up quietly when it cannot path,
+	-- so the node itself is the answer to whether it worked.
+	if not node.alloc then
+		return nil, "the engine did not allocate " .. nodeName(node)
+	end
+
+	spec:AddUndoState()
+	build.buildFlag = true
+	return true
+end
+
+--- Refund a node, and say first what else that would take with it.
+---
+--- DeallocNode refunds `node.depends`, which is the node plus everything
+--- held on to the tree only through it, and it does that without asking.
+--- That is right in a tree you can see, where the branch goes dark under
+--- the cursor, and wrong in a conversation: a refund meant to free one
+--- point can free nine without a word. So the dependents are counted and
+--- named, and the refund is refused until `cascade` says they were the
+--- point.
+function commands.deallocNode(build, value)
+	local spec = build.spec
+	local args = type(value) == "table" and value or { node = value }
+	local node = spec and spec.nodes and spec.nodes[tonumber(args.node) or 0]
+	if not node then
+		return nil, "no node with id " .. tostring(args.node)
+	end
+	if not node.alloc then
+		return nil, nodeName(node) .. " is not allocated"
+	end
+	if node.type == "ClassStart" or node.type == "AscendClassStart" then
+		return nil, nodeName(node) .. " is a starting node, which no point paid for"
+	end
+
+	if not args.cascade then
+		-- depends[1] is the node itself (PassiveSpec.lua:1588), so the
+		-- rest of the list is the cost of the refund beyond the one point
+		-- that was asked about.
+		local others, shown = 0, {}
+		for _, dep in ipairs(node.depends or {}) do
+			if dep ~= node and dep.alloc then
+				others = others + 1
+				if #shown < 8 then
+					shown[#shown + 1] = nodeName(dep)
+				end
+			end
+		end
+		if others > 0 then
+			if others > #shown then
+				shown[#shown + 1] = "and " .. (others - #shown) .. " more"
+			end
+			return nil, nodeName(node) .. " is what holds " .. others .. " other allocated "
+				.. (others == 1 and "node" or "nodes") .. " on to the tree, so refunding it "
+				.. "refunds " .. (others == 1 and "that one" or "those") .. " too: "
+				.. table.concat(shown, ", ") .. ". Pass cascade to refund the lot"
+		end
+	end
+
+	local ok, err = pcall(spec.DeallocNode, spec, node)
+	if not ok then
+		return nil, tostring(err)
+	end
+	spec:AddUndoState()
+	build.buildFlag = true
+	return true
+end
+
 --------------------------------------------------------------- item commands
 
 --- Put an item in a slot, or take one out with id 0.
@@ -5812,6 +5994,98 @@ function commands.setSocketGroupLabel(build, value)
 	local tab, group = socketGroupAt(build, type(value) == "table" and value.group)
 	if not group then return nil, "no such socket group" end
 	group.label = tostring(type(value) == "table" and value.label or "")
+	return commitGroup(tab, group, build)
+end
+
+--- Replace one gem with another, in place.
+---
+--- Not delete-then-add, because add appends: swapping the second gem of
+--- five would move it to the end, and the order is what the app shows and
+--- what the file keeps. The instance is rebuilt the way addGem builds a
+--- new one, and marked `new`, which is PoB's own flag for "give this its
+--- natural maximum level on the next pass" (SkillsTab.lua:1366). A gem
+--- kept at the old one's level would otherwise arrive at a level it may
+--- not have.
+function commands.swapGem(build, value)
+	local tab, group = socketGroupAt(build, type(value) == "table" and value.group)
+	local index = tonumber(type(value) == "table" and value.gem) or 0
+	local gem = group and group.gemList and group.gemList[index]
+	if not gem then
+		return nil, "no such gem"
+	end
+	local gemId = type(value) == "table" and value.to
+	local gemData = gemId and data.gems and data.gems[gemId]
+	if not gemData then
+		return nil, "no gem with id " .. tostring(gemId)
+	end
+
+	gem.nameSpec = gemData.name
+	gem.gemId = gemId
+	-- Both are resolved from gemId on the next pass, and a stale skillId
+	-- is read before nameSpec is, so leaving either would describe the gem
+	-- that was there before.
+	gem.skillId = nil
+	gem.gemData = nil
+	gem.new = true
+	gem.enabled = true
+	return commitGroup(tab, group, build)
+end
+
+--- Which weapon sets a group is used in.
+---
+--- PoB keeps this as two flags and reads "neither" as "both": the
+--- checkbox callback refuses to clear the second one rather than let a
+--- group apply nowhere (SkillsTab.lua:158). Same rule here, expressed as
+--- a choice of 1, 2 or both so that nowhere cannot be asked for.
+---
+--- The two refusals are the ones the tab makes by disabling the checkbox
+--- and explaining itself in a tooltip. A silent no is the wrong answer to
+--- a request that cannot be carried out, and these have real reasons.
+function commands.setSocketGroupWeaponSet(build, value)
+	local tab, group = socketGroupAt(build, type(value) == "table" and value.group)
+	if not group then
+		return nil, "no such socket group"
+	end
+
+	local want = tostring(type(value) == "table" and value.set or "both"):lower()
+	local set1, set2
+	if want == "both" then
+		set1, set2 = true, true
+	elseif want == "1" then
+		set1, set2 = true, false
+	elseif want == "2" then
+		set1, set2 = false, true
+	else
+		return nil, "set is 1, 2 or both"
+	end
+
+	if group.forcedBoth then
+		return nil, "that skill reserves spirit in every weapon set, so it has to "
+			.. "be enabled in both"
+	end
+	if tab.IsSocketGroupWeaponSetLocked then
+		local okLocked, locked = pcall(tab.IsSocketGroupWeaponSetLocked, tab, group)
+		if okLocked and locked then
+			return nil, (group.source == "Default Attack")
+				and "a default attack belongs to the weapon set that grants it"
+				or "a skill granted by an item in a weapon slot belongs to that "
+					.. "item's weapon set"
+		end
+	end
+	-- Asked of the set being turned on only: a set being turned off does
+	-- not have to be usable, and refusing there would make an unusable
+	-- group impossible to narrow away from.
+	for set = 1, 2 do
+		if ((set == 1) and set1 or set2) and tab.IsSocketGroupWeaponSetValid then
+			local okValid, valid = pcall(tab.IsSocketGroupWeaponSetValid, tab, group, set)
+			if okValid and not valid then
+				return nil, "that skill cannot be used with the weapons equipped in set "
+					.. set
+			end
+		end
+	end
+
+	group.set1, group.set2 = set1, set2
 	return commitGroup(tab, group, build)
 end
 

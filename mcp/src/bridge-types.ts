@@ -98,6 +98,13 @@ export type TreeAllocSnapshot =
       ready: true;
       allocated: number[];
       reachable: [number, number][];
+      /**
+       * The allocated nodes paid for out of one weapon set rather than
+       * the shared pool, as `[id, 1]` or `[id, 2]`. They are in
+       * `allocated` too: the set is a fact about how the point was paid
+       * for, not a separate kind of allocation.
+       */
+      weaponSets?: [number, number][];
       classId: number;
       ascendClassId: number;
     };
@@ -244,7 +251,18 @@ export type ConfigSnapshot =
 /** The shape every "what would this do" route answers with. */
 export type WhatIf =
   | { ready: false; error?: string }
-  | { ready: true; lines: ItemLine[]; unchanged?: boolean };
+  | {
+      ready: true;
+      lines: ItemLine[];
+      unchanged?: boolean;
+      /**
+       * Lines on the item the engine did not read, when the comparison is
+       * about an item and it has any. A change worth nothing is often a
+       * change to something PoB does not model, and the lines it could
+       * not place are where that shows.
+       */
+      unparsed?: string[];
+    };
 
 export type TreeWhatIf =
   | { ready: false; error?: string }

@@ -237,9 +237,9 @@ one that does.
 
 ```
 POST /action        {"action": "setCharacterLevel", "value": 90}
-POST /build/new     {}
-POST /build/open    {"path": "...xml"}
-POST /code/import   {"code": "eNrtPWt3..."}
+POST /build/new     {"discard": true}
+POST /build/open    {"path": "...xml", "discard": true}
+POST /code/import   {"code": "eNrtPWt3...", "discard": true}
 POST /code/character {"json": "..."}
 POST /engine/dismiss {}
 ```
@@ -252,6 +252,67 @@ snapshot. Setting a field is not the same as the field having changed.
 Writes that touch the user's files are in that list too (`saveBuild`,
 `saveBuildAs`, `deleteBuild`), so a client meant to be read-only should pick
 what it exposes rather than passing actions through.
+
+### Replacing the open build saves it, unless you say not to
+
+The three routes above all replace whatever build is open, and PoB saves a
+build on its way out whenever it is running in dev mode, which this engine
+always is: to its own file if it has one, and to `~~temp~~.xml` if it does
+not (`Build.lua:1152`). So opening a second build writes the first one back
+to disk, which makes reopening a build to undo an experiment the way to keep
+it instead.
+
+`"discard": true` turns that off for the one mode change, using PoB's own
+`abortSave` flag: it is set while a build is loading and cleared by Shutdown
+itself, so nothing has to put it back. It is asked for rather than assumed
+because the web UI has its own idea of when work is lost, and the default is
+PoB's behaviour unchanged.
+
+### Spending passive points
+
+`allocNode` takes `{ node, weaponSet, attribute }` and allocates the whole
+route to the node, because that is what `AllocNode` does and what clicking
+it in the app does. `weaponSet` is the spec's own `allocMode`, the thing
+Alt+scroll changes in the tree view: 1 or 2 pays out of that set's points
+instead of the shared pool. It is set for the call and put back afterwards,
+since in the app it is a view somebody is looking at rather than anything
+about the build. `attribute` is `str`, `dex` or `int`, which is the choice
+the app's own popup asks for when a small attribute node is allocated.
+
+A keystone or a jewel socket comes out of the shared pool, so it is refused
+from a weapon set, and refused when the way to it runs through weapon set
+nodes. Those are the app's own refusals (`PassiveTreeView.lua:2121`), with
+its own reasons: `AllocNode` would carry either of them out, and the app
+only avoids them by not offering the click.
+
+`deallocNode` takes `{ node, cascade }`. PoB refunds `node.depends`, which
+is the node plus everything held on to the tree only through it, and it does
+that without asking. That is right in a tree you can see, where the branch
+goes dark under the cursor, and wrong over a wire: a refund meant to free one
+point can free nine without a word. So the dependents are counted and named
+and the refund refused, until `cascade` says they were the point.
+
+### Editing gems and socket groups
+
+`addGem`, `setGem`, `deleteGem`, `addSocketGroup`, `deleteSocketGroup`,
+`setSocketGroupEnabled`, `setSocketGroupFullDPS`, `setSocketGroupLabel` and
+`setSkillSet` were there already. Two more:
+
+`swapGem` takes `{ group, gem, to }` and replaces one gem with another in
+place. Not delete-then-add, because add appends: swapping the second gem of
+five would move it to the end, and the order is what the app shows and what
+the file keeps. The instance is rebuilt as `addGem` builds a new one and
+marked `new`, which is PoB's own flag for "give this its natural maximum
+level on the next pass" (`SkillsTab.lua:1366`).
+
+`setSocketGroupWeaponSet` takes `{ group, set }` where `set` is 1, 2 or
+`both`. PoB keeps this as two flags and reads "neither" as "both": the
+checkbox callback refuses to clear the second one rather than let a group
+apply nowhere (`SkillsTab.lua:158`). Expressed as a choice of three so that
+nowhere cannot be asked for. It refuses a group whose skill reserves spirit
+in every set, one granted by an item in a weapon slot, and a set whose
+weapons the skill cannot use, which are the three the tab makes by disabling
+the checkbox and explaining itself in a tooltip.
 
 ## Importing a character
 
