@@ -167,6 +167,18 @@ item id reads the item back out as text and stages a copy of it. Crafting on
 that copy leaves the worn one alone, and nothing is equipped unless somebody
 does it in the app.
 
+A staged item says what the engine could not read in it. PoB marks such a
+line "Not supported in PoB yet" inside the tooltip, among twenty others;
+what it does not say is the consequence, so `pob_stage_item` gathers them
+above the slot comparisons and says it: nothing below counts them. Above,
+because every number underneath is computed from an item missing those
+lines, and read in the other order they are read wrong.
+
+Text that prints rune modifiers without naming the rune gets a line of its
+own. PoB usually works the rune out from the modifiers it recognises, so
+this is for the case where it cannot. The mechanism is in
+`bridge/README.md`, under the crafting routes.
+
 Affix rows are only reachable that way. PoB gives them to a magic or rare
 built in its own craft dialog and to nothing else, so `pob_stage_item` can
 make a blank item from a base; anything copied out of the game carries its

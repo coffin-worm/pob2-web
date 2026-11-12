@@ -211,6 +211,22 @@ PoB shows for a ring, an amulet or a jewel whose modifiers carry catalyst
 tags, or one built on the bench, and answers that a catalyst does not apply
 otherwise.
 
+`/item/staged` also reports what PoB did not understand. A mod line the
+parser cannot place keeps the leftover in `extra`, and every mod list the
+item builds skips a line that has one (`Item.lua` 2764, 2788 and 2842),
+so such a line is in the text and in none of the numbers. They come back
+as `unparsed`. The tooltip cannot show this, because a tooltip draws what
+parsed, and text assembled by hand rather than copied out of the game is
+the usual way to produce them.
+
+`runesMissing` is the narrow case of the same thing: text that prints rune
+modifiers without a `Rune: <name>` line. Rune modifiers are rebuilt from
+that line and not from the lines that print them, which are skipped as
+display text (`Item.lua:1137`). PoB usually repairs the omission by
+inferring the rune from whichever lines it can match against its rune
+data (`Item.lua:1389`, applied at `:1618`), so this reports only the case
+where it could not, and the rune really does count for nothing.
+
 Seven commands change the item on the bench, through `POST /action` like
 any other: `setCraftAffix`, `setRune`, `setSocketCount`, `setAnoint`,
 `corruptItem`, `setCraftQuality` and `setCatalyst`. None of them touches

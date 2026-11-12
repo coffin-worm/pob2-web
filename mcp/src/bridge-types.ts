@@ -426,6 +426,14 @@ export type StagedItem =
       /** That many already are, so only the slots holding one are offered. */
       limited?: boolean;
       fitsNothing?: boolean;
+      /**
+       * Lines the parser could not place, which no number here counts.
+       *
+       * Absent rather than empty when every line parsed.
+       */
+      unparsed?: string[];
+      /** The text shows rune modifiers without naming the rune. */
+      runesMissing?: boolean;
     };
 
 /** One prefix or suffix slot on the bench item. */

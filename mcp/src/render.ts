@@ -837,6 +837,26 @@ export function staged(answer: StagedItem): string {
     tooltip(answer.lines, 1),
   ];
 
+  // Above the comparisons rather than below them, because every number
+  // under here is computed from an item missing these lines. Read in the
+  // other order they are read wrong, and they look authoritative.
+  if (answer.unparsed !== undefined && answer.unparsed.length > 0) {
+    out.push(
+      '',
+      'The engine did not understand these lines, so nothing below counts them:',
+      ...answer.unparsed.map((line) => `- ${strip(line)}`),
+    );
+  }
+  if (answer.runesMissing === true) {
+    out.push(
+      '',
+      'This text shows rune modifiers but does not name the rune. A rune is ' +
+        'rebuilt from a `Rune: <name>` line rather than from the lines that ' +
+        'print it, so the rune counts for nothing here. Copying the item out ' +
+        'of the game, rather than assembling its text, includes that line.',
+    );
+  }
+
   if (answer.fitsNothing) {
     out.push('', 'No slot on this character will take it.');
     return tidy(out);

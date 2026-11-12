@@ -4702,6 +4702,50 @@ function api.stagedItem(build)
 		slots[#slots + 1] = row
 	end
 
+	-- Lines PoB did not understand.
+	--
+	-- `extra` on a mod line is the part the parser could not place, and
+	-- every mod list the item builds skips a line that has one
+	-- (Item.lua 2764, 2788 and 2842). So the line is in the text and in
+	-- none of the numbers, which the tooltip cannot show, because a
+	-- tooltip draws what parsed. Staging text somebody assembled by hand
+	-- rather than copied out of the game is the usual way to get here.
+	local unparsed = asArray({})
+	for _, field in ipairs({
+		"implicitModLines",
+		"explicitModLines",
+		"enchantModLines",
+		"runeModLines",
+		"buffModLines",
+		"classRequirementModLines",
+	}) do
+		for _, modLine in ipairs(item[field] or {}) do
+			if modLine.extra then
+				unparsed[#unparsed + 1] = strip(modLine.line or tostring(modLine.extra))
+			end
+		end
+	end
+
+	-- A rune shown but not named.
+	--
+	-- Rune modifiers are rebuilt from the `Rune: <name>` line and not
+	-- from the lines that print them: PoB reads the name at
+	-- Item.lua:829, skips the printed `Bonded:` lines as display text at
+	-- 1137, and rebuilds from the name at 1389. Text that shows rune
+	-- modifiers without naming the rune loses them, and loses them
+	-- quietly, since the lines it does show are the ones being skipped.
+	-- The game's own copy carries both halves. Text assembled from a
+	-- trade listing often carries only the printed one.
+	local named = 0
+	for _, rune in ipairs(item.runes or {}) do
+		if rune ~= "None" then
+			named = named + 1
+		end
+	end
+	local raw = type(item.raw) == "string" and item.raw or ""
+	local showsRunes = raw:match("{rune}") or raw:match("[Bb]onded:") or raw:match("%(rune%)")
+	local runesMissing = (showsRunes and named == 0) or nil
+
 	return {
 		ready = true,
 		name = strip(item.name or item.title or item.baseName or "Item"),
@@ -4710,6 +4754,11 @@ function api.stagedItem(build)
 		primarySlot = primary,
 		lines = lines,
 		droppedTips = tips,
+		-- Empty arrays encode as {}, so these two are only present when
+		-- there is something to say. A reader checks for them, not for
+		-- their length.
+		unparsed = (#unparsed > 0) and unparsed or nil,
+		runesMissing = runesMissing,
 		slots = slots,
 		-- How many of this unique may be worn at once, and whether that
 		-- many already are. The slot list is narrowed to the ones holding
