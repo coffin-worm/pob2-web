@@ -64,3 +64,7 @@ launcher/obj/
 # The MCP server's dependencies and build output.
 mcp/node_modules/
 mcp/dist/
+
+# Two sessions comparing notes about the MCP server. A working log rather
+# than documentation: what it settles ends up in the READMEs instead.
+/MCP-COLLAB.md
