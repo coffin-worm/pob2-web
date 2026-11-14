@@ -37,7 +37,17 @@ interface Build {
   stale: boolean;
 }
 
-let known: Build | null = null;
+let builtOnce: Date | null = null;
+let headSeen: { read: number; value: { sha: string; at: Date } | undefined } | null = null;
+
+/**
+ * How long a reading of the checkout's HEAD is trusted for.
+ *
+ * Short, because the case this exists for is a server left running while
+ * the checkout moves underneath it, and 30 seconds of staleness in the
+ * staleness report is not worth a git call per tool call.
+ */
+const HEAD_TTL_MS = 30_000;
 
 /** The newest mtime among the files that make up the running server. */
 function builtAt(): Date {
@@ -82,23 +92,31 @@ function head(root: string): { sha: string; at: Date } | undefined {
   }
 }
 
-function look(): Build {
-  const built = builtAt();
-  const latest = head(findRoot());
+/**
+ * One half read once, the other kept fresh.
+ *
+ * What this process is running cannot change while it runs, so the build
+ * time is read once and kept. The checkout's HEAD is the opposite: commits
+ * land while the server sits there, and an earlier version of this cached
+ * both, which meant a server started before the work went on reporting
+ * "after the checkout's latest commit" however far behind it fell. A client
+ * asking that server what it was missing was told nothing was missing.
+ */
+export function serverBuild(): Build {
+  builtOnce ??= builtAt();
+  const now = Date.now();
+  if (headSeen === null || now - headSeen.read > HEAD_TTL_MS) {
+    headSeen = { read: now, value: head(findRoot()) };
+  }
+  const latest: { sha: string; at: Date } | undefined = headSeen.value;
   return {
-    builtAt: built,
+    builtAt: builtOnce,
     ...(latest ? { head: latest } : {}),
     // A minute of slack, because the two clocks being compared are a file
     // timestamp and a commit date, and a commit made seconds before the
     // build it is part of should not read as newer than it.
-    stale: latest !== undefined && latest.at.getTime() > built.getTime() + 60_000,
+    stale: latest !== undefined && latest.at.getTime() > builtOnce.getTime() + 60_000,
   };
-}
-
-/** Read once. Neither half changes while the process runs. */
-export function serverBuild(): Build {
-  known ??= look();
-  return known;
 }
 
 /** One line for the end of an answer, or two when it looks out of date. */
