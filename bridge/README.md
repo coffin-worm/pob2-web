@@ -138,7 +138,7 @@ the call.
 | Route | Takes | Answers |
 | --- | --- | --- |
 | `GET /health` | | Whether PoB booted, the frame count, and the command list |
-| `GET /state` | | The build: name, class, ascendancy, level, point budgets |
+| `GET /state` | | The build: name, class, ascendancy, level, point budgets, game data version |
 | `GET /stats` | | The stat sidebar, with the skill and stat set it is about |
 | `GET /calcs` | | The Calculations tab, a few hundred rows with cell references |
 | `GET /calcs/breakdown` | `ref` | The engine's working behind one cell |

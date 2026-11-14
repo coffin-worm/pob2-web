@@ -12,6 +12,8 @@
  * and carries colours, row heights and pixel coordinates; see render.ts.
  */
 
+import { readFile } from 'node:fs/promises';
+
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
@@ -1648,6 +1650,174 @@ export function register(server: McpServer, bridge: Bridge) {
     },
     async () => ok(show.notes(await bridge.get<NotesSnapshot>('/notes'))),
   );
+
+  server.registerTool(
+    'pob_notes_write',
+    {
+      title: 'Write the build notes',
+      description:
+        "Replace the build's notes, or add to the end of them. The notes " +
+        'are the one place a build carries words rather than numbers, so a ' +
+        'plan, a ruling somebody confirmed, or a warning about what not to ' +
+        'change belongs here if it should outlive the conversation.\n\n' +
+        'Nothing is written to disk. The notes change in the engine and ' +
+        'pob_save_build is what commits them, which also means a note ' +
+        'written against a build nobody saves is lost with the engine.',
+      inputSchema: {
+        text: z.string().describe('The notes to write, or the text to add.'),
+        append: z
+          .boolean()
+          .optional()
+          .describe('Add to the end, after a blank line, instead of replacing.'),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Required when the engine is one this server did not start.'),
+      },
+      annotations: writes,
+    },
+    async ({ text, append, confirm }) => {
+      if (!(await bridge.ours()) && confirm !== true) {
+        return no(
+          'That engine was already running when this server attached to it, ' +
+            'so somebody may have a window open on the build. Rewriting their ' +
+            'notes is not something to do unasked. Call again with ' +
+            'confirm=true if that is wanted.',
+        );
+      }
+
+      let whole = text;
+      if (append === true) {
+        const current = await bridge.get<NotesSnapshot>('/notes');
+        const existing = (current.text ?? '').replace(/\s+$/, '');
+        whole = existing === '' ? text : existing + '\n\n' + text;
+      }
+
+      await bridge.post<BridgeSnapshot>('/action', {
+        action: 'setNotes',
+        value: { text: whole },
+      });
+
+      const after = await bridge.get<NotesSnapshot>('/notes');
+      const wrote = append === true ? 'Added to the notes' : 'Wrote the notes';
+      return ok(
+        wrote +
+          '. They are in the engine, not on disk: pob_save_build writes ' +
+          'them to the file.\n\n' +
+          show.notes(after),
+      );
+    },
+  );
+
+  server.registerTool(
+    'pob_import_character',
+    {
+      title: 'Import a character from its account data',
+      description:
+        "Import a live character into the open build, the way PoB's own " +
+        'Import tab does: the passive tree and jewels, the items and ' +
+        'skills, or both. The build that is open is the one imported into, ' +
+        'so its name and file are kept.\n\n' +
+        'This takes the character JSON that pathofexile.com answers with, ' +
+        'as `json` or as a `file` holding it. It does not sign in: this ' +
+        'server has no browser, and the account sign-in lives in the app and ' +
+        'in the dev server, which hold the token in memory. The app\'s ' +
+        'Import tab fetches it for you, and a running dev server answers ' +
+        '/poe/character?name=NAME on its own port.\n\n' +
+        'The payload is checked before anything is touched, because PoB ' +
+        'deletes the equipment and the skill groups and only then reads it. ' +
+        'The resistance penalty is corrected on the way in, which PoB itself ' +
+        'gets wrong for a character partway through the campaign.\n\n' +
+        'Nothing is written to disk.',
+      inputSchema: {
+        json: z
+          .string()
+          .optional()
+          .describe('The character payload, as the API answers it.'),
+        file: z
+          .string()
+          .optional()
+          .describe('A file holding that payload, instead of passing it inline.'),
+        tree: z
+          .boolean()
+          .optional()
+          .describe('Import the passive tree and jewels. Default true.'),
+        items: z
+          .boolean()
+          .optional()
+          .describe('Import the items and skills. Default true.'),
+        deleteJewels: z
+          .boolean()
+          .optional()
+          .describe("PoB's own checkbox, default on: clear the jewels first."),
+        deleteSkills: z
+          .boolean()
+          .optional()
+          .describe("PoB's own checkbox, default on: clear the skill groups first."),
+        deleteEquipment: z
+          .boolean()
+          .optional()
+          .describe("PoB's own checkbox, default on: clear the equipment first."),
+        ignoreWeaponSwap: z
+          .boolean()
+          .optional()
+          .describe("PoB's own checkbox, default off: leave the swap slots alone."),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Required when the engine is one this server did not start.'),
+      },
+      annotations: writes,
+    },
+    async ({ json, file, confirm, ...boxes }) => {
+      if (!(await bridge.ours()) && confirm !== true) {
+        return no(
+          'That engine was already running when this server attached to it, ' +
+            'so somebody may have a window open on the build. An import ' +
+            'replaces its tree, its items and its skills. Call again with ' +
+            'confirm=true if that is wanted.',
+        );
+      }
+      if ((json === undefined) === (file === undefined)) {
+        return no('Give the payload as `json` or as a `file`, and not both.');
+      }
+
+      let payload = json;
+      if (file !== undefined) {
+        try {
+          payload = await readFile(file, 'utf8');
+        } catch (error) {
+          return no(
+            `That file could not be read: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+
+      const before = await bridge.get<StatsSnapshot>('/stats');
+      try {
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'importCharacter',
+          value: { json: payload, ...boxes },
+        });
+      } catch (error) {
+        if (error instanceof BridgeError) {
+          return no(
+            `The import was refused, and nothing was changed: ${error.message}`,
+          );
+        }
+        throw error;
+      }
+
+      const state = await bridge.get<BridgeSnapshot>('/state');
+      const after = await bridge.get<StatsSnapshot>('/stats');
+      const parts = ['Imported into the open build.', '', show.header(state)];
+      if (before.ready && after.ready) {
+        parts.push('', '## What moved', show.moved(before.lines, after.lines));
+      }
+      return ok(parts.join('\n'));
+    },
+  );
+
 
   server.registerTool(
     'pob_set_main_skill',

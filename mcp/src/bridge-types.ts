@@ -49,6 +49,17 @@ export type BridgeSnapshot =
       loadoutId: number;
       loadouts: NamedOption[];
       points: BuildPoints;
+      /**
+       * Which game data the engine is running on, and which the build was
+       * made against. A calculation against last patch's data is not wrong
+       * in a way the numbers show, so the version has to be said.
+       */
+      data?: {
+        tree?: string;
+        target?: string;
+        buildTree?: string;
+        buildTarget?: string;
+      };
       engineError?: string | null;
     };
 

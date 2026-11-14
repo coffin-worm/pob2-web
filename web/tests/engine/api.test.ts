@@ -113,6 +113,18 @@ describe('saveBuildAs', () => {
   })
 })
 
+describe('GET /state carries the game data version', () => {
+  it('reports the tree and target the engine is running on', async () => {
+    const { body } = await engine.get('/state')
+    // PoB's own globals from GameVersions.lua. A number computed against
+    // last patch's tree is wrong in a way no stat line shows, so the
+    // version has to travel with the numbers.
+    expect(body.data.tree).toMatch(/^\d+_\d+$/)
+    expect(body.data.target).toMatch(/^\d+_\d+$/)
+    expect(body.data.buildTree).toBe(body.data.tree)
+  })
+})
+
 describe('the stat set a skill is measured on', () => {
   it('lists both of a two-set skill, and the sheet follows the one selected', async () => {
     expect((await engine.post('/build/new')).status).toBe(200)

@@ -168,7 +168,7 @@ built and draws no comparison.
 
 ## The tools
 
-Twenty-seven, over the bridge's forty-seven routes. The grouping is the point:
+Twenty-nine, over the bridge's forty-seven routes. The grouping is the point:
 the engine exposes a route per control, and a model handed forty tools spends
 its context on the schema list and still picks the wrong one. So these are
 grouped by the question somebody actually has, and the routes that differ
@@ -196,6 +196,8 @@ discriminator.
 | `pob_compare` | This build against another one, stat by stat |
 | `pob_compare_load` | Load, choose or drop a build to compare against |
 | `pob_notes` | What the build's author wrote about it |
+| `pob_notes_write` | Write or add to those notes |
+| `pob_import_character` | Import a live character's tree, items and skills |
 | `pob_set_main_skill` | Point the build at a different skill |
 | `pob_best_points` | Rank the tree by what a point buys |
 | `pob_tree_edit` | Allocate and refund passive points |
@@ -449,6 +451,27 @@ is why its set nodes look free and freshly allocated ones do not. The
 header says this whenever the two sets are uneven, so the pair of numbers
 explains itself.
 
+### Importing a live character
+
+`pob_import_character` takes the character payload pathofexile.com answers
+with, inline or as a file, and imports it into the build that is already
+open, which is what the desktop's two buttons do. The tree half and the
+items half can be asked for separately, PoB's four checkboxes are there, and
+the payload is validated before anything is touched, because PoB deletes the
+equipment and the skill groups and only then reads it.
+
+**It does not sign in, and it will not.** The account sign-in is OAuth in a
+browser, and this server has neither a browser nor anywhere safe to keep a
+token: it is a stdio process a client starts and stops. The two places that
+do hold a session are the app and the dev server, each keeping the token in
+memory only, and either will hand you the JSON. The app's Import tab fetches
+it, and a dev server answers `/poe/character?name=NAME` on its own port.
+That split is deliberate rather than unfinished: a credential belongs where
+somebody can see it being used.
+
+The resistance penalty is corrected on the way in, the same as every other
+import path here; `RULINGS.md` says why that is necessary.
+
 ### Which half of a skill is being measured
 
 A skill can declare more than one stat set, and PoB calculates the selected
@@ -469,6 +492,16 @@ question.
 
 The selection lives on the gem instance, as PoB stores it, so it survives a
 save and follows the gem rather than the build.
+
+### Which game data the numbers came from
+
+Every answer that carries the header carries the game data version with it:
+`Game data: tree 0_5, target 0_1`, from PoB's own `GameVersions.lua`, and
+the build's own versions when they differ from the engine's. A calculation
+made against last patch's tree is wrong in a way no stat line shows, so the
+version travels with the numbers rather than being something to go and ask
+for. The server's own staleness line sits beside it, which between them
+answer "is any of this current" without a round trip.
 
 ### What the numbers assume
 

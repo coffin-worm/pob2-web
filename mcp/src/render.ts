@@ -118,7 +118,30 @@ export function header(state: BridgeSnapshot): string {
       state.points.weaponSet2.over,
     ),
     unevenSets(state.points.weaponSet1.used, state.points.weaponSet2.used),
+    gameData(state),
   ]);
+}
+
+/**
+ * Which game data the numbers were computed against.
+ *
+ * Nothing in a stat sheet says how old the data behind it is, and a build
+ * calculated against last patch's tree is wrong in a way that looks exactly
+ * like being right. The build's own version is only mentioned when it
+ * differs from the engine's, which is the case worth noticing.
+ */
+function gameData(state: BridgeSnapshot): string {
+  if (!state.ready || !state.data) return '';
+  const { tree, target, buildTree, buildTarget } = state.data;
+  if (!tree && !target) return '';
+  const mine = [tree && `tree ${tree}`, target && `target ${target}`]
+    .filter(Boolean)
+    .join(', ');
+  const theirs =
+    (buildTree && buildTree !== tree) || (buildTarget && buildTarget !== target)
+      ? ` This build was made against tree ${buildTree ?? 'unknown'}, target ${buildTarget ?? 'unknown'}.`
+      : '';
+  return `Game data: ${mine}.${theirs}`;
 }
 
 /**

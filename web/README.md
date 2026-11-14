@@ -1842,7 +1842,7 @@ idea of what PoB does would have agreed with me about the resistance
 penalty too.
 
 `npm run test:engine` boots a real engine and drives the bridge over HTTP:
-twenty-one tests, about thirteen seconds. The ones worth having are the refusals.
+twenty-two tests, about fifteen seconds. The ones worth having are the refusals.
 Every way an import can be malformed is asserted to leave the build name,
 level and class exactly as they were, because PoB deletes the equipment and
 the skill groups *before* it reads the payload, and a regression there

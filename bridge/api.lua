@@ -204,6 +204,20 @@ function api.snapshot(build)
 		-- from the allocated passive points. It decides the elemental
 		-- resistance penalty, so it is worth being able to see.
 		act = type(build.Act) == "string" and build.Act or nil,
+		-- Which game data this engine is running on, and which the build
+		-- was made against. PoB keeps both as globals from
+		-- GameVersions.lua: `latestTreeVersion` is the newest passive tree
+		-- in the checkout and `liveTargetVersion` the version new builds
+		-- are made for. A client that cannot see these cannot tell a
+		-- calculation made against last patch's data from one made against
+		-- this patch's, which is the difference between advice and guessing.
+		data = {
+			tree = type(latestTreeVersion) == "string" and latestTreeVersion or nil,
+			target = type(liveTargetVersion) == "string" and liveTargetVersion or nil,
+			buildTarget = type(build.targetVersion) == "string" and build.targetVersion or nil,
+			buildTree = build.spec and type(build.spec.treeVersion) == "string"
+				and build.spec.treeVersion or nil,
+		},
 
 		characterLevel = build.characterLevel or 1,
 		levelAutoMode = build.characterLevelAutoMode and true or false,
