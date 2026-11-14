@@ -212,6 +212,10 @@ export function register(server: McpServer, bridge: Bridge) {
       const parts = [show.header(state)];
       if (sheet.ready) {
         parts.push('', '## Stats', show.stats(sheet.lines, filter));
+        // Which half of the skill these numbers are, when there is more
+        // than one half. Nothing in the numbers themselves says so.
+        const half = show.statSetNote(sheet);
+        if (half) parts.push('', half);
         if (sheet.warnings.length > 0) {
           parts.push(
             '',
@@ -1668,6 +1672,23 @@ export function register(server: McpServer, bridge: Bridge) {
           .min(1)
           .optional()
           .describe('Which skill in that group, when it grants more than one.'),
+        statSet: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe(
+            'Which stat set of that skill to measure, for a skill that ' +
+              'declares more than one. Essence Drain has "Projectile" and ' +
+              '"Damage over Time", and PoB calculates one at a time, so the ' +
+              'sheet is about the selected one alone. pob_build lists them.',
+          ),
+        part: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe("PoB's older multi-part selector, where a skill has parts."),
         confirm: z
           .boolean()
           .optional()
@@ -1675,7 +1696,7 @@ export function register(server: McpServer, bridge: Bridge) {
       },
       annotations: writes,
     },
-    async ({ group, skill, confirm }) => {
+    async ({ group, skill, statSet, part, confirm }) => {
       if (!(await bridge.ours()) && confirm !== true) {
         return no(
           'That engine was already running when this server attached to it, ' +
@@ -1698,12 +1719,34 @@ export function register(server: McpServer, bridge: Bridge) {
         });
       }
 
+      // Last, for the same reason the skill goes after the group: the stat
+      // sets belong to the skill, so they are only the right list once the
+      // skill is settled.
+      if (statSet !== undefined) {
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'setStatSet',
+          value: statSet,
+        });
+      }
+      if (part !== undefined) {
+        await bridge.post<BridgeSnapshot>('/action', {
+          action: 'setSkillPart',
+          value: part,
+        });
+      }
       const skills = await bridge.get<SkillsSnapshot>('/skills');
       if (!skills.ready) return ok('Done. The engine has no skill list to show.');
-      return ok(
-        `The main skill is now in group ${skills.mainGroup}.\n\n` +
-          show.groups(skills.groups, skills.mainGroup),
-      );
+      const sheet = await bridge.get<StatsSnapshot>('/stats');
+      const lines = [
+        `The main skill is now in group ${skills.mainGroup}.`,
+        '',
+        show.groups(skills.groups, skills.mainGroup),
+      ];
+      // Which half of the skill the sheet is about is part of answering
+      // "what is the main skill now", because it decides every number.
+      const half = show.statSetNote(sheet);
+      if (half) lines.push('', half);
+      return ok(lines.join('\n'));
     },
   );
 
@@ -1927,7 +1970,13 @@ export function register(server: McpServer, bridge: Bridge) {
         if (stalled >= 3) break;
       }
 
-      return ok(show.power(found));
+      // The ranking is only as good as the half of the skill it ranks. A
+      // chaos damage over time build measured on its projectile's hit
+      // scores duration and the DoT scaling at zero, which reads as a
+      // verdict rather than as the wrong question.
+      const sheet = await bridge.get<StatsSnapshot>('/stats');
+      const half = show.statSetNote(sheet);
+      return ok(half ? show.power(found) + '\n\n' + half : show.power(found));
     },
   );
 

@@ -344,6 +344,15 @@ function api.stats(build)
 
 	local socketGroups, socketGroupId = dropdownOptions(build.controls.mainSocketGroup)
 	local skills, skillId = dropdownOptions(build.controls.mainSkill)
+	-- The two selectors underneath the skill, which decide which half of a
+	-- skill the whole sheet is about. A granted effect can declare several
+	-- stat sets (Essence Drain has "Projectile" and "Damage over Time") and
+	-- PoB calculates the selected one and no other: a build whose damage is
+	-- the debuff reads as the projectile's hit until this is moved, with no
+	-- line anywhere saying a second set exists. `parts` is PoB's older
+	-- multi-part mechanism, listed on the same footing.
+	local statSets, statSetId = dropdownOptions(build.controls.statSet)
+	local parts, partId = dropdownOptions(build.controls.mainSkillPart)
 
 	return {
 		ready = true,
@@ -353,6 +362,10 @@ function api.stats(build)
 		socketGroups = socketGroups,
 		skillId = skillId,
 		skills = skills,
+		statSetId = statSetId,
+		statSets = statSets,
+		partId = partId,
+		parts = parts,
 	}
 end
 
@@ -5668,6 +5681,12 @@ end
 
 commands.setSocketGroup = selectInDropdown("mainSocketGroup")
 commands.setMainSkill = selectInDropdown("mainSkill")
+-- Which stat set of the main skill the sheet is about, and which part.
+-- PoB stores both on the gem instance rather than on the build, so they
+-- survive a save and follow the gem, and the selFunc the helper calls is
+-- what writes them there.
+commands.setStatSet = selectInDropdown("statSet")
+commands.setSkillPart = selectInDropdown("mainSkillPart")
 
 --- The Calcs tab drives its own skill selection through input.skill_number,
 --- separately from the sidebar's main socket group. Its controls hang off

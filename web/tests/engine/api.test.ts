@@ -113,6 +113,49 @@ describe('saveBuildAs', () => {
   })
 })
 
+describe('the stat set a skill is measured on', () => {
+  it('lists both of a two-set skill, and the sheet follows the one selected', async () => {
+    expect((await engine.post('/build/new')).status).toBe(200)
+
+    // Essence Drain is the plain case: PoB's data gives it a "Projectile"
+    // stat set and a "Damage over Time" one, and calculates whichever is
+    // selected and no other. Until the bridge carried the selector, a build
+    // whose damage is the debuff read as the projectile's hit with nothing
+    // saying a second set existed.
+    const gems = (await engine.get('/gems/search?q=Essence+Drain')).body.results
+    const gem = gems.find((entry: any) => entry.name === 'Essence Drain')
+    expect(gem, "PoB's data has Essence Drain").toBeTruthy()
+    expect((await engine.action('addSocketGroup')).status).toBe(200)
+    expect((await engine.action('addGem', { group: 1, gem: gem.id })).status).toBe(200)
+
+    const first = (await engine.get('/stats')).body
+    expect(first.statSets.map((set: any) => set.name)).toEqual([
+      'Projectile',
+      'Damage over Time',
+    ])
+    expect(first.statSetId).toBe(1)
+    const dotLines = (lines: any[]) =>
+      lines.filter((line: any) => /DoT/i.test(line.label)).map((line: any) => line.label)
+    expect(dotLines(first.lines), 'the projectile set has no damage over time').toEqual([])
+
+    expect((await engine.action('setStatSet', 2)).status).toBe(200)
+    const second = (await engine.get('/stats')).body
+    expect(second.statSetId).toBe(2)
+    expect(dotLines(second.lines).length, 'the other set has it').toBeGreaterThan(0)
+
+    // And back, because the selection is a view on the gem rather than a
+    // change to the build, and a caller may well want it where it was.
+    expect((await engine.action('setStatSet', 1)).status).toBe(200)
+    expect((await engine.get('/stats')).body.statSetId).toBe(1)
+  })
+
+  it('refuses an option that is not there', async () => {
+    const { status, body } = await engine.action('setStatSet', 99)
+    expect(status).toBe(400)
+    expect(body.error).toMatch(/no option 99/)
+  })
+})
+
 describe('the revision clients refetch on', () => {
   it('moves when a build is opened, though PoB sets its own counter back to 1', async () => {
     // A build on disk with something in it, so opening it is a real change.

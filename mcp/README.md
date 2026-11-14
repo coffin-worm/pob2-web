@@ -449,6 +449,27 @@ is why its set nodes look free and freshly allocated ones do not. The
 header says this whenever the two sets are uneven, so the pair of numbers
 explains itself.
 
+### Which half of a skill is being measured
+
+A skill can declare more than one stat set, and PoB calculates the selected
+one and no other. Essence Drain is the plain case: `Projectile` is a chaos
+spell hit, `Damage over Time` is the debuff that is most of what the skill
+does. On a real level 67 Lich the first reads 1,233 DPS and the second
+3,386, and before this the second was not reachable, or visible, from here
+at all.
+
+So `pob_build` now says which set the sheet is about whenever there is more
+than one, names the others, and says how to move; `pob_set_main_skill` takes
+`statSet` (and `part`, for PoB's older multi-part skills); and
+`pob_best_points` repeats the caution with its ranking, because that is
+where it bites hardest. Ranking a chaos damage over time build on its
+projectile scores duration, Wither and the damage over time passives at
+zero, which reads as a verdict on those nodes rather than as the wrong
+question.
+
+The selection lives on the gem instance, as PoB stores it, so it survives a
+save and follows the gem rather than the build.
+
 ### What the numbers assume
 
 `pob_config_set` is the other half of `pob_config`: the tab could be

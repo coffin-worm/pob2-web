@@ -70,6 +70,18 @@ export type StatsSnapshot =
       socketGroups: NamedOption[];
       skillId: number;
       skills: NamedOption[];
+      /**
+       * The main skill's stat sets, and which one the sheet is about. A
+       * granted effect can declare more than one (Essence Drain has
+       * "Projectile" and "Damage over Time") and PoB calculates the
+       * selected one alone, so a build whose damage is its debuff reads as
+       * the projectile until this moves.
+       */
+      statSets?: NamedOption[];
+      statSetId?: number;
+      /** PoB's older multi-part mechanism, on the same footing. */
+      parts?: NamedOption[];
+      partId?: number;
     };
 
 /** One line of a PoB tooltip. `block` 1 is the subject, 2 the comparison. */

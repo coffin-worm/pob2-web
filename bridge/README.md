@@ -139,7 +139,7 @@ the call.
 | --- | --- | --- |
 | `GET /health` | | Whether PoB booted, the frame count, and the command list |
 | `GET /state` | | The build: name, class, ascendancy, level, point budgets |
-| `GET /stats` | | The stat sidebar, about an order of magnitude more data |
+| `GET /stats` | | The stat sidebar, with the skill and stat set it is about |
 | `GET /calcs` | | The Calculations tab, a few hundred rows with cell references |
 | `GET /calcs/breakdown` | `ref` | The engine's working behind one cell |
 | `GET /tree` | | The tree's geometry, ~420 kB. Fetch once; it does not change |
@@ -164,6 +164,24 @@ the call.
 | `GET /code` | | The build as a code, exactly as the desktop app exports it |
 | `GET /code/inspect` | `code` | What a code contains, without importing it |
 | `GET /paths` | | Where PoB is keeping builds and settings |
+
+## Which half of a skill the numbers are
+
+`GET /stats` carries `statSets` and `statSetId` beside the skill list, and
+`setStatSet` moves the selection. They matter more than their size suggests.
+
+A granted effect can declare several stat sets, and PoB calculates the
+selected one and no other. Essence Drain has `Projectile` and `Damage over
+Time`; on a real chaos damage over time build the projectile reads 1,233 DPS
+and the debuff reads 3,386, and until the selector was carried here only the
+first was reachable. Nothing in the numbers says a second set exists, so a
+client that cannot see the list cannot know it is reading the smaller half,
+and anything ranked on those numbers ranks the wrong question: duration and
+the damage over time scaling score zero because the hit does not use them.
+
+`parts` and `setSkillPart` are PoB's older multi-part mechanism, carried on
+the same footing. Both selections live on the gem instance rather than on the
+build, which is why they survive a save.
 
 ## Pricing a change, without making it
 

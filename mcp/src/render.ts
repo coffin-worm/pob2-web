@@ -38,6 +38,7 @@ import type {
   StagedItem,
   PowerNode,
   StatLine,
+  StatsSnapshot,
   TreeNode,
   TreePowerSnapshot,
   WhatIf,
@@ -140,6 +141,31 @@ function unevenSets(setI: number, setII: number): string {
     `Set ${ahead} is ${spare} ahead of set ${behind}, and PoB discounts only ` +
     `the smaller of the two from the passive points, so ${spare} of them are ` +
     `coming out of the main pool until set ${behind} catches up.`
+  );
+}
+
+/**
+ * The half of the skill the sheet is not about.
+ *
+ * PoB calculates the selected stat set and no other, so a build whose
+ * damage is a debuff reads as its projectile's hit, with every DPS line and
+ * anything ranked on them measuring the wrong half. Nothing in the numbers
+ * says so, which is why it is said here.
+ */
+export function statSetNote(sheet: StatsSnapshot): string {
+  if (!sheet.ready) return '';
+  const sets = sheet.statSets ?? [];
+  if (sets.length < 2) return '';
+  const here = sets.find((set) => set.id === sheet.statSetId)?.name ?? 'the first';
+  const others = sets.filter((set) => set.id !== sheet.statSetId);
+  return (
+    `This skill has ${sets.length} stat sets and the sheet is measuring ` +
+    `**${here}**. PoB calculates one at a time, so ` +
+    `${others.map((set) => `"${set.name}"`).join(' and ')} ` +
+    `${others.length === 1 ? 'is' : 'are'} not in any number above, ` +
+    `including Full DPS and anything ranked on it. ` +
+    `pob_set_main_skill with statSet=${others[0]?.id} moves the sheet to ` +
+    `${others.length === 1 ? 'it' : 'the first of them'}.`
   );
 }
 
