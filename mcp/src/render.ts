@@ -116,7 +116,31 @@ export function header(state: BridgeSnapshot): string {
       state.points.weaponSet2.max,
       state.points.weaponSet2.over,
     ),
+    unevenSets(state.points.weaponSet1.used, state.points.weaponSet2.used),
   ]);
+}
+
+/**
+ * Why the two weapon set counters do not explain the passive count.
+ *
+ * PoB's own arithmetic is `PointsUsed - min(setI, setII)` (`Build.lua:1092`):
+ * the discount is the *smaller* of the two sets, because a weapon set point
+ * buys the same slot allocated differently in each set, so one spent alone
+ * saves nothing. Allocate fourteen nodes to set I with set II empty and the
+ * passive count goes up by fourteen as well, which reads like the nodes were
+ * counted twice. They were not, and this says so where the numbers are.
+ */
+function unevenSets(setI: number, setII: number): string {
+  const spare = Math.abs(setI - setII);
+  // Empty rather than absent: tidy() drops a blank line at the end.
+  if (spare === 0) return '';
+  const ahead = setI > setII ? 'I' : 'II';
+  const behind = setI > setII ? 'II' : 'I';
+  return (
+    `Set ${ahead} is ${spare} ahead of set ${behind}, and PoB discounts only ` +
+    `the smaller of the two from the passive points, so ${spare} of them are ` +
+    `coming out of the main pool until set ${behind} catches up.`
+  );
 }
 
 /* ----------------------------------------------------------- the stat sheet */

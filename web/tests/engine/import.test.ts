@@ -168,9 +168,10 @@ describe('importCharacter, with a payload shaped like the real one', () => {
       .filter(([, cost]) => cost === 1)
       .map(([id]) => id)
       .sort((a, b) => a - b)
-    expect(next.length, 'the imported tree has somewhere to grow').toBeGreaterThan(3)
+    expect(next.length, 'the imported tree has somewhere to grow').toBeGreaterThan(4)
+    // Deliberately uneven, because the interesting arithmetic is below.
     const set1 = next.slice(0, 2)
-    const set2 = next.slice(2, 4)
+    const set2 = next.slice(2, 5)
 
     // PoB's own shape for this: the weapon set nodes arrive beside the
     // hashes, keyed "set1" and "set2".
@@ -194,6 +195,18 @@ describe('importCharacter, with a payload shaped like the real one', () => {
     // And they are allocated like any other node.
     const allocated = new Set<number>(alloc.allocated)
     for (const id of [...set1, ...set2]) expect(allocated.has(id)).toBe(true)
+
+    // The arithmetic that makes a weapon set node look free on one build
+    // and not on another. PoB's main counter is
+    // `PointsUsed - min(setI, setII)` (Build.lua:1092): the discount is the
+    // smaller of the two sets, because a weapon set point buys one slot
+    // allocated differently in each set, so one spent alone pairs with
+    // nothing and comes out of the shared pool. An import with 24 and 24
+    // is discounted all 24, which is why its set nodes read as free.
+    expect(body.points.ascendancy.used, 'no ascendancy points in the way').toBe(0)
+    const paidFor = alloc.allocated.length - 1 // the class start node is free
+    const discount = Math.min(set1.length, set2.length)
+    expect(body.points.passives.used).toBe(paidFor - discount)
   })
 
   it('takes the character on its own as well as inside the envelope', async () => {

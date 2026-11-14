@@ -436,6 +436,19 @@ Which makes "measure this build on the other weapon set"
 other set is the same thing, since `pob_best_points` measures the build
 as it stands.
 
+Weapon set *points* are a different thing again, and the counters read
+oddly until you know the rule. Allocate fourteen nodes with
+`pob_tree_edit weaponSet=1` and the passive count goes up by fourteen as
+well, which looks like the nodes were charged twice. They were not. PoB's
+main count is `PointsUsed - min(setI, setII)` (`Build.lua:1092`): the
+discount is the *smaller* of the two sets, because a weapon set point buys
+one slot allocated differently in each set, and one spent alone has nothing
+to pair with. Fill the other set and the main points come back, one for
+one. An imported character with 24 and 24 is discounted the full 24, which
+is why its set nodes look free and freshly allocated ones do not. The
+header says this whenever the two sets are uneven, so the pair of numbers
+explains itself.
+
 ### What the numbers assume
 
 `pob_config_set` is the other half of `pob_config`: the tab could be
