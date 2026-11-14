@@ -113,6 +113,12 @@ sealed class MainForm : Form
             return;
         }
 
+        // Started here rather than on the first request, so the panel knows
+        // whether it is signed in before anybody asks it to be. WebView2
+        // coming up is the slowest thing in this method and a token
+        // refresh is one round trip, so this costs nothing in practice.
+        _ = _poe.HydrateAsync();
+
         var environment = await CoreWebView2Environment.CreateAsync(
             userDataFolder: Path.Combine(Paths.UserData(), "WebView2"));
         await _view.EnsureCoreWebView2Async(environment);

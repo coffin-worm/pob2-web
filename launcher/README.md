@@ -88,8 +88,25 @@ HTTP than negotiating with `http.sys` for the right to listen. The ports
 are 49082, 49083 and 49084 with no path, because those are the origins
 registered with the OAuth client.
 
-Tokens are held in memory and nowhere else: not on disk, not in the page,
-not in the trace. Closing the window signs you out.
+The access token is held in memory and nowhere else: not on disk, not in
+the page, not in the trace. The refresh token beside it is kept across
+restarts by `TokenStore.cs`, encrypted to the Windows user, so closing
+the window no longer signs you out. Why it is on disk at all is in
+`web/README.md`, under "The sign-in that survives a restart": the short
+version is that a sign-in you do constantly stops being read, and PoB
+upstream already writes the same secret to Settings.xml in the clear.
+
+`TokenStore.cs` is the other half of `web/plugins/token-store.ts`, down
+to the file it reads. Both keep the same token in
+`%LOCALAPPDATA%/pob2-web/poe-token.json`, so a sign-in in the dev server
+is a sign-in in the window and the other way round: one account on one
+machine should not have to prove itself twice. That is also why it is the
+one piece of state not under `Paths.UserData()`, which is this program's
+own folder and nobody else's. The format is PowerShell's, because the
+dev server's half is PowerShell: `ConvertFrom-SecureString` with no key
+argument is `CryptProtectData` at `CurrentUser` scope over the string's
+UTF-16 bytes, printed as hex, which is exactly what `ProtectedData`
+produces here. Neither half can tell the other's file from its own.
 
 ## The engine cannot outlive the window
 

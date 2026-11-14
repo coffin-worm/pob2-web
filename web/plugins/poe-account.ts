@@ -141,8 +141,16 @@ export function poeAccount(options: Options): Plugin {
     pending = null;
   };
 
-  /** POST to the token endpoint. Shared by the code and refresh grants. */
-  const postToken = async (body: Record<string, string>): Promise<Token> => {
+  /**
+   * POST to the token endpoint. Shared by the code and refresh grants.
+   *
+   * `keep` is the refresh token being spent, on a refresh grant. GGG hands
+   * back a new one when it rotates, and simply does not mention it when it
+   * does not, which is the same wire as a token that has just been taken
+   * away. Reading the silence as a revocation ends the session at the next
+   * refresh, hours later, somewhere else.
+   */
+  const postToken = async (body: Record<string, string>, keep?: string): Promise<Token> => {
     const response = await fetch(`${AUTH_HOST}/oauth/token`, {
       method: 'POST',
       headers: {
@@ -169,7 +177,7 @@ export function poeAccount(options: Options): Plugin {
     }
     return {
       accessToken: parsed.access_token,
-      refreshToken: parsed.refresh_token ?? null,
+      refreshToken: parsed.refresh_token ?? keep ?? null,
       expiresAt: Date.now() + (parsed.expires_in ?? 600) * 1000,
     };
   };
@@ -203,7 +211,7 @@ export function poeAccount(options: Options): Plugin {
         client_id: CLIENT_ID,
         grant_type: 'refresh_token',
         refresh_token: saved,
-      });
+      }, saved);
       remember();
       note('signed in from the saved token');
     } catch (err) {
@@ -400,7 +408,7 @@ export function poeAccount(options: Options): Plugin {
         client_id: CLIENT_ID,
         grant_type: 'refresh_token',
         refresh_token: token.refreshToken,
-      });
+      }, token.refreshToken);
       remember();
       return token.accessToken;
     } catch (err) {

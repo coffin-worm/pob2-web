@@ -1443,7 +1443,7 @@ a token that syncs is a token on two machines. Rather than TEMP, which is
 the opposite mistake, and is where the port file belongs precisely because
 that one should not survive a reboot.
 
-Four things there that are decisions rather than code:
+Five things there that are decisions rather than code:
 
 - **Only the refresh token.** The access token beside it lasts ten minutes,
   so keeping it would buy nothing and widen what a stolen file is worth.
@@ -1461,9 +1461,21 @@ Four things there that are decisions rather than code:
   one from before a profile reset, a truncated write, a PowerShell that will
   not run: none of them are worth refusing to start over, and all of them
   are a state the panel already handles.
+- **A grant that mentions no refresh token keeps the one it spent.** GGG
+  hands one back when it rotates, and simply says nothing when it does not,
+  which is the same wire as a token that has just been taken away. Reading
+  that silence as a revocation ends the session at the next refresh, hours
+  later, somewhere else, for a token that was never actually revoked.
 
 `POST /poe/signout` deletes the file, because a sign-out that comes back
 after a restart is not one.
+
+The window keeps the same file. `launcher/TokenStore.cs` is the other half
+of this one, reaching DPAPI through `ProtectedData` rather than a spawn
+because that process is already .NET, and writing the same JSON with the
+same hex so neither can tell the other's file from its own. Signing in on
+one side is signing in on both, which is the point: it is one account on
+one machine either way.
 
 ### An envelope, and who opens it
 

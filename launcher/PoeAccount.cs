@@ -45,11 +45,18 @@ namespace PoB2Web;
 /// is <c>Path of Building/&lt;version&gt;</c> from <c>manifest.xml</c>.
 /// </para>
 /// <para>
-/// Tokens live in this object and nowhere else. They are not written to
-/// disk, not given to the page, and not traced; closing the window means
-/// signing in again. That is the right trade for a refresh token that can
-/// read someone's account, and it is why the page only ever sees
-/// <c>authenticated: true</c>.
+/// The access token lives in this object and nowhere else. It is not
+/// written to disk, not given to the page, and not traced, which is why
+/// the page only ever sees <c>authenticated: true</c>.
+/// </para>
+/// <para>
+/// The refresh token beside it is kept across restarts, encrypted to the
+/// Windows user, by <see cref="TokenStore"/>. Signing in once per launch
+/// was the earlier answer and the safer-sounding one, but it is not the
+/// trade it looks like: PoB upstream keeps the same token in the clear in
+/// Settings.xml, so the choice was never between storing it and not, only
+/// between storing it well and sending somebody back to the browser every
+/// morning. <see cref="TokenStore"/> says what the encryption is worth.
 /// </para>
 /// </remarks>
 sealed class PoeAccount : IDisposable
@@ -111,6 +118,9 @@ sealed class PoeAccount : IDisposable
     /// <summary>Guards the token and the pending sign-in, never a network call.</summary>
     readonly SemaphoreSlim _gate = new(1, 1);
     readonly Action<string> _trace;
+    readonly TokenStore _store;
+    /// <summary>Guards <see cref="_ready"/> and nothing else.</summary>
+    readonly object _once = new();
 
     Token? _token;
     Pending? _pending;
@@ -129,6 +139,7 @@ sealed class PoeAccount : IDisposable
     public PoeAccount(string root, Action<string> trace)
     {
         _trace = trace;
+        _store = new TokenStore(trace);
         _client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent(root));
     }
 
@@ -196,6 +207,7 @@ sealed class PoeAccount : IDisposable
                     try
                     {
                         _token = null;
+                        _store.Forget();
                         _pending?.Dispose();
                         _pending = null;
                         _lastError = null;
@@ -262,6 +274,9 @@ sealed class PoeAccount : IDisposable
 
     async Task<object> StatusAsync()
     {
+        // Before the gate, never inside it: the restore takes the gate
+        // itself at the end, and a wait here would be a wait on this.
+        await HydrateAsync();
         await _gate.WaitAsync();
         try
         {
@@ -556,7 +571,11 @@ sealed class PoeAccount : IDisposable
             // started since has already taken over, and finishing the first
             // would clear its listener out from under it.
             if (!ReferenceEquals(_pending, pending)) return;
-            if (token is not null) _token = token;
+            if (token is not null)
+            {
+                _token = token;
+                Remember(token);
+            }
             if (failure is not null) _lastError = failure;
             _pending.Dispose();
             _pending = null;
@@ -581,7 +600,14 @@ sealed class PoeAccount : IDisposable
     /* --------------------------------------------------------------- tokens */
 
     /// <summary>POST to the token endpoint. Shared by the code and refresh grants.</summary>
-    async Task<Token> PostTokenAsync(Dictionary<string, string> body)
+    /// <param name="keep">
+    /// The refresh token being spent, if this is a refresh grant. GGG hands
+    /// back a new one when it rotates, and simply does not mention it when
+    /// it does not, which is the same wire as a token that has just been
+    /// taken away. Reading the silence as a revocation ends the session at
+    /// the next refresh, hours later, somewhere else.
+    /// </param>
+    async Task<Token> PostTokenAsync(Dictionary<string, string> body, string? keep = null)
     {
         using var response = await _client.PostAsync(
             $"{AuthHost}/oauth/token", new FormUrlEncodedContent(body));
@@ -610,7 +636,7 @@ sealed class PoeAccount : IDisposable
             Access = access,
             Refresh = parsed.RootElement.TryGetProperty("refresh_token", out var refresh)
                 ? refresh.GetString()
-                : null,
+                : keep,
             ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(
                 parsed.RootElement.TryGetProperty("expires_in", out var expires)
                     ? expires.GetInt32()
@@ -618,9 +644,89 @@ sealed class PoeAccount : IDisposable
         };
     }
 
+    /// <summary>
+    /// Keep whatever refresh token is now held, or drop the saved one.
+    /// </summary>
+    /// <remarks>
+    /// Called after every grant, because GGG may hand back a new refresh
+    /// token when it spends one. Saving only at sign-in would leave the file
+    /// holding a token that was rotated out from under it, which then fails
+    /// later, elsewhere, and looks like the encryption rather than the
+    /// rotation.
+    /// </remarks>
+    void Remember(Token? token)
+    {
+        if (token?.Refresh is { } refresh) _store.Save(refresh);
+        else _store.Forget();
+    }
+
+    /// <summary>The restore, started once and awaited by anything that needs it.</summary>
+    Task? _ready;
+
+    /// <summary>
+    /// Spend the saved sign-in, once per process.
+    /// </summary>
+    /// <remarks>
+    /// Started from the window while WebView2 is still coming up, so the
+    /// panel knows whether it is signed in before anybody asks it to be,
+    /// and awaited by the status route in case anybody asks first.
+    /// </remarks>
+    public Task HydrateAsync()
+    {
+        lock (_once) { return _ready ??= RestoreAsync(); }
+    }
+
+    /// <remarks>
+    /// The refresh grant is the only way to learn whether a saved token is
+    /// still good, so this is the restore and the check in one. A refused
+    /// grant forgets the file. A network failure does not: the token is
+    /// probably fine, and a flaky minute should not cost a sign-in.
+    /// </remarks>
+    async Task RestoreAsync()
+    {
+        if (_store.Load() is not { } saved) return;
+        try
+        {
+            var token = await PostTokenAsync(
+                new Dictionary<string, string>
+                {
+                    ["client_id"] = ClientId,
+                    ["grant_type"] = "refresh_token",
+                    ["refresh_token"] = saved,
+                },
+                keep: saved);
+
+            await _gate.WaitAsync();
+            try
+            {
+                // Somebody signing in by hand while this was in flight has
+                // the newer token and the better claim to be the sign-in.
+                if (_token is not null) return;
+                _token = token;
+            }
+            finally { _gate.Release(); }
+
+            Remember(token);
+            _trace("signed in from the saved token");
+        }
+        catch (Exception failure)
+        {
+            if (failure.Message.Contains("invalid_grant", StringComparison.Ordinal))
+            {
+                _store.Forget();
+                _trace("the saved sign-in was refused, so it has been forgotten");
+            }
+            else
+            {
+                _trace($"could not spend the saved sign-in: {failure.Message}");
+            }
+        }
+    }
+
     /// <summary>A valid access token, refreshed if it is close to expiry.</summary>
     async Task<string?> ValidTokenAsync(bool force = false)
     {
+        await HydrateAsync();
         await _gate.WaitAsync();
         try
         {
@@ -643,12 +749,20 @@ sealed class PoeAccount : IDisposable
                     ["client_id"] = ClientId,
                     ["grant_type"] = "refresh_token",
                     ["refresh_token"] = refresh,
-                });
+                }, keep: refresh);
+                Remember(_token);
                 return _token.Access;
             }
             catch (Exception failure)
             {
                 _lastError = $"could not refresh the token: {failure.Message}";
+                // A refused grant is a dead token and worth forgetting. A
+                // network error is not, and throwing the file away over one
+                // would turn a flaky minute into another sign-in.
+                if (failure.Message.Contains("invalid_grant", StringComparison.Ordinal))
+                {
+                    _store.Forget();
+                }
                 _token = null;
                 return null;
             }
