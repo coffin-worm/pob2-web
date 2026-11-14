@@ -163,6 +163,15 @@ answers "probably stale" rather than "stale", with a minute of slack, which
 is the honest shape of what can be known from inside the process. A rebuild
 moves the first half past the second.
 
+The build time is read once, because what a process is running cannot
+change while it runs. HEAD is re-read every thirty seconds, because it can
+and does: an earlier version cached both, so a server started before the
+work went on reporting "after the checkout's latest commit" however far
+behind it fell, and a client asking it what it was missing was told nothing
+was missing. That happened twice before the cache was split. A server left
+running now says so itself rather than having to be restarted to admit it
+needs restarting.
+
 Without git, or outside a repository, the line says when the server was
 built and draws no comparison.
 
